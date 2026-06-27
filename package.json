@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/init-db.js && next dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "db:setup": "node scripts/ensure-env.js && prisma migrate deploy && tsx prisma/seed.ts",
+    "db:setup": "node scripts/init-db.js",
+    "db:reset": "rm -f dev.db && node scripts/init-db.js",
     "postinstall": "prisma generate"
   },
   "prisma": {
