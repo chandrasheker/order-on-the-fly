@@ -158,21 +158,22 @@ export function OrderPageClient({ slug, token }: Props) {
         )}
 
         {/* Active orders tracker */}
-        <OrderTracker
-          orders={orders}
-          tableToken={token}
-          onRefresh={fetchOrders}
-        />
+        {hasActiveOrders && (
+          <OrderTracker
+            orders={orders}
+            tableToken={token}
+            onRefresh={fetchOrders}
+          />
+        )}
 
-        {/* Games while waiting */}
-        {hasActiveOrders && <WaitingGames />}
-
-        {/* Menu */}
+        {/* Menu first — games below so menu is easy to scroll */}
         <MenuView
           categories={data.categories}
           onOrder={placeOrder}
           ordering={ordering}
         />
+
+        {hasActiveOrders && <WaitingGames />}
       </div>
     </div>
   );

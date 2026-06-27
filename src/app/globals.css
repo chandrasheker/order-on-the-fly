@@ -21,9 +21,15 @@ body {
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+html {
+  overflow-y: scroll;
+  -webkit-overflow-scrolling: touch;
 }
 
 @keyframes pulse-glow {
