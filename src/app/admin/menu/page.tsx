@@ -182,7 +182,8 @@ export default function MenuManagePage() {
         <section>
           <h2 className="text-lg font-bold mb-3">🎁 Spin Wheel Rewards</h2>
           <p className="text-sm text-zinc-500 mb-3">
-            Set order totals that unlock rewards on the customer spin wheel (valid next visit).
+            Tea reward applies from the tea amount up to (but not including) the beverage amount.
+            Beverage reward applies at the beverage amount and above. Valid on next visit.
           </p>
           <Card className="p-4 space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">

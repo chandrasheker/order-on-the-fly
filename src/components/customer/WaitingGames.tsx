@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, Button, Input } from "@/components/ui";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, getRewardTier } from "@/lib/utils";
 
 interface RewardSettings {
   rewardThresholdTea: number;
@@ -144,18 +144,20 @@ function SpinWheel({
   const [showBetterLuck, setShowBetterLuck] = useState(false);
   const [wonPrize, setWonPrize] = useState<{ label: string; type: "TEA" | "BEVERAGE" } | null>(null);
 
-  const qualifiesBeverage = lastOrder && lastOrder.total >= settings.rewardThresholdBeverage;
-  const qualifiesTea =
-    lastOrder &&
-    lastOrder.total >= settings.rewardThresholdTea &&
-    !qualifiesBeverage;
-  const eligibleForReward = Boolean(qualifiesBeverage || qualifiesTea);
+  const rewardTier = lastOrder
+    ? getRewardTier(
+        lastOrder.total,
+        settings.rewardThresholdTea,
+        settings.rewardThresholdBeverage
+      )
+    : "NONE";
+  const eligibleForReward = rewardTier !== "NONE" && !rewardSpinUsed;
 
   const segments = ["✨", "🍀", "🎲", "⭐"];
   const winSegmentIndex = 0;
 
   const spin = () => {
-    if (spinning || (eligibleForReward && rewardSpinUsed)) return;
+    if (spinning || (rewardTier !== "NONE" && rewardSpinUsed)) return;
 
     setSpinning(true);
     setShowBetterLuck(false);
@@ -171,10 +173,11 @@ function SpinWheel({
       setRewardSpinUsed(true);
 
       if (prizeIdx === winSegmentIndex) {
-        const type = qualifiesBeverage ? "BEVERAGE" : "TEA";
-        const label = qualifiesBeverage
-          ? settings.rewardBeverageLabel
-          : settings.rewardTeaLabel;
+        const type = rewardTier === "BEVERAGE" ? "BEVERAGE" : "TEA";
+        const label =
+          rewardTier === "BEVERAGE"
+            ? settings.rewardBeverageLabel
+            : settings.rewardTeaLabel;
         setWonPrize({ label, type });
         setShowClaim(true);
       } else {
@@ -183,7 +186,7 @@ function SpinWheel({
     }, 3000);
   };
 
-  const rewardAttemptDone = rewardSpinUsed && eligibleForReward;
+  const rewardAttemptDone = rewardSpinUsed && rewardTier !== "NONE";
   const spinDisabled = spinning || (rewardAttemptDone && !showClaim);
 
   return (

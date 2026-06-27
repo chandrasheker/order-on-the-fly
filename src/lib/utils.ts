@@ -74,3 +74,16 @@ export function formatCountdown(seconds: number) {
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
+
+export type RewardTier = "NONE" | "TEA" | "BEVERAGE";
+
+/** Tea from tea threshold up to (not including) beverage threshold; beverage at beverage threshold+. */
+export function getRewardTier(
+  total: number,
+  teaThreshold: number,
+  beverageThreshold: number
+): RewardTier {
+  if (total >= beverageThreshold) return "BEVERAGE";
+  if (total >= teaThreshold) return "TEA";
+  return "NONE";
+}

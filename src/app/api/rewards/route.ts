@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
-import { tomorrowDateString, generateRewardCode } from "@/lib/utils";
+import { tomorrowDateString, generateRewardCode, getRewardTier } from "@/lib/utils";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
@@ -50,12 +50,29 @@ export async function POST(req: NextRequest) {
 
     const restaurant = table.restaurant;
     const total = parseFloat(String(orderTotal || 0));
+    const tier = getRewardTier(
+      total,
+      restaurant.rewardThresholdTea,
+      restaurant.rewardThresholdBeverage
+    );
 
-    if (rewardType === "TEA" && total < restaurant.rewardThresholdTea) {
-      return NextResponse.json({ error: "Order does not qualify for tea reward" }, { status: 400 });
+    if (tier === "NONE") {
+      return NextResponse.json(
+        { error: "Order does not qualify for a reward" },
+        { status: 400 }
+      );
     }
-    if (rewardType === "BEVERAGE" && total < restaurant.rewardThresholdBeverage) {
-      return NextResponse.json({ error: "Order does not qualify for beverage reward" }, { status: 400 });
+
+    if (rewardType !== tier) {
+      return NextResponse.json(
+        {
+          error:
+            tier === "BEVERAGE"
+              ? "Order qualifies for beverage reward, not tea"
+              : "Order qualifies for tea reward only",
+        },
+        { status: 400 }
+      );
     }
 
     if (orderId) {
