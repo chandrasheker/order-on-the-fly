@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, Button, Input } from "@/components/ui";
-import { formatCurrency, getRewardTier } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
+import { REWARD_DISCLAIMER } from "@/lib/reward-constants";
 
 interface RewardSettings {
   rewardThresholdTea: number;
@@ -16,6 +17,15 @@ interface LastOrder {
   id: string;
   total: number;
   orderNumber: number;
+}
+
+interface SpinStatus {
+  eligible: boolean;
+  spun: boolean;
+  won: boolean;
+  lost: boolean;
+  claimed: boolean;
+  tier: string;
 }
 
 const TRIVIA = [
@@ -36,6 +46,7 @@ function RewardClaimModal({
   lastOrder,
   customerName,
   onClose,
+  onClaimed,
 }: {
   prize: string;
   rewardType: "TEA" | "BEVERAGE";
@@ -43,12 +54,14 @@ function RewardClaimModal({
   lastOrder: LastOrder;
   customerName: string;
   onClose: () => void;
+  onClaimed: () => void;
 }) {
   const [name, setName] = useState(customerName);
   const [saving, setSaving] = useState(false);
   const [reward, setReward] = useState<{
     code: string;
     validDate: string;
+    expiresAtFormatted?: string;
     rewardLabel: string;
   } | null>(null);
 
@@ -70,6 +83,7 @@ function RewardClaimModal({
     if (res.ok) {
       const data = await res.json();
       setReward(data.reward);
+      onClaimed();
     }
   };
 
@@ -90,7 +104,7 @@ function RewardClaimModal({
             <h3 className="text-xl font-bold text-orange-300 mb-1">You won!</h3>
             <p className="text-lg font-medium mb-4">{prize}</p>
             <p className="text-sm text-zinc-400 mb-4">
-              Valid on your <strong className="text-white">next visit</strong>. Enter your name so staff can verify.
+              Valid for <strong className="text-white">48 hours</strong> after claim. Enter your name so staff can verify.
             </p>
             <Input
               placeholder="Your full name *"
@@ -113,14 +127,18 @@ function RewardClaimModal({
               <p className="text-sm"><span className="text-zinc-500">Name:</span> {name}</p>
               <p className="text-sm"><span className="text-zinc-500">Reward:</span> {reward.rewardLabel}</p>
               <p className="text-sm"><span className="text-zinc-500">Code:</span> <span className="font-mono text-orange-400 font-bold">{reward.code}</span></p>
-              <p className="text-sm"><span className="text-zinc-500">Valid on:</span> {reward.validDate}</p>
+              <p className="text-sm">
+                <span className="text-zinc-500">Expires:</span>{" "}
+                {reward.expiresAtFormatted || reward.validDate}
+              </p>
             </div>
             <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-sm mb-4">
-              📸 <strong>Take a screenshot now!</strong> Show this to staff on your next visit.
+              📸 <strong>Take a screenshot now!</strong> Show this to staff within 48 hours.
             </div>
             <Button onClick={onClose} className="w-full">Got it!</Button>
           </>
         )}
+        <p className="text-[10px] text-zinc-500 mt-4 leading-relaxed">* {REWARD_DISCLAIMER}</p>
       </motion.div>
     </motion.div>
   );
@@ -132,70 +150,135 @@ function SpinWheel({
   tableToken,
   customerName,
 }: {
-  lastOrder: LastOrder | null;
+  lastOrder: LastOrder;
   settings: RewardSettings;
   tableToken: string;
   customerName: string;
 }) {
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const [rewardSpinUsed, setRewardSpinUsed] = useState(false);
+  const [status, setStatus] = useState<SpinStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
   const [showClaim, setShowClaim] = useState(false);
-  const [showBetterLuck, setShowBetterLuck] = useState(false);
   const [wonPrize, setWonPrize] = useState<{ label: string; type: "TEA" | "BEVERAGE" } | null>(null);
 
-  const rewardTier = lastOrder
-    ? getRewardTier(
-        lastOrder.total,
-        settings.rewardThresholdTea,
-        settings.rewardThresholdBeverage
-      )
-    : "NONE";
-  const eligibleForReward = rewardTier !== "NONE" && !rewardSpinUsed;
-
   const segments = ["✨", "🍀", "🎲", "⭐"];
-  const winSegmentIndex = 0;
 
-  const spin = () => {
-    if (spinning || (rewardTier !== "NONE" && rewardSpinUsed)) return;
+  const loadStatus = useCallback(async () => {
+    setStatusLoading(true);
+    try {
+      const res = await fetch(
+        `/api/rewards/spin?orderId=${lastOrder.id}&tableToken=${encodeURIComponent(tableToken)}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setStatus({
+          eligible: data.eligible,
+          spun: data.spun,
+          won: data.won,
+          lost: data.lost,
+          claimed: data.claimed,
+          tier: data.tier,
+        });
+      }
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [lastOrder.id, tableToken]);
+
+  useEffect(() => {
+    loadStatus();
+  }, [loadStatus]);
+
+  const spin = async () => {
+    if (spinning || statusLoading) return;
+
+    // Fun spin only — no reward tracking
+    if (!status?.eligible) {
+      setSpinning(true);
+      const prizeIdx = Math.floor(Math.random() * segments.length);
+      const newRot = rotation + 1440 + (360 - prizeIdx * (360 / segments.length));
+      setRotation(newRot);
+      setTimeout(() => setSpinning(false), 3000);
+      return;
+    }
+
+    if (status.spun) return;
 
     setSpinning(true);
-    setShowBetterLuck(false);
 
-    const prizeIdx = Math.floor(Math.random() * segments.length);
-    const newRot = rotation + 1440 + (360 - prizeIdx * (360 / segments.length));
-    setRotation(newRot);
+    try {
+      const res = await fetch("/api/rewards/spin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tableToken, orderId: lastOrder.id }),
+      });
 
-    setTimeout(() => {
-      setSpinning(false);
-      if (!eligibleForReward || rewardSpinUsed) return;
-
-      setRewardSpinUsed(true);
-
-      if (prizeIdx === winSegmentIndex) {
-        const type = rewardTier === "BEVERAGE" ? "BEVERAGE" : "TEA";
-        const label =
-          rewardTier === "BEVERAGE"
-            ? settings.rewardBeverageLabel
-            : settings.rewardTeaLabel;
-        setWonPrize({ label, type });
-        setShowClaim(true);
-      } else {
-        setShowBetterLuck(true);
+      if (!res.ok) {
+        setSpinning(false);
+        return;
       }
-    }, 3000);
+
+      const data = await res.json();
+      if (data.alreadySpun) {
+        await loadStatus();
+        setSpinning(false);
+        return;
+      }
+
+      const prizeIdx = data.prizeIdx ?? 0;
+      const newRot = rotation + 1440 + (360 - prizeIdx * (360 / segments.length));
+      setRotation(newRot);
+
+      setTimeout(() => {
+        setSpinning(false);
+        setStatus({
+          eligible: true,
+          spun: true,
+          won: data.won,
+          lost: !data.won,
+          claimed: false,
+          tier: data.tier,
+        });
+
+        if (data.won) {
+          setWonPrize({
+            label: data.rewardLabel,
+            type: data.rewardType,
+          });
+          setShowClaim(true);
+        }
+      }, 3000);
+    } catch {
+      setSpinning(false);
+    }
   };
 
-  const rewardAttemptDone = rewardSpinUsed && rewardTier !== "NONE";
-  const spinDisabled = spinning || (rewardAttemptDone && !showClaim);
+  const spinDisabled =
+    statusLoading ||
+    spinning ||
+    (status?.eligible && status?.spun === true) ||
+    (status?.eligible && status?.claimed && !showClaim);
+
+  const buttonLabel = statusLoading
+    ? "Loading..."
+    : spinning
+      ? "Spinning..."
+      : !status?.eligible
+        ? "🎡 Spin for Fun!"
+        : status.claimed
+          ? "Reward claimed ✓"
+          : status.lost
+            ? "Spin used"
+            : status.spun && status.won
+              ? "Claim your reward"
+              : "🎡 Spin the Wheel!";
 
   return (
     <div className="text-center space-y-4">
-      {lastOrder && (
-        <p className="text-sm text-zinc-400">
-          Order #{lastOrder.orderNumber} · {formatCurrency(lastOrder.total)}
-        </p>
-      )}
+      <p className="text-sm text-zinc-400">
+        Order #{lastOrder.orderNumber} · {formatCurrency(lastOrder.total)}
+      </p>
       <div className="relative w-48 h-48 mx-auto">
         <motion.div
           className="w-full h-full rounded-full border-4 border-orange-500/50"
@@ -213,17 +296,11 @@ function SpinWheel({
         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 w-0 h-0 border-l-[10px] border-r-[10px] border-t-[16px] border-l-transparent border-r-transparent border-t-white z-10" />
       </div>
       <Button onClick={spin} disabled={spinDisabled} size="lg">
-        {spinning
-          ? "Spinning..."
-          : rewardAttemptDone
-            ? showBetterLuck
-              ? "Spin used"
-              : "Reward claimed ✓"
-            : "🎡 Spin the Wheel!"}
+        {buttonLabel}
       </Button>
 
       <AnimatePresence>
-        {showBetterLuck && (
+        {status?.lost && (
           <motion.p
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -235,14 +312,22 @@ function SpinWheel({
         )}
       </AnimatePresence>
 
-      {showClaim && wonPrize && lastOrder && (
+      <p className="text-[10px] text-zinc-500 leading-relaxed px-2">* {REWARD_DISCLAIMER}</p>
+
+      {showClaim && wonPrize && (
         <RewardClaimModal
           prize={wonPrize.label}
           rewardType={wonPrize.type}
           tableToken={tableToken}
           lastOrder={lastOrder}
           customerName={customerName}
-          onClose={() => setShowClaim(false)}
+          onClose={() => {
+            setShowClaim(false);
+            loadStatus();
+          }}
+          onClaimed={() => {
+            setStatus((s) => (s ? { ...s, claimed: true, won: true } : s));
+          }}
         />
       )}
     </div>
@@ -342,13 +427,17 @@ export function WaitingGames({
           </button>
         ))}
       </div>
-      {active === "wheel" && (
+      {active === "wheel" && lastOrder && (
         <SpinWheel
+          key={lastOrder.id}
           lastOrder={lastOrder}
           settings={rewardSettings}
           tableToken={tableToken}
           customerName={customerName}
         />
+      )}
+      {active === "wheel" && !lastOrder && (
+        <p className="text-sm text-zinc-500 text-center py-6">Place an order to spin for rewards.</p>
       )}
       {active === "trivia" && <TriviaGame />}
       {active === "jokes" && <JokeBox />}

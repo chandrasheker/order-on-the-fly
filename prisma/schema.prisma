@@ -111,6 +111,7 @@ model Order {
   restaurant     Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   items          OrderItem[]
   alarmTriggered Boolean     @default(false)
+  rewardSpun     Boolean     @default(false)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   date           String
@@ -139,6 +140,7 @@ model OrderItem {
 enum RewardStatus {
   PENDING
   REDEEMED
+  EXPIRED
 }
 
 enum RewardType {
@@ -169,6 +171,7 @@ model Reward {
   tableNumber  Int
   orderTotal   Float
   validDate    String
+  expiresAt    DateTime
   status       RewardStatus @default(PENDING)
   orderId      String?
   restaurantId String

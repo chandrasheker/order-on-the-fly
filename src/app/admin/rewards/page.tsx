@@ -6,6 +6,7 @@ import { Button, Card, Spinner, Badge } from "@/components/ui";
 import { ArrowLeft, Gift, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
+import { formatRewardExpiry } from "@/lib/reward-constants";
 
 interface Reward {
   id: string;
@@ -16,6 +17,7 @@ interface Reward {
   tableNumber: number;
   orderTotal: number;
   validDate: string;
+  expiresAt: string;
   status: string;
   createdAt: string;
 }
@@ -23,7 +25,7 @@ interface Reward {
 export default function RewardsPage() {
   const router = useRouter();
   const [rewards, setRewards] = useState<Reward[]>([]);
-  const [filter, setFilter] = useState<"PENDING" | "REDEEMED" | "ALL">("PENDING");
+  const [filter, setFilter] = useState<"PENDING" | "REDEEMED" | "EXPIRED" | "ALL">("PENDING");
   const [loading, setLoading] = useState(true);
 
   const fetchRewards = () => {
@@ -37,8 +39,9 @@ export default function RewardsPage() {
       })
       .then((data) => {
         if (data) setRewards(data.rewards);
-        setLoading(false);
-      });
+      })
+      .catch((err) => console.error("Failed to load rewards:", err))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -65,6 +68,24 @@ export default function RewardsPage() {
 
   const pending = rewards.filter((r) => r.status === "PENDING");
 
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case "PENDING":
+        return "bg-amber-500/15 text-amber-400 border-amber-500/30";
+      case "REDEEMED":
+        return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+      case "EXPIRED":
+        return "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
+      default:
+        return "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
+    }
+  };
+
+  const statusLabel = (status: string) => {
+    if (status === "EXPIRED") return "Unclaimed / Expired";
+    return status.charAt(0) + status.slice(1).toLowerCase();
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a12] text-white">
       <header className="border-b border-white/5 px-4 py-4">
@@ -75,16 +96,16 @@ export default function RewardsPage() {
           <div>
             <h1 className="text-xl font-bold flex items-center gap-2">
               <Gift className="w-5 h-5 text-orange-400" />
-              Pending Rewards
+              Customer Rewards
             </h1>
-            <p className="text-sm text-zinc-400">Verify customer name & mark redeemed</p>
+            <p className="text-sm text-zinc-400">Verify name & mark redeemed · Expires after 48 hours</p>
           </div>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6">
-        <div className="flex gap-2 mb-6">
-          {(["PENDING", "REDEEMED", "ALL"] as const).map((f) => (
+        <div className="flex gap-2 mb-6 flex-wrap">
+          {(["PENDING", "REDEEMED", "EXPIRED", "ALL"] as const).map((f) => (
             <button
               key={f}
               type="button"
@@ -95,7 +116,11 @@ export default function RewardsPage() {
                   : "bg-white/5 border-white/10 text-zinc-400"
               }`}
             >
-              {f === "PENDING" ? `Pending (${pending.length})` : f.charAt(0) + f.slice(1).toLowerCase()}
+              {f === "PENDING"
+                ? `Pending (${pending.length})`
+                : f === "EXPIRED"
+                  ? "Unclaimed"
+                  : f.charAt(0) + f.slice(1).toLowerCase()}
             </button>
           ))}
         </div>
@@ -108,20 +133,15 @@ export default function RewardsPage() {
         ) : (
           <div className="space-y-3">
             {rewards.map((r) => (
-              <Card key={r.id} className="p-4">
+              <Card
+                key={r.id}
+                className={`p-4 ${r.status === "EXPIRED" ? "opacity-70" : ""}`}
+              >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="font-bold text-lg">{r.customerName}</span>
-                      <Badge
-                        className={
-                          r.status === "PENDING"
-                            ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                            : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                        }
-                      >
-                        {r.status}
-                      </Badge>
+                      <Badge className={statusBadge(r.status)}>{statusLabel(r.status)}</Badge>
                     </div>
                     <p className="text-orange-300 font-medium">{r.rewardLabel}</p>
                     <p className="text-sm text-zinc-500 mt-1">
@@ -130,7 +150,10 @@ export default function RewardsPage() {
                       · Order {formatCurrency(r.orderTotal)}
                     </p>
                     <p className="text-xs text-zinc-500 mt-1">
-                      Valid on: <strong className="text-zinc-400">{r.validDate}</strong>
+                      Expires:{" "}
+                      <strong className={r.status === "EXPIRED" ? "text-red-400/80" : "text-zinc-400"}>
+                        {formatRewardExpiry(r.expiresAt || r.validDate)}
+                      </strong>
                       · Claimed {new Date(r.createdAt).toLocaleString()}
                     </p>
                   </div>

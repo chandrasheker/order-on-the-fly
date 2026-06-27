@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
-import { tomorrowDateString, generateRewardCode, getRewardTier } from "@/lib/utils";
+import { generateRewardCode, getRewardTier } from "@/lib/utils";
+import {
+  expireStaleRewards,
+  formatRewardExpiry,
+  rewardExpiresAt,
+} from "@/lib/reward-service";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
+import { format } from "date-fns";
 
 export async function GET(req: NextRequest) {
   const session = await requireSession();
@@ -10,12 +16,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  await expireStaleRewards(session.restaurantId);
+
   const status = req.nextUrl.searchParams.get("status") || "PENDING";
 
   const rewards = await prisma.reward.findMany({
     where: {
       restaurantId: session.restaurantId,
-      ...(status !== "ALL" && { status: status as "PENDING" | "REDEEMED" }),
+      ...(status !== "ALL" && {
+        status: status as "PENDING" | "REDEEMED" | "EXPIRED",
+      }),
     },
     orderBy: { createdAt: "desc" },
     take: 100,
@@ -76,6 +86,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (orderId) {
+      const order = await prisma.order.findFirst({
+        where: { id: orderId, tableId: table.id },
+      });
+      if (!order?.rewardSpun) {
+        return NextResponse.json(
+          { error: "Spin the wheel before claiming a reward" },
+          { status: 400 }
+        );
+      }
+
       const existing = await prisma.reward.findFirst({
         where: { orderId, restaurantId: restaurant.id },
       });
@@ -94,6 +114,8 @@ export async function POST(req: NextRequest) {
       code = generateRewardCode();
     }
 
+    const expiresAt = rewardExpiresAt();
+
     const reward = await prisma.reward.create({
       data: {
         code,
@@ -102,7 +124,8 @@ export async function POST(req: NextRequest) {
         customerName: customerName.trim(),
         tableNumber: table.number,
         orderTotal: total,
-        validDate: tomorrowDateString(),
+        validDate: format(expiresAt, "yyyy-MM-dd HH:mm"),
+        expiresAt,
         orderId: orderId || null,
         restaurantId: restaurant.id,
       },
@@ -113,9 +136,18 @@ export async function POST(req: NextRequest) {
       code: reward.code,
       rewardType: reward.rewardType,
       tableNumber: reward.tableNumber,
+      expiresAt: reward.expiresAt,
     });
 
-    return NextResponse.json({ reward }, { status: 201 });
+    return NextResponse.json(
+      {
+        reward: {
+          ...reward,
+          expiresAtFormatted: formatRewardExpiry(reward.expiresAt),
+        },
+      },
+      { status: 201 }
+    );
   } catch (error) {
     logApiError("rewards", "POST", error);
     return NextResponse.json({ error: "Failed to create reward" }, { status: 500 });

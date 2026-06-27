@@ -183,7 +183,7 @@ export default function MenuManagePage() {
           <h2 className="text-lg font-bold mb-3">🎁 Spin Wheel Rewards</h2>
           <p className="text-sm text-zinc-500 mb-3">
             Tea reward applies from the tea amount up to (but not including) the beverage amount.
-            Beverage reward applies at the beverage amount and above. Valid on next visit.
+            Beverage reward applies at the beverage amount and above. Rewards expire 48 hours after claim.
           </p>
           <Card className="p-4 space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">

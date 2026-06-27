@@ -28,6 +28,7 @@ function isPublicApi(pathname: string, request: NextRequest) {
     }
   }
   if (pathname === "/api/feedback" && request.method === "POST") return true;
+  if (pathname === "/api/rewards/spin") return true;
   if (pathname === "/api/rewards" && request.method === "POST") return true;
   if (/^\/api\/orders\/[^/]+$/.test(pathname) && request.method === "PATCH") {
     return true;

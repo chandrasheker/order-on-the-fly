@@ -23,6 +23,9 @@ export async function PATCH(
   }
 
   if (action === "redeem") {
+    if (reward.status === "EXPIRED") {
+      return NextResponse.json({ error: "Reward has expired" }, { status: 400 });
+    }
     const updated = await prisma.reward.update({
       where: { id },
       data: { status: "REDEEMED", redeemedAt: new Date() },
