@@ -4,7 +4,9 @@ import { createToken, verifyPassword } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await req.json();
+    const { email: bodyEmail, password: bodyPassword } = await req.json();
+    const email = String(bodyEmail).trim().toLowerCase();
+    const password = String(bodyPassword);
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password required" }, { status: 400 });
@@ -16,7 +18,14 @@ export async function POST(req: NextRequest) {
     });
 
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+      const anyUsers = await prisma.user.count();
+      if (anyUsers === 0) {
+        return NextResponse.json(
+          { error: "Database not set up. Run: npm run db:reset" },
+          { status: 503 }
+        );
+      }
+      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
 
     const session = {

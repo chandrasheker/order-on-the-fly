@@ -5,6 +5,8 @@ const path = require("node:path");
 require("dotenv/config");
 require("./ensure-env.js");
 
+const OWNER_EMAIL = "owner@varanasi.com";
+
 function resolveDbPath() {
   const raw = process.env.DATABASE_URL || "file:./dev.db";
   const filePath = raw.startsWith("file:") ? raw.slice(5) : raw;
@@ -30,16 +32,18 @@ function tableExists(dbPath, tableName) {
   }
 }
 
-function hasSeedData(dbPath) {
-  if (!tableExists(dbPath, "User")) return false;
+function needsSeed(dbPath) {
+  if (!tableExists(dbPath, "User")) return true;
   try {
     const Database = require("better-sqlite3");
     const db = new Database(dbPath, { readonly: true });
-    const row = db.prepare("SELECT COUNT(*) as count FROM User").get();
+    const owner = db
+      .prepare("SELECT email FROM User WHERE email = ?")
+      .get(OWNER_EMAIL);
     db.close();
-    return row.count > 0;
+    return !owner;
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -49,21 +53,22 @@ console.log(`Database: ${dbPath}`);
 
 try {
   execSync("npx prisma migrate deploy", { stdio: "inherit" });
-} catch (error) {
-  console.error("Migration failed. Run: npm run db:setup");
+} catch {
+  console.error("Migration failed. Run: npm run db:reset");
   process.exit(1);
 }
 
 if (!tableExists(dbPath, "Table")) {
   console.error(
-    "Database tables are missing after migration. Try: rm dev.db && npm run db:setup"
+    "Database tables are missing after migration. Run: npm run db:reset"
   );
   process.exit(1);
 }
 
-if (!hasSeedData(dbPath)) {
-  console.log("Seeding demo restaurant data...");
+if (needsSeed(dbPath)) {
+  console.log("Seeding restaurant data (Varanasi accounts)...");
   execSync("npx tsx prisma/seed.ts", { stdio: "inherit" });
 }
 
 console.log("Database ready.");
+console.log(`Login: ${OWNER_EMAIL} / admin123`);
