@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { logApiRequest, logInfo } from "@/lib/logger";
+import { serveTimelineUpdate } from "@/lib/order-service";
 
 export async function PATCH(
   req: NextRequest,
@@ -55,9 +56,19 @@ export async function PATCH(
   }
 
   if (action === "serve-item" && itemId) {
+    const orderItem = order.items.find((i) => i.id === itemId);
+    const servedAt = new Date();
+    const timeline = orderItem
+      ? serveTimelineUpdate(orderItem.expectedReadyAt, servedAt, orderItem)
+      : { isOverdue: false, missedTimeline: false, minutesLate: null };
+
     await prisma.orderItem.update({
       where: { id: itemId },
-      data: { status: "SERVED", servedAt: new Date(), isOverdue: false },
+      data: {
+        status: "SERVED",
+        servedAt,
+        ...timeline,
+      },
     });
 
     const remaining = await prisma.orderItem.count({
@@ -108,10 +119,18 @@ export async function PATCH(
   }
 
   if (action === "serve-all") {
-    await prisma.orderItem.updateMany({
-      where: { orderId: id },
-      data: { status: "SERVED", servedAt: new Date(), isOverdue: false },
-    });
+    const servedAt = new Date();
+    for (const item of order.items) {
+      const timeline = serveTimelineUpdate(item.expectedReadyAt, servedAt, item);
+      await prisma.orderItem.update({
+        where: { id: item.id },
+        data: {
+          status: "SERVED",
+          servedAt,
+          ...timeline,
+        },
+      });
+    }
     await prisma.order.update({ where: { id }, data: { status: "SERVED" } });
     return NextResponse.json({ success: true });
   }

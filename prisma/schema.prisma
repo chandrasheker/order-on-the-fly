@@ -143,6 +143,8 @@ model OrderItem {
   expectedReadyAt DateTime
   servedAt        DateTime?
   isOverdue       Boolean         @default(false)
+  missedTimeline  Boolean         @default(false)
+  minutesLate     Int?
   notes           String?
   orderId         String
   order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)

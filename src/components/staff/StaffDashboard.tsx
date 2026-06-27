@@ -16,6 +16,7 @@ import {
   Utensils,
   History,
   Gift,
+  TimerOff,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn } from "@/lib/utils";
@@ -62,10 +63,32 @@ interface Stats {
   servedToday: number;
   revenue: number;
   overdueCount: number;
+  missedTimelineCount: number;
   unreadAlerts: number;
 }
 
-type ViewMode = "active" | "today" | "revenue" | "overdue";
+interface MissedTimelineItem {
+  id: string;
+  itemName: string;
+  quantity: number;
+  prepTimeMinutes: number;
+  expectedReadyAt: string;
+  servedAt: string | null;
+  minutesLate: number | null;
+  status: string;
+  orderNumber: number;
+  tableNumber: number;
+  currentPrepTime?: number;
+}
+
+interface MissedSummary {
+  itemName: string;
+  count: number;
+  prepTimeMinutes: number;
+  avgMinutesLate: number;
+}
+
+type ViewMode = "active" | "today" | "revenue" | "overdue" | "missed";
 type ItemFilter = "all" | "overdue" | "alarm";
 
 export function StaffDashboard() {
@@ -74,6 +97,8 @@ export function StaffDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [todayOrders, setTodayOrders] = useState<Order[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [missedTimeline, setMissedTimeline] = useState<MissedTimelineItem[]>([]);
+  const [missedSummary, setMissedSummary] = useState<MissedSummary[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
@@ -108,6 +133,8 @@ export function StaffDashboard() {
         setOrders(data.orders);
         setTodayOrders(data.todayOrders);
         setAlerts(data.alerts);
+        setMissedTimeline(data.missedTimeline ?? []);
+        setMissedSummary(data.missedSummary ?? []);
         setStats(data.stats);
       }
     } catch (error) {
@@ -223,7 +250,7 @@ export function StaffDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
             <button
               onClick={() => { setViewMode("active"); setItemFilter("all"); }}
               className={cn(
@@ -298,6 +325,25 @@ export function StaffDashboard() {
                 <div>
                   <p className="text-xs text-zinc-500">Overdue Items</p>
                   <p className="text-xl font-bold">{stats.overdueCount}</p>
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode("missed")}
+              className={cn(
+                "text-left rounded-2xl border p-4 transition-all",
+                viewMode === "missed"
+                  ? "border-amber-500/50 bg-amber-500/10"
+                  : "border-white/10 bg-white/5 hover:border-white/20"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <TimerOff className={cn("w-5 h-5", stats.missedTimelineCount > 0 ? "text-amber-400" : "text-zinc-400")} />
+                <div>
+                  <p className="text-xs text-zinc-500">Missed Timelines</p>
+                  <p className="text-xl font-bold">{stats.missedTimelineCount}</p>
                 </div>
               </div>
             </button>
@@ -393,6 +439,84 @@ export function StaffDashboard() {
                       onUpdate={updateItem}
                     />
                   ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {viewMode === "missed" && (
+          <>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <p className="text-sm text-zinc-400">
+                Items that missed their prep deadline today — use this to adjust timers in Menu admin.
+              </p>
+              {(user?.role === "OWNER" || user?.role === "MANAGER") && (
+                <Link href="/admin/menu">
+                  <Button size="sm" variant="secondary">
+                    <Utensils className="w-4 h-4" /> Edit prep timers
+                  </Button>
+                </Link>
+              )}
+            </div>
+
+            {missedSummary.length > 0 && (
+              <Card className="p-4 mb-4">
+                <h3 className="text-sm font-semibold text-zinc-300 mb-3">Most missed items today</h3>
+                <div className="space-y-2">
+                  {missedSummary.slice(0, 8).map((row) => (
+                    <div
+                      key={row.itemName}
+                      className="flex flex-wrap items-center justify-between gap-2 text-sm py-2 border-b border-white/5 last:border-0"
+                    >
+                      <span className="font-medium">{row.itemName}</span>
+                      <span className="text-zinc-500">
+                        {row.count}× missed · timer {row.prepTimeMinutes} min · avg{" "}
+                        <span className="text-amber-400">{row.avgMinutesLate} min late</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {missedTimeline.length === 0 ? (
+              <Card className="p-12 text-center">
+                <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
+                <p className="text-zinc-400">No missed timelines today. Great service!</p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {missedTimeline.map((item) => (
+                  <Card key={item.id} className="p-4 border-amber-500/20">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div>
+                        <p className="font-semibold">
+                          {item.quantity}× {item.itemName}
+                        </p>
+                        <p className="text-sm text-zinc-500">
+                          Table {item.tableNumber} · Order #{item.orderNumber} · Allowed{" "}
+                          {item.prepTimeMinutes} min
+                          {item.currentPrepTime !== undefined &&
+                            item.currentPrepTime !== item.prepTimeMinutes &&
+                            ` (menu now ${item.currentPrepTime} min)`}
+                        </p>
+                        <p className="text-xs text-zinc-500 mt-1">
+                          Due{" "}
+                          {new Date(item.expectedReadyAt).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                          {item.servedAt
+                            ? ` · Served ${new Date(item.servedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                            : ` · Still ${item.status.toLowerCase()}`}
+                        </p>
+                      </div>
+                      <Badge className="bg-amber-500/15 text-amber-400 border-amber-500/30 shrink-0">
+                        {item.minutesLate ?? "?"} min late
+                      </Badge>
+                    </div>
+                  </Card>
+                ))}
               </div>
             )}
           </>

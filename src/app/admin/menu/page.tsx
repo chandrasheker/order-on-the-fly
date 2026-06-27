@@ -34,6 +34,7 @@ function AddItemForm({
 }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [prepTimeMinutes, setPrepTimeMinutes] = useState("10");
   const [saving, setSaving] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
@@ -43,10 +44,16 @@ function AddItemForm({
     await fetch("/api/menu/manage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ categoryId, name: name.trim(), price }),
+      body: JSON.stringify({
+        categoryId,
+        name: name.trim(),
+        price,
+        prepTimeMinutes: parseInt(prepTimeMinutes, 10) || 10,
+      }),
     });
     setName("");
     setPrice("");
+    setPrepTimeMinutes("10");
     setSaving(false);
     onAdded();
   };
@@ -68,6 +75,16 @@ function AddItemForm({
         required
         min="0"
         className="w-full sm:w-28"
+      />
+      <Input
+        type="number"
+        placeholder="Prep min"
+        value={prepTimeMinutes}
+        onChange={(e) => setPrepTimeMinutes(e.target.value)}
+        min="1"
+        max="120"
+        title="Prep time in minutes"
+        className="w-full sm:w-24"
       />
       <Button type="submit" disabled={saving} size="md">
         <Plus className="w-4 h-4" /> Add
@@ -121,13 +138,22 @@ export default function MenuManagePage() {
     fetchMenu();
   };
 
-  const updateItem = async (itemId: string, field: "name" | "price", value: string) => {
+  const updateItem = async (
+    itemId: string,
+    field: "name" | "price" | "prepTimeMinutes",
+    value: string
+  ) => {
     await fetch("/api/menu/manage", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         itemId,
-        [field]: field === "price" ? parseFloat(value) : value,
+        [field]:
+          field === "name"
+            ? value
+            : field === "prepTimeMinutes"
+              ? parseInt(value, 10) || 10
+              : parseFloat(value),
       }),
     });
     fetchMenu();
@@ -173,7 +199,7 @@ export default function MenuManagePage() {
           </Link>
           <div>
             <h1 className="text-xl font-bold">Menu</h1>
-            <p className="text-sm text-zinc-400">Add items, set prices, manage availability</p>
+            <p className="text-sm text-zinc-400">Add items, set prices, prep timers, manage availability</p>
           </div>
         </div>
       </header>
@@ -296,12 +322,12 @@ function ItemRow({
 }: {
   item: MenuItem;
   onToggle: (id: string, available: boolean) => void;
-  onUpdate: (id: string, field: "name" | "price", value: string) => void;
+  onUpdate: (id: string, field: "name" | "price" | "prepTimeMinutes", value: string) => void;
   onDelete: (id: string) => void;
 }) {
   return (
     <Card className="p-3 flex flex-col sm:flex-row sm:items-center gap-3">
-      <div className="flex-1 flex gap-2">
+      <div className="flex-1 flex flex-wrap gap-2">
         <Input
           defaultValue={item.name}
           onBlur={(e) => {
@@ -309,7 +335,7 @@ function ItemRow({
               onUpdate(item.id, "name", e.target.value.trim());
             }
           }}
-          className="flex-1 text-sm"
+          className="flex-1 min-w-[140px] text-sm"
         />
         <Input
           type="number"
@@ -322,6 +348,23 @@ function ItemRow({
           className="w-24 text-sm"
           min="0"
         />
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            defaultValue={item.prepTimeMinutes}
+            onBlur={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (!Number.isNaN(val) && val !== item.prepTimeMinutes) {
+                onUpdate(item.id, "prepTimeMinutes", String(val));
+              }
+            }}
+            className="w-20 text-sm"
+            min="1"
+            max="120"
+            title="Prep time (minutes)"
+          />
+          <span className="text-xs text-zinc-500 whitespace-nowrap">min prep</span>
+        </div>
       </div>
       <div className="flex items-center gap-2 justify-between sm:justify-end">
         <Badge
