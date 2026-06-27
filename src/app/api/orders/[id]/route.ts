@@ -1,0 +1,104 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth";
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await requireSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const { action, itemId } = await req.json();
+
+  const order = await prisma.order.findFirst({
+    where: { id, restaurantId: session.restaurantId },
+    include: { items: true, table: true },
+  });
+
+  if (!order) {
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
+
+  if (action === "serve-item" && itemId) {
+    await prisma.orderItem.update({
+      where: { id: itemId },
+      data: { status: "SERVED", servedAt: new Date(), isOverdue: false },
+    });
+
+    const remaining = await prisma.orderItem.count({
+      where: { orderId: id, status: { not: "SERVED" } },
+    });
+
+    if (remaining === 0) {
+      await prisma.order.update({
+        where: { id },
+        data: { status: "SERVED" },
+      });
+    } else {
+      const readyCount = await prisma.orderItem.count({
+        where: { orderId: id, status: "READY" },
+      });
+      const preparingCount = await prisma.orderItem.count({
+        where: { orderId: id, status: "PREPARING" },
+      });
+      let status = "PREPARING";
+      if (readyCount > 0) status = "READY";
+      else if (preparingCount > 0) status = "PREPARING";
+      await prisma.order.update({ where: { id }, data: { status: status as "PREPARING" | "READY" } });
+    }
+
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === "prepare-item" && itemId) {
+    await prisma.orderItem.update({
+      where: { id: itemId },
+      data: { status: "PREPARING" },
+    });
+    await prisma.order.update({ where: { id }, data: { status: "PREPARING" } });
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === "ready-item" && itemId) {
+    await prisma.orderItem.update({
+      where: { id: itemId },
+      data: { status: "READY" },
+    });
+    await prisma.order.update({ where: { id }, data: { status: "READY" } });
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === "serve-all") {
+    await prisma.orderItem.updateMany({
+      where: { orderId: id },
+      data: { status: "SERVED", servedAt: new Date(), isOverdue: false },
+    });
+    await prisma.order.update({ where: { id }, data: { status: "SERVED" } });
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === "alarm") {
+    await prisma.order.update({
+      where: { id },
+      data: { alarmTriggered: true },
+    });
+
+    await prisma.alert.create({
+      data: {
+        type: "ALARM",
+        message: `🚨 Table ${order.table.number} customer triggered HELP alarm! Order #${order.orderNumber}`,
+        orderId: id,
+        tableNumber: order.table.number,
+        restaurantId: session.restaurantId,
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  }
+
+  return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+}

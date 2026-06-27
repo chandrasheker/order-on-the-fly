@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  COOK
+  SERVER
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  PENDING
+  PREPARING
+  READY
+  SERVED
+}
+
+model Restaurant {
+  id         String         @id @default(cuid())
+  name       String
+  slug       String         @unique
+  logoUrl    String?
+  createdAt  DateTime       @default(now())
+  users      User[]
+  tables     Table[]
+  categories MenuCategory[]
+  orders     Order[]
+  alerts     Alert[]
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String
+  role         Role
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+}
+
+model Table {
+  id           String     @id @default(cuid())
+  number       Int
+  qrToken      String     @unique @default(cuid())
+  isActive     Boolean    @default(true)
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orders       Order[]
+
+  @@unique([restaurantId, number])
+}
+
+model MenuCategory {
+  id           String     @id @default(cuid())
+  name         String
+  slug         String
+  icon         String?
+  sortOrder    Int        @default(0)
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  items        MenuItem[]
+
+  @@unique([restaurantId, slug])
+}
+
+model MenuItem {
+  id              String       @id @default(cuid())
+  name            String
+  description     String?
+  price           Float
+  prepTimeMinutes Int          @default(10)
+  imageUrl        String?
+  isAvailable     Boolean      @default(true)
+  isVeg           Boolean      @default(true)
+  isSpicy         Boolean      @default(false)
+  sortOrder       Int          @default(0)
+  categoryId      String
+  category        MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  orderItems      OrderItem[]
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  orderNumber    Int
+  customerName   String?
+  status         OrderStatus @default(PENDING)
+  tableId        String
+  table          Table       @relation(fields: [tableId], references: [id])
+  restaurantId   String
+  restaurant     Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  items          OrderItem[]
+  alarmTriggered Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  date           String
+
+  @@index([restaurantId, date])
+  @@index([tableId])
+}
+
+model OrderItem {
+  id              String          @id @default(cuid())
+  quantity        Int             @default(1)
+  status          OrderItemStatus @default(PENDING)
+  prepTimeMinutes Int
+  expectedReadyAt DateTime
+  servedAt        DateTime?
+  isOverdue       Boolean         @default(false)
+  notes           String?
+  orderId         String
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId      String
+  menuItem        MenuItem        @relation(fields: [menuItemId], references: [id])
+  unitPrice       Float
+  itemName        String
+}
+
+model Alert {
+  id           String   @id @default(cuid())
+  type         String
+  message      String
+  orderId      String?
+  orderItemId  String?
+  tableNumber  Int
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  isRead       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([restaurantId, isRead])
+}
