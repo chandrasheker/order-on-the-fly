@@ -23,8 +23,11 @@ export default function QRPage() {
 
   useEffect(() => {
     fetch("/api/tables/qr")
-      .then((r) => {
-        if (!r.ok) { router.push("/"); return null; }
+      .then(async (r) => {
+        if (!r.ok) {
+          router.push("/");
+          return null;
+        }
         return r.json();
       })
       .then((data) => {
@@ -32,8 +35,9 @@ export default function QRPage() {
           setQrCodes(data.qrCodes);
           setRestaurantName(data.restaurantName);
         }
-        setLoading(false);
-      });
+      })
+      .catch((err) => console.error("Failed to load QR codes:", err))
+      .finally(() => setLoading(false));
   }, [router]);
 
   const printAll = () => {

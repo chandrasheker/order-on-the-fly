@@ -134,6 +134,7 @@ async function main() {
     await prisma.table.create({
       data: {
         number: i,
+        qrToken: `${restaurant.slug}-table-${i}`,
         restaurantId: restaurant.id,
       },
     });
@@ -164,6 +165,8 @@ async function main() {
   console.log("🏪 Restaurant: Varanasi (slug: varanasi)");
   console.log("🔑 Staff login: owner@varanasi.com / admin123");
   console.log("🪑 10 tables with QR codes ready");
+  console.log(`📱 Table 1 order URL: /order/${restaurant.slug}/${restaurant.slug}-table-1`);
+  console.log(`📱 Quick demo URL: /order/${restaurant.slug}/demo`);
 }
 
 main()

@@ -86,26 +86,35 @@ export function StaffDashboard() {
   }, []);
 
   const fetchData = useCallback(async () => {
-    const [meRes, dashRes] = await Promise.all([
-      fetch("/api/auth/me"),
-      fetch("/api/staff/dashboard"),
-    ]);
+    try {
+      const [meRes, dashRes] = await Promise.all([
+        fetch("/api/auth/me"),
+        fetch("/api/staff/dashboard"),
+      ]);
 
-    if (!meRes.ok) {
-      router.push("/");
-      return;
-    }
-    const me = await meRes.json();
-    setUser(me.user);
+      if (!meRes.ok) {
+        router.push("/");
+        return;
+      }
+      const me = await meRes.json();
+      if (!me.user) {
+        router.push("/");
+        return;
+      }
+      setUser(me.user);
 
-    if (dashRes.ok) {
-      const data = await dashRes.json();
-      setOrders(data.orders);
-      setTodayOrders(data.todayOrders);
-      setAlerts(data.alerts);
-      setStats(data.stats);
+      if (dashRes.ok) {
+        const data = await dashRes.json();
+        setOrders(data.orders);
+        setTodayOrders(data.todayOrders);
+        setAlerts(data.alerts);
+        setStats(data.stats);
+      }
+    } catch (error) {
+      console.error("Dashboard fetch failed:", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [router]);
 
   useEffect(() => {

@@ -104,8 +104,17 @@ export function OrderPageClient({ slug, token }: Props) {
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] text-white">
-        <p>Table not found. Please scan a valid QR code.</p>
+      <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] text-white p-6">
+        <div className="text-center max-w-sm space-y-3">
+          <p className="font-medium">Could not load this table&apos;s menu.</p>
+          <p className="text-sm text-zinc-400">
+            Try scanning the QR code again, or open{" "}
+            <a href={`/order/${slug}/demo`} className="text-orange-400 underline">
+              Table 1 demo
+            </a>
+            .
+          </p>
+        </div>
       </div>
     );
   }
