@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createToken, verifyPassword } from "@/lib/auth";
+import { logApiError, logApiRequest, logInfo, logWarn } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
+  logApiRequest("auth/login", "POST");
   try {
     const { email: bodyEmail, password: bodyPassword } = await req.json();
     const email = String(bodyEmail).trim().toLowerCase();
@@ -20,13 +22,21 @@ export async function POST(req: NextRequest) {
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
       const anyUsers = await prisma.user.count();
       if (anyUsers === 0) {
+        logWarn("auth/login", "Login failed: database not seeded");
         return NextResponse.json(
           { error: "Database not set up. Run: npm run db:reset" },
           { status: 503 }
         );
       }
+      logWarn("auth/login", "Invalid credentials", { email });
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
+
+    logInfo("auth/login", "Login successful", {
+      userId: user.id,
+      role: user.role,
+      restaurantId: user.restaurantId,
+    });
 
     const session = {
       id: user.id,
@@ -51,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error("Login error:", error);
+    logApiError("auth/login", "POST", error);
     return NextResponse.json({ error: "Login failed" }, { status: 500 });
   }
 }

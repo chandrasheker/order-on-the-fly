@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { tomorrowDateString, generateRewardCode } from "@/lib/utils";
+import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   const session = await requireSession();
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  logApiRequest("rewards", "POST");
   try {
     const {
       tableToken,
@@ -89,9 +91,16 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    logInfo("api:rewards", "Reward created", {
+      rewardId: reward.id,
+      code: reward.code,
+      rewardType: reward.rewardType,
+      tableNumber: reward.tableNumber,
+    });
+
     return NextResponse.json({ reward }, { status: 201 });
   } catch (error) {
-    console.error("Reward create error:", error);
+    logApiError("rewards", "POST", error);
     return NextResponse.json({ error: "Failed to create reward" }, { status: 500 });
   }
 }

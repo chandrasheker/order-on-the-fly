@@ -3,8 +3,10 @@ import { requireSession } from "@/lib/auth";
 import { getActiveOrders, getTodayOrders } from "@/lib/order-service";
 import { todayDateString } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import { logApiRequest, logInfo } from "@/lib/logger";
 
 export async function GET() {
+  logApiRequest("staff/dashboard", "GET");
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -40,6 +42,13 @@ export async function GET() {
     ...o,
     total: o.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0),
   }));
+
+  logInfo("api:staff/dashboard", "Dashboard loaded", {
+    restaurantId: session.restaurantId,
+    activeOrders: orders.length,
+    todayOrders: orderCount,
+    unreadAlerts: alerts.length,
+  });
 
   return NextResponse.json({
     orders,

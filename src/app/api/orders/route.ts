@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getNextOrderNumber } from "@/lib/order-service";
 import { todayDateString } from "@/lib/utils";
+import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
+  logApiRequest("orders", "POST");
   try {
     const { tableToken, customerName, items } = await req.json();
 
@@ -76,9 +78,17 @@ export async function POST(req: NextRequest) {
       0
     );
 
+    logInfo("api:orders", "Order created", {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      tableId: order.tableId,
+      itemCount: order.items.length,
+      total,
+    });
+
     return NextResponse.json({ order: { ...order, total } }, { status: 201 });
   } catch (error) {
-    console.error(error);
+    logApiError("orders", "POST", error);
     return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
   }
 }
@@ -86,6 +96,10 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const tableToken = req.nextUrl.searchParams.get("tableToken");
   const restaurantId = req.nextUrl.searchParams.get("restaurantId");
+  logApiRequest("orders", "GET", {
+    tableToken: tableToken ? "[present]" : null,
+    restaurantId: restaurantId ? "[present]" : null,
+  });
 
   if (tableToken) {
     const table = await prisma.table.findUnique({ where: { qrToken: tableToken } });

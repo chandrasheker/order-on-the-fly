@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
+import { logApiRequest, logInfo } from "@/lib/logger";
 
 export async function PATCH(
   req: NextRequest,
@@ -8,6 +9,7 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const { action, itemId } = await req.json();
+  logApiRequest("orders/[id]", "PATCH", { orderId: id, action, itemId });
 
   const order = await prisma.order.findUnique({
     where: { id },
@@ -32,6 +34,12 @@ export async function PATCH(
         tableNumber: order.table.number,
         restaurantId: order.restaurantId,
       },
+    });
+
+    logInfo("api:orders/[id]", "Customer alarm triggered", {
+      orderId: id,
+      orderNumber: order.orderNumber,
+      tableNumber: order.table.number,
     });
 
     return NextResponse.json({ success: true });
@@ -77,6 +85,7 @@ export async function PATCH(
       });
     }
 
+    logInfo("api:orders/[id]", "Item served", { orderId: id, itemId });
     return NextResponse.json({ success: true });
   }
 

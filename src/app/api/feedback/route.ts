@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
+import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 
 export async function GET() {
   const session = await requireSession();
@@ -23,6 +24,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  logApiRequest("feedback", "POST");
   try {
     const { tableToken, stars, message, customerName, orderId } = await req.json();
 
@@ -49,9 +51,15 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    logInfo("api:feedback", "Feedback submitted", {
+      tableNumber: table.number,
+      stars: feedback.stars,
+      orderId: feedback.orderId,
+    });
+
     return NextResponse.json({ feedback }, { status: 201 });
   } catch (error) {
-    console.error("Feedback error:", error);
+    logApiError("feedback", "POST", error);
     return NextResponse.json({ error: "Failed to submit feedback" }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 const { execSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { logInfo, logError } = require("./logger");
 
 require("dotenv/config");
 require("./ensure-env.js");
@@ -50,16 +51,20 @@ function needsSeed(dbPath) {
 const dbPath = resolveDbPath();
 
 console.log(`Database: ${dbPath}`);
+logInfo("init-db", "Initializing database", { dbPath });
 
 try {
   execSync("npx prisma migrate deploy", { stdio: "inherit" });
   execSync("npx prisma generate", { stdio: "inherit" });
-} catch {
+  logInfo("init-db", "Migrations applied and Prisma client generated");
+} catch (err) {
+  logError("init-db", "Migration failed", { error: err.message });
   console.error("Migration failed. Run: npm run db:reset");
   process.exit(1);
 }
 
 if (!tableExists(dbPath, "Table")) {
+  logError("init-db", "Database tables missing after migration");
   console.error(
     "Database tables are missing after migration. Run: npm run db:reset"
   );
@@ -67,9 +72,13 @@ if (!tableExists(dbPath, "Table")) {
 }
 
 if (needsSeed(dbPath)) {
+  logInfo("init-db", "Seeding restaurant data (Varanasi accounts)");
   console.log("Seeding restaurant data (Varanasi accounts)...");
   execSync("npx tsx prisma/seed.ts", { stdio: "inherit" });
+} else {
+  logInfo("init-db", "Seed skipped; owner account already exists");
 }
 
+logInfo("init-db", "Database ready", { login: OWNER_EMAIL });
 console.log("Database ready.");
 console.log(`Login: ${OWNER_EMAIL} / admin123`);
