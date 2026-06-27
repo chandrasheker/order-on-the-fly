@@ -1,11 +1,13 @@
 import "dotenv/config";
+import path from "node:path";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import bcrypt from "bcryptjs";
 
-const adapter = new PrismaBetterSqlite3({
-  url: process.env.DATABASE_URL || "file:./prisma/dev.db",
-});
+const databaseUrl =
+  process.env.DATABASE_URL ?? `file:${path.join(process.cwd(), "dev.db")}`;
+
+const adapter = new PrismaBetterSqlite3({ url: databaseUrl });
 const prisma = new PrismaClient({ adapter });
 
 const menuData = [

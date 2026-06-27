@@ -7,9 +7,9 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "db:migrate": "prisma migrate dev",
+    "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "db:setup": "prisma migrate dev --name init && tsx prisma/seed.ts",
+    "db:setup": "node scripts/ensure-env.js && prisma migrate deploy && tsx prisma/seed.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

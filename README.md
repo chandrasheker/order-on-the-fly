@@ -17,9 +17,11 @@ QR-powered table ordering platform for restaurants. Customers scan, order, and p
 
 ```bash
 npm install
-npm run db:setup
+npm run db:setup   # creates .env if missing, migrates DB, seeds demo data
 npm run dev
 ```
+
+If login returns a 500 error, the database was not set up. Run `npm run db:setup` and try again.
 
 Open [http://localhost:3000](http://localhost:3000)
 
