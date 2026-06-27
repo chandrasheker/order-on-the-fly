@@ -53,6 +53,7 @@ console.log(`Database: ${dbPath}`);
 
 try {
   execSync("npx prisma migrate deploy", { stdio: "inherit" });
+  execSync("npx prisma generate", { stdio: "inherit" });
 } catch {
   console.error("Migration failed. Run: npm run db:reset");
   process.exit(1);
