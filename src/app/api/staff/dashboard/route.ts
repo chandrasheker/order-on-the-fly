@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { getActiveOrders } from "@/lib/order-service";
+import { getActiveOrders, getTodayOrders } from "@/lib/order-service";
+import { todayDateString } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -9,35 +10,24 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [orders, alerts, stats] = await Promise.all([
+  const today = todayDateString();
+
+  const [orders, todayOrders, alerts, orderCount] = await Promise.all([
     getActiveOrders(session.restaurantId),
+    getTodayOrders(session.restaurantId),
     prisma.alert.findMany({
       where: { restaurantId: session.restaurantId, isRead: false },
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
-    prisma.order.aggregate({
-      where: {
-        restaurantId: session.restaurantId,
-        date: new Date().toISOString().split("T")[0],
-      },
-      _count: true,
-      _sum: { orderNumber: true },
+    prisma.order.count({
+      where: { restaurantId: session.restaurantId, date: today },
     }),
   ]);
 
-  const todayRevenue = await prisma.orderItem.findMany({
-    where: {
-      order: {
-        restaurantId: session.restaurantId,
-        date: new Date().toISOString().split("T")[0],
-      },
-    },
-    select: { unitPrice: true, quantity: true },
-  });
-
-  const revenue = todayRevenue.reduce(
-    (sum, i) => sum + i.unitPrice * i.quantity,
+  const todayRevenue = todayOrders.reduce(
+    (sum, o) =>
+      sum + o.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0),
     0
   );
 
@@ -46,13 +36,20 @@ export async function GET() {
     0
   );
 
+  const todayOrdersWithTotal = todayOrders.map((o) => ({
+    ...o,
+    total: o.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0),
+  }));
+
   return NextResponse.json({
     orders,
+    todayOrders: todayOrdersWithTotal,
     alerts,
     stats: {
       activeOrders: orders.length,
-      todayOrders: stats._count,
-      revenue,
+      todayOrders: orderCount,
+      servedToday: todayOrders.filter((o) => o.status === "SERVED").length,
+      revenue: todayRevenue,
       overdueCount,
       unreadAlerts: alerts.length,
     },

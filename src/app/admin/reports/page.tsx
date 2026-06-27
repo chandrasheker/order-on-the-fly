@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { Button, Card, Spinner } from "@/components/ui";
 import { ArrowLeft, Download, Calendar } from "lucide-react";
 import Link from "next/link";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, todayDateString } from "@/lib/utils";
 
 interface ReportData {
   date: string;
@@ -28,9 +28,19 @@ interface ReportData {
 
 export default function ReportsPage() {
   const router = useRouter();
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(todayDateString());
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [canDownload, setCanDownload] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => {
+        const role = data.user?.role;
+        setCanDownload(role === "OWNER" || role === "MANAGER");
+      });
+  }, []);
 
   const fetchReport = (d: string) => {
     setLoading(true);
@@ -88,9 +98,11 @@ export default function ReportsPage() {
                 className="bg-transparent text-sm text-white outline-none"
               />
             </div>
-            <Button onClick={downloadCSV} variant="secondary">
-              <Download className="w-4 h-4" /> CSV
-            </Button>
+            {canDownload && (
+              <Button onClick={downloadCSV} variant="secondary">
+                <Download className="w-4 h-4" /> CSV
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -136,6 +148,9 @@ export default function ReportsPage() {
             <Card className="p-5">
               <h2 className="font-bold mb-4">Order Details</h2>
               <div className="space-y-3 max-h-96 overflow-y-auto">
+                {report.orders.length === 0 && (
+                  <p className="text-zinc-500 text-center py-4">No orders for this date</p>
+                )}
                 {report.orders.map((o) => (
                   <div key={o.orderNumber} className="p-3 rounded-xl bg-white/5 border border-white/10">
                     <div className="flex justify-between mb-1">

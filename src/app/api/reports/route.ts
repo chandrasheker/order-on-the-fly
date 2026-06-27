@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession, canViewReports } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { todayDateString } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   const session = await requireSession();
-  if (!session || !canViewReports(session.role)) {
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const date = req.nextUrl.searchParams.get("date") ||
-    new Date().toISOString().split("T")[0];
+  const date = req.nextUrl.searchParams.get("date") || todayDateString();
   const format = req.nextUrl.searchParams.get("format") || "json";
+  const isManager = session.role === "OWNER" || session.role === "MANAGER";
+
+  if (format === "csv" && !isManager) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const orders = await prisma.order.findMany({
     where: { restaurantId: session.restaurantId, date },

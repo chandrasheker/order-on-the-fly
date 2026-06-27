@@ -54,7 +54,8 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/", request.url));
     }
     const role = session.role as string;
-    if (role !== "OWNER" && role !== "MANAGER") {
+    const reportsOnly = pathname.startsWith("/admin/reports");
+    if (!reportsOnly && role !== "OWNER" && role !== "MANAGER") {
       return NextResponse.redirect(new URL("/staff/dashboard", request.url));
     }
     return NextResponse.next();
