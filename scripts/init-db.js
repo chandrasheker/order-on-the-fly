@@ -37,12 +37,15 @@ function needsSeed(dbPath) {
   if (!tableExists(dbPath, "User")) return true;
   try {
     const Database = require("better-sqlite3");
+    const bcrypt = require("bcryptjs");
     const db = new Database(dbPath, { readonly: true });
     const owner = db
-      .prepare("SELECT email FROM User WHERE email = ?")
+      .prepare("SELECT email, passwordHash FROM User WHERE email = ?")
       .get(OWNER_EMAIL);
     db.close();
-    return !owner;
+    if (!owner) return true;
+    // Re-seed when demo login no longer works (stale or corrupted accounts).
+    return !bcrypt.compareSync("admin123", owner.passwordHash);
   } catch {
     return true;
   }

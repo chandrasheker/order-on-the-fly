@@ -28,7 +28,17 @@ export async function POST(req: NextRequest) {
           { status: 503 }
         );
       }
-      logWarn("auth/login", "Invalid credentials", { email });
+      if (user) {
+        logWarn("auth/login", "Password mismatch for existing user", { email });
+        return NextResponse.json(
+          {
+            error:
+              "Invalid password. Demo login is owner@varanasi.com / admin123. If this fails, run: npm run db:reset",
+          },
+          { status: 401 }
+        );
+      }
+      logWarn("auth/login", "Unknown email", { email });
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
 
