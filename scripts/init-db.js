@@ -84,4 +84,4 @@ if (needsSeed(dbPath)) {
 
 logInfo("init-db", "Database ready", { login: OWNER_EMAIL });
 console.log("Database ready.");
-console.log(`Login: ${OWNER_EMAIL} / admin123`);
+console.log(`Staff login: ${OWNER_EMAIL}`);

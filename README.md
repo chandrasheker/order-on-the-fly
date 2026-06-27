@@ -9,16 +9,9 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:3000** and sign in.
+Open **https://varanasihotel.duckdns.org** (or `http://localhost:3000` when running locally) and sign in with your staff credentials.
 
-## Login
-
-| Role    | Email               | Password  |
-|---------|---------------------|-----------|
-| Owner   | owner@varanasi.com  | admin123  |
-| Manager | manager@varanasi.com| admin123  |
-| Cook    | cook@varanasi.com   | admin123  |
-| Server  | server@varanasi.com | admin123  |
+Set `NEXT_PUBLIC_APP_URL` in `.env` to your public domain so QR codes point to the correct URL.
 
 ## Access
 

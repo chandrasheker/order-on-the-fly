@@ -32,9 +32,11 @@ export function generateRewardCode() {
 }
 
 export function getBaseUrl() {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
+  const raw =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+    "https://varanasihotel.duckdns.org";
+  return raw.replace(/\/+$/, "");
 }
 
 export function getTableOrderUrl(slug: string, qrToken: string) {

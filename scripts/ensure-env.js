@@ -11,7 +11,7 @@ if (!fs.existsSync(envPath)) {
   } else {
     fs.writeFileSync(
       envPath,
-      'DATABASE_URL="file:./dev.db"\nJWT_SECRET="dev-secret-change-in-production"\nNEXT_PUBLIC_APP_URL="http://localhost:3000"\n'
+      'DATABASE_URL="file:./dev.db"\nJWT_SECRET="dev-secret-change-in-production"\nNEXT_PUBLIC_APP_URL="https://varanasihotel.duckdns.org"\n'
     );
     console.log("Created default .env file");
   }

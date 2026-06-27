@@ -62,7 +62,7 @@ export function LoginForm() {
               <label className="text-sm text-zinc-400 mb-1.5 block">Email</label>
               <Input
                 type="email"
-                placeholder="you@varanasi.com"
+                placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -73,7 +73,7 @@ export function LoginForm() {
               <label className="text-sm text-zinc-400 mb-1.5 block">Password</label>
               <Input
                 type="password"
-                placeholder="••••••••"
+                placeholder="Enter password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -89,13 +89,6 @@ export function LoginForm() {
               {loading ? <Spinner /> : "Sign In"}
             </Button>
           </form>
-
-          <p className="text-xs text-zinc-500 text-center mt-6 leading-relaxed">
-            Demo: owner@varanasi.com / admin123
-            <br />
-            If login fails after an update, run{" "}
-            <code className="text-zinc-400">npm run db:reset</code>
-          </p>
         </div>
       </motion.div>
     </div>
