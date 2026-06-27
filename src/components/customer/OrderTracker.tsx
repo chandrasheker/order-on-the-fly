@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { formatCountdown, getRemainingSeconds } from "@/lib/utils";
 import { Button, Badge } from "@/components/ui";
-import { Bell, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Bell, Clock, CheckCircle2, AlertTriangle, RefreshCw } from "lucide-react";
 
 interface OrderItem {
   id: string;
@@ -25,6 +25,10 @@ interface Order {
   createdAt: string;
 }
 
+function hasPendingItems(order: Order) {
+  return order.items.some((i) => i.status !== "SERVED");
+}
+
 export function OrderTracker({
   orders,
   tableToken,
@@ -36,6 +40,7 @@ export function OrderTracker({
 }) {
   const [now, setNow] = useState(Date.now());
   const [alarmSent, setAlarmSent] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -47,9 +52,16 @@ export function OrderTracker({
     return () => clearInterval(interval);
   }, [onRefresh]);
 
-  const activeOrders = orders.filter((o) => o.status !== "SERVED");
+  // Keep orders visible while any item is still pending; hide only after refresh shows all served.
+  const visibleOrders = orders.filter(hasPendingItems);
 
-  if (activeOrders.length === 0) return null;
+  if (visibleOrders.length === 0) return null;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await onRefresh();
+    setRefreshing(false);
+  };
 
   const triggerAlarm = async (orderId: string) => {
     await fetch(`/api/orders/${orderId}`, {
@@ -62,16 +74,30 @@ export function OrderTracker({
 
   return (
     <div className="space-y-4">
-      {activeOrders.map((order) => {
-        const maxExpected = order.items.reduce((max, item) => {
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-zinc-300">Your orders</p>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+      </div>
+
+      {visibleOrders.map((order) => {
+        const pendingItems = order.items.filter((i) => i.status !== "SERVED");
+        const maxExpected = pendingItems.reduce((max, item) => {
           const t = new Date(item.expectedReadyAt).getTime();
           return t > max ? t : max;
         }, 0);
-        const remaining = Math.max(0, Math.floor((maxExpected - now) / 1000));
-        const anyOverdue = order.items.some(
-          (i) => i.isOverdue && i.status !== "SERVED"
-        );
-        const allServed = order.items.every((i) => i.status === "SERVED");
+        const remaining = pendingItems.length
+          ? Math.max(0, Math.floor((maxExpected - now) / 1000))
+          : 0;
+        const anyOverdue = pendingItems.some((i) => i.isOverdue);
+        const servedCount = order.items.length - pendingItems.length;
 
         return (
           <motion.div
@@ -85,7 +111,7 @@ export function OrderTracker({
                 <p className="text-sm text-zinc-400">Order #{order.orderNumber}</p>
                 <Badge
                   className={
-                    allServed
+                    pendingItems.length === 0
                       ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
                       : anyOverdue
                       ? "bg-red-500/15 text-red-400 border-red-500/30 animate-pulse"
@@ -94,8 +120,10 @@ export function OrderTracker({
                       : "bg-blue-500/15 text-blue-400 border-blue-500/30"
                   }
                 >
-                  {allServed
+                  {pendingItems.length === 0
                     ? "All Served!"
+                    : servedCount > 0
+                    ? `${servedCount} served · ${pendingItems.length} preparing`
                     : anyOverdue
                     ? "Taking longer than expected"
                     : remaining > 0
@@ -103,7 +131,7 @@ export function OrderTracker({
                     : "Almost ready!"}
                 </Badge>
               </div>
-              {!allServed && (
+              {pendingItems.length > 0 && (
                 <div className="text-right">
                   <div className="flex items-center gap-1.5 text-2xl font-mono font-bold text-white">
                     <Clock className="w-5 h-5 text-orange-400" />
@@ -116,27 +144,41 @@ export function OrderTracker({
 
             <div className="space-y-2 mb-4">
               {order.items.map((item) => {
+                const isServed = item.status === "SERVED";
                 const itemRemaining = getRemainingSeconds(item.expectedReadyAt);
+
                 return (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between py-2 px-3 rounded-xl bg-white/5"
+                    className={`flex items-center justify-between py-2 px-3 rounded-xl transition-all ${
+                      isServed
+                        ? "bg-black/50 border border-white/5 opacity-50"
+                        : "bg-white/10 border border-orange-500/25 shadow-sm shadow-orange-500/10"
+                    }`}
                   >
-                    <div className="flex items-center gap-2">
-                      {item.status === "SERVED" ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isServed ? (
+                        <CheckCircle2 className="w-4 h-4 text-zinc-500 shrink-0" />
                       ) : item.isOverdue ? (
-                        <AlertTriangle className="w-4 h-4 text-red-400" />
+                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
                       ) : (
-                        <Clock className="w-4 h-4 text-orange-400" />
+                        <Clock className="w-4 h-4 text-orange-400 shrink-0" />
                       )}
-                      <span className="text-sm text-white">
+                      <span
+                        className={`text-sm truncate ${
+                          isServed ? "text-zinc-500 line-through" : "text-white font-medium"
+                        }`}
+                      >
                         {item.quantity}x {item.itemName}
                       </span>
                     </div>
-                    <span className="text-xs text-zinc-400">
-                      {item.status === "SERVED"
-                        ? "Served ✓"
+                    <span
+                      className={`text-xs shrink-0 ml-2 ${
+                        isServed ? "text-zinc-600" : "text-orange-300 font-medium"
+                      }`}
+                    >
+                      {isServed
+                        ? "Served"
                         : item.isOverdue
                         ? "Delayed"
                         : itemRemaining > 0
@@ -148,7 +190,7 @@ export function OrderTracker({
               })}
             </div>
 
-            {(remaining === 0 || anyOverdue) && !allServed && !alarmSent && !order.alarmTriggered && (
+            {(remaining === 0 || anyOverdue) && pendingItems.length > 0 && !alarmSent && !order.alarmTriggered && (
               <Button
                 variant="danger"
                 className="w-full animate-pulse"
@@ -159,7 +201,7 @@ export function OrderTracker({
               </Button>
             )}
 
-            {(alarmSent || order.alarmTriggered) && !allServed && (
+            {(alarmSent || order.alarmTriggered) && pendingItems.length > 0 && (
               <p className="text-center text-sm text-amber-400 animate-pulse">
                 🔔 Staff has been notified! Someone is on the way...
               </p>

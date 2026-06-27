@@ -110,7 +110,9 @@ export function OrderPageClient({ slug, token }: Props) {
     );
   }
 
-  const hasActiveOrders = orders.some((o) => o.status !== "SERVED");
+  const hasActiveOrders = orders.some((o) =>
+    o.items.some((i) => i.status !== "SERVED")
+  );
   const latestOrderId = orders[0]?.id;
 
   return (
