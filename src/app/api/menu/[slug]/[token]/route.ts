@@ -20,6 +20,7 @@ export async function GET(
         rewardThresholdBeverage: true,
         rewardTeaLabel: true,
         rewardBeverageLabel: true,
+        backgroundImageUrl: true,
       },
     });
 
@@ -57,6 +58,7 @@ export async function GET(
         rewardThresholdBeverage: restaurant.rewardThresholdBeverage,
         rewardTeaLabel: restaurant.rewardTeaLabel,
         rewardBeverageLabel: restaurant.rewardBeverageLabel,
+        backgroundImageUrl: restaurant.backgroundImageUrl,
       },
       table: { id: table.id, number: table.number, qrToken: table.qrToken },
       categories: categories.filter((c) => c.items.length > 0),

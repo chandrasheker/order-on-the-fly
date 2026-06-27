@@ -16,6 +16,35 @@ interface Props {
   token: string;
 }
 
+interface RestaurantData {
+  name: string;
+  rewardThresholdTea: number;
+  rewardThresholdBeverage: number;
+  rewardTeaLabel: string;
+  rewardBeverageLabel: string;
+  backgroundImageUrl?: string | null;
+}
+
+function OrderPageBackground({ imageUrl }: { imageUrl?: string | null }) {
+  if (!imageUrl) {
+    return <div className="fixed inset-0 -z-20 bg-[#0f0f1a]" aria-hidden />;
+  }
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 -z-20 bg-cover bg-center bg-no-repeat scale-105"
+        style={{ backgroundImage: `url(${imageUrl})` }}
+        aria-hidden
+      />
+      <div
+        className="fixed inset-0 -z-10 bg-gradient-to-b from-[#0f0f1a]/75 via-[#0f0f1a]/88 to-[#0f0f1a]/95 backdrop-blur-[1px]"
+        aria-hidden
+      />
+    </>
+  );
+}
+
 interface LastOrder {
   id: string;
   total: number;
@@ -24,13 +53,7 @@ interface LastOrder {
 
 export function OrderPageClient({ slug, token }: Props) {
   const [data, setData] = useState<{
-    restaurant: {
-      name: string;
-      rewardThresholdTea: number;
-      rewardThresholdBeverage: number;
-      rewardTeaLabel: string;
-      rewardBeverageLabel: string;
-    };
+    restaurant: RestaurantData;
     table: { number: number };
     categories: Parameters<typeof MenuView>[0]["categories"];
   } | null>(null);
@@ -104,16 +127,22 @@ export function OrderPageClient({ slug, token }: Props) {
 
   if (loading || tableSession.loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a]">
-        <Spinner className="w-8 h-8" />
+      <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] relative">
+        {slug === "varanasi" && (
+          <OrderPageBackground imageUrl="/restaurants/varanasi-hotel-background.jpg" />
+        )}
+        <Spinner className="w-8 h-8 relative z-10" />
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] text-white p-6">
-        <div className="text-center max-w-sm space-y-3">
+      <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] text-white p-6 relative">
+        {slug === "varanasi" && (
+          <OrderPageBackground imageUrl="/restaurants/varanasi-hotel-background.jpg" />
+        )}
+        <div className="text-center max-w-sm space-y-3 relative z-10">
           <p className="font-medium">Could not load this table&apos;s menu.</p>
           <p className="text-sm text-zinc-400">
             Try scanning the QR code again, or open{" "}
@@ -134,16 +163,18 @@ export function OrderPageClient({ slug, token }: Props) {
   const canOrder = tableSession.active;
 
   return (
-    <div className="min-h-screen bg-[#0f0f1a] text-white">
+    <div className="min-h-screen text-white relative">
+      <OrderPageBackground imageUrl={data.restaurant.backgroundImageUrl} />
+
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/20 via-rose-600/10 to-purple-600/20" />
+        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/15 via-transparent to-purple-600/10" />
         <div className="relative px-4 pt-8 pb-6 max-w-lg mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm text-orange-300 mb-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-sm text-orange-300 mb-3">
             <UtensilsCrossed className="w-4 h-4" />
             Table {data.table.number}
           </div>
-          <h1 className="text-2xl font-bold">{data.restaurant.name}</h1>
-          <p className="text-sm text-zinc-400 mt-1 flex items-center justify-center gap-1">
+          <h1 className="text-2xl font-bold drop-shadow-lg">{data.restaurant.name}</h1>
+          <p className="text-sm text-zinc-300 mt-1 flex items-center justify-center gap-1 drop-shadow">
             <Sparkles className="w-3.5 h-3.5" />
             Scan · Order · Enjoy
           </p>

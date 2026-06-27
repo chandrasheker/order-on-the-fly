@@ -34,6 +34,7 @@ model Restaurant {
   name                  String
   slug                  String         @unique
   logoUrl               String?
+  backgroundImageUrl    String?
   rewardThresholdTea    Float          @default(250)
   rewardThresholdBeverage Float        @default(500)
   rewardTeaLabel        String         @default("Free Masala Chai (next visit)")

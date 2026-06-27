@@ -116,6 +116,7 @@ async function main() {
     data: {
       name: "Varanasi Restaurant",
       slug: "varanasi",
+      backgroundImageUrl: "/restaurants/varanasi-hotel-background.jpg",
     },
   });
 
