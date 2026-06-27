@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Button, Card, Spinner } from "@/components/ui";
-import { ArrowLeft, Download, Printer, QrCode } from "lucide-react";
+import { Button, Card, Spinner, Input } from "@/components/ui";
+import { ArrowLeft, Download, Printer, QrCode, Users } from "lucide-react";
 import Link from "next/link";
 
 interface QRData {
@@ -15,30 +15,67 @@ interface QRData {
   isActive: boolean;
 }
 
+interface TableSetting {
+  id: string;
+  number: number;
+  maxSessions: number;
+  activeSessions: number;
+  isActive: boolean;
+}
+
 export default function QRPage() {
   const router = useRouter();
   const [qrCodes, setQrCodes] = useState<QRData[]>([]);
   const [restaurantName, setRestaurantName] = useState("");
+  const [tables, setTables] = useState<TableSetting[]>([]);
+  const [defaultMaxSessions, setDefaultMaxSessions] = useState(2);
   const [loading, setLoading] = useState(true);
+  const [savingDefault, setSavingDefault] = useState(false);
+
+  const loadAll = () => {
+    Promise.all([
+      fetch("/api/tables/qr").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/tables/manage").then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([qrData, manageData]) => {
+        if (!qrData) {
+          router.push("/");
+          return;
+        }
+        setQrCodes(qrData.qrCodes);
+        setRestaurantName(qrData.restaurantName);
+        if (manageData) {
+          setTables(manageData.tables);
+          setDefaultMaxSessions(manageData.defaultMaxSessions);
+        }
+      })
+      .catch((err) => console.error("Failed to load:", err))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    fetch("/api/tables/qr")
-      .then(async (r) => {
-        if (!r.ok) {
-          router.push("/");
-          return null;
-        }
-        return r.json();
-      })
-      .then((data) => {
-        if (data) {
-          setQrCodes(data.qrCodes);
-          setRestaurantName(data.restaurantName);
-        }
-      })
-      .catch((err) => console.error("Failed to load QR codes:", err))
-      .finally(() => setLoading(false));
+    loadAll();
   }, [router]);
+
+  const saveDefault = async () => {
+    setSavingDefault(true);
+    await fetch("/api/tables/manage", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultMaxSessions }),
+    });
+    setSavingDefault(false);
+    loadAll();
+  };
+
+  const saveTableSessions = async (tableId: string, maxSessions: number) => {
+    await fetch("/api/tables/manage", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tableId, maxSessions }),
+    });
+    loadAll();
+  };
 
   const printAll = () => {
     const win = window.open("", "_blank");
@@ -99,7 +136,73 @@ export default function QRPage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
+      <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-5 h-5 text-orange-400" />
+            <h2 className="text-lg font-bold">Table ordering sessions</h2>
+          </div>
+          <p className="text-sm text-zinc-400 mb-4">
+            Limit how many phones can order at each table at the same time. Default is 2 — increase
+            for large tables (e.g. Table 8 with 10 seats → set 4–6 sessions).
+          </p>
+          <div className="flex flex-wrap items-end gap-3 mb-6 pb-6 border-b border-white/10">
+            <div>
+              <label className="text-xs text-zinc-500 block mb-1">Default for new tables</label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={defaultMaxSessions}
+                onChange={(e) => setDefaultMaxSessions(parseInt(e.target.value, 10) || 2)}
+                className="w-24"
+              />
+            </div>
+            <Button size="sm" onClick={saveDefault} disabled={savingDefault}>
+              {savingDefault ? "Saving..." : "Save default"}
+            </Button>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {tables.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/5 border border-white/10"
+              >
+                <div>
+                  <p className="font-medium">Table {t.number}</p>
+                  <p className="text-xs text-zinc-500">
+                    {t.activeSessions} active now · max {t.maxSessions}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={t.maxSessions}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10) || 2;
+                      setTables((prev) =>
+                        prev.map((row) =>
+                          row.id === t.id ? { ...row, maxSessions: val } : row
+                        )
+                      );
+                    }}
+                    className="w-16 text-center"
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => saveTableSessions(t.id, t.maxSessions)}
+                  >
+                    Save
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

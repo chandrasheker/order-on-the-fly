@@ -38,6 +38,7 @@ model Restaurant {
   rewardThresholdBeverage Float        @default(500)
   rewardTeaLabel        String         @default("Free Masala Chai (next visit)")
   rewardBeverageLabel   String         @default("Free Beverage (next visit)")
+  defaultMaxSessions  Int            @default(2)
   createdAt             DateTime       @default(now())
   users                 User[]
   tables                Table[]
@@ -60,15 +61,29 @@ model User {
 }
 
 model Table {
-  id           String     @id @default(cuid())
+  id           String         @id @default(cuid())
   number       Int
-  qrToken      String     @unique @default(cuid())
-  isActive     Boolean    @default(true)
+  qrToken      String         @unique @default(cuid())
+  isActive     Boolean        @default(true)
+  maxSessions  Int            @default(2)
   restaurantId String
-  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   orders       Order[]
+  sessions     TableSession[]
 
   @@unique([restaurantId, number])
+}
+
+model TableSession {
+  id         String   @id @default(cuid())
+  sessionKey String
+  tableId    String
+  table      Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@unique([tableId, sessionKey])
+  @@index([tableId, lastSeenAt])
 }
 
 model MenuCategory {

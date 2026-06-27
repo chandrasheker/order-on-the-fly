@@ -8,7 +8,8 @@ import { WaitingGames } from "@/components/customer/WaitingGames";
 import { FeedbackButton } from "@/components/customer/FeedbackButton";
 import { Input, Button, Spinner } from "@/components/ui";
 import { useCartStore } from "@/store/cart";
-import { UtensilsCrossed, Sparkles } from "lucide-react";
+import { useTableSession } from "@/hooks/useTableSession";
+import { UtensilsCrossed, Sparkles, Users } from "lucide-react";
 
 interface Props {
   slug: string;
@@ -39,7 +40,9 @@ export function OrderPageClient({ slug, token }: Props) {
   const [ordering, setOrdering] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [showNameInput, setShowNameInput] = useState(true);
+  const [orderError, setOrderError] = useState("");
   const { customerName, setCustomerName, items, clearCart } = useCartStore();
+  const tableSession = useTableSession(token);
 
   const fetchMenu = useCallback(async () => {
     const res = await fetch(`/api/menu/${slug}/${token}`);
@@ -61,14 +64,16 @@ export function OrderPageClient({ slug, token }: Props) {
   }, [fetchMenu, fetchOrders]);
 
   const placeOrder = async () => {
-    if (!items.length) return;
+    if (!items.length || !tableSession.active || !tableSession.sessionKey) return;
     setOrdering(true);
+    setOrderError("");
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tableToken: token,
+          sessionKey: tableSession.sessionKey,
           customerName: customerName || undefined,
           items: items.map((i) => ({
             menuItemId: i.menuItemId,
@@ -88,13 +93,16 @@ export function OrderPageClient({ slug, token }: Props) {
         setOrderPlaced(true);
         setTimeout(() => setOrderPlaced(false), 3000);
         fetchOrders();
+      } else {
+        const err = await res.json();
+        setOrderError(err.error || "Could not place order");
       }
     } finally {
       setOrdering(false);
     }
   };
 
-  if (loading) {
+  if (loading || tableSession.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a]">
         <Spinner className="w-8 h-8" />
@@ -123,6 +131,7 @@ export function OrderPageClient({ slug, token }: Props) {
     o.items.some((i) => i.status !== "SERVED")
   );
   const latestOrderId = orders[0]?.id;
+  const canOrder = tableSession.active;
 
   return (
     <div className="min-h-screen bg-[#0f0f1a] text-white">
@@ -142,7 +151,26 @@ export function OrderPageClient({ slug, token }: Props) {
       </div>
 
       <div className="max-w-lg mx-auto px-4 space-y-6 pb-8">
-        {showNameInput && (
+        {!canOrder && (
+          <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-center space-y-3">
+            <Users className="w-8 h-8 text-red-400 mx-auto" />
+            <div>
+              <p className="font-semibold text-red-300">Table is full for ordering</p>
+              <p className="text-sm text-zinc-400 mt-1">
+                This table allows {tableSession.maxSessions} active ordering session
+                {tableSession.maxSessions === 1 ? "" : "s"} at a time (
+                {tableSession.activeCount}/{tableSession.maxSessions} in use). You can browse the
+                menu, but only the first {tableSession.maxSessions} scanned devices can place
+                orders.
+              </p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={tableSession.retry}>
+              Check again
+            </Button>
+          </div>
+        )}
+
+        {showNameInput && canOrder && (
           <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
             <label className="text-sm text-zinc-400 mb-2 block">Your name (optional)</label>
             <div className="flex gap-2">
@@ -168,11 +196,15 @@ export function OrderPageClient({ slug, token }: Props) {
           </motion.div>
         )}
 
+        {orderError && (
+          <p className="text-sm text-red-400 text-center">{orderError}</p>
+        )}
+
         {hasActiveOrders && (
           <OrderTracker orders={orders} tableToken={token} onRefresh={fetchOrders} />
         )}
 
-        {(hasActiveOrders || lastOrder) && (
+        {(hasActiveOrders || lastOrder) && canOrder && (
           <WaitingGames
             tableToken={token}
             customerName={customerName}
@@ -186,7 +218,12 @@ export function OrderPageClient({ slug, token }: Props) {
           />
         )}
 
-        <MenuView categories={data.categories} onOrder={placeOrder} ordering={ordering} />
+        <MenuView
+          categories={data.categories}
+          onOrder={placeOrder}
+          ordering={ordering}
+          canOrder={canOrder}
+        />
       </div>
 
       <FeedbackButton

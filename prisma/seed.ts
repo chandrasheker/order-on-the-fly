@@ -135,6 +135,7 @@ async function main() {
       data: {
         number: i,
         qrToken: `${restaurant.slug}-table-${i}`,
+        maxSessions: 2,
         restaurantId: restaurant.id,
       },
     });

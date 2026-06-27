@@ -101,10 +101,12 @@ export function MenuView({
   categories,
   onOrder,
   ordering,
+  canOrder = true,
 }: {
   categories: Category[];
   onOrder: () => void;
   ordering: boolean;
+  canOrder?: boolean;
 }) {
   const [activeCategory, setActiveCategory] = useState(categories[0]?.slug || "");
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -264,15 +266,16 @@ export function MenuView({
                     key={item.id}
                     item={item}
                     inCart={inCart}
-                    onAdd={() =>
+                    onAdd={() => {
+                      if (!canOrder) return;
                       addItem({
                         menuItemId: item.id,
                         name: item.name,
                         price: item.price,
                         prepTimeMinutes: item.prepTimeMinutes,
-                      })
-                    }
-                    onUpdateQty={(qty) => updateQuantity(item.id, qty)}
+                      });
+                    }}
+                    onUpdateQty={(qty) => canOrder && updateQuantity(item.id, qty)}
                   />
                 );
               })}
@@ -293,7 +296,7 @@ export function MenuView({
             <div className="max-w-lg mx-auto pointer-events-auto">
               <Button
                 onClick={onOrder}
-                disabled={ordering}
+                disabled={ordering || !canOrder}
                 size="lg"
                 className="w-full justify-between shadow-2xl"
               >

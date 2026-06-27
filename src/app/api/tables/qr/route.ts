@@ -52,9 +52,16 @@ export async function POST(req: Request) {
   const tables = [];
 
   for (let i = 0; i < newCount; i++) {
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: session.restaurantId },
+      select: { defaultMaxSessions: true, slug: true },
+    });
+    const tableNum = existing + i + 1;
     const table = await prisma.table.create({
       data: {
-        number: existing + i + 1,
+        number: tableNum,
+        qrToken: `${restaurant?.slug ?? "table"}-table-${tableNum}`,
+        maxSessions: restaurant?.defaultMaxSessions ?? 2,
         restaurantId: session.restaurantId,
       },
     });

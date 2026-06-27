@@ -7,10 +7,14 @@ import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 export async function POST(req: NextRequest) {
   logApiRequest("orders", "POST");
   try {
-    const { tableToken, customerName, items } = await req.json();
+    const { tableToken, customerName, items, sessionKey } = await req.json();
 
     if (!tableToken || !items?.length) {
       return NextResponse.json({ error: "Invalid order data" }, { status: 400 });
+    }
+
+    if (!sessionKey) {
+      return NextResponse.json({ error: "Table session required" }, { status: 403 });
     }
 
     const table = await prisma.table.findUnique({
@@ -20,6 +24,17 @@ export async function POST(req: NextRequest) {
 
     if (!table || !table.isActive) {
       return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    }
+
+    const { validateTableSession } = await import("@/lib/table-session-service");
+    const sessionValid = await validateTableSession(table.id, sessionKey);
+    if (!sessionValid) {
+      return NextResponse.json(
+        {
+          error: `This table allows ${table.maxSessions} active ordering session(s). Please scan again when a slot opens.`,
+        },
+        { status: 403 }
+      );
     }
 
     const menuItems = await prisma.menuItem.findMany({
