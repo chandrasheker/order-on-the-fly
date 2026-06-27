@@ -15,6 +15,7 @@ import {
   BarChart3,
   Utensils,
   History,
+  Gift,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn } from "@/lib/utils";
@@ -64,7 +65,7 @@ interface Stats {
   unreadAlerts: number;
 }
 
-type ViewMode = "active" | "today";
+type ViewMode = "active" | "today" | "revenue" | "overdue";
 type ItemFilter = "all" | "overdue" | "alarm";
 
 export function StaffDashboard() {
@@ -196,6 +197,9 @@ export function StaffDashboard() {
                 <Link href="/admin/menu" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
                   <Utensils className="w-4 h-4" />
                 </Link>
+                <Link href="/admin/rewards" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 relative">
+                  <Gift className="w-4 h-4" />
+                </Link>
               </>
             )}
             <Link href="/admin/reports" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
@@ -248,7 +252,16 @@ export function StaffDashboard() {
               </div>
             </button>
 
-            <Card className="p-4">
+            <button
+              type="button"
+              onClick={() => setViewMode("revenue")}
+              className={cn(
+                "text-left rounded-2xl border p-4 transition-all",
+                viewMode === "revenue"
+                  ? "border-emerald-500/50 bg-emerald-500/10"
+                  : "border-white/10 bg-white/5 hover:border-white/20"
+              )}
+            >
               <div className="flex items-center gap-3">
                 <BarChart3 className="w-5 h-5 text-emerald-400" />
                 <div>
@@ -256,9 +269,21 @@ export function StaffDashboard() {
                   <p className="text-xl font-bold">{formatCurrency(stats.revenue)}</p>
                 </div>
               </div>
-            </Card>
+            </button>
 
-            <Card className="p-4">
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode("overdue");
+                setItemFilter("overdue");
+              }}
+              className={cn(
+                "text-left rounded-2xl border p-4 transition-all",
+                viewMode === "overdue"
+                  ? "border-red-500/50 bg-red-500/10"
+                  : "border-white/10 bg-white/5 hover:border-white/20"
+              )}
+            >
               <div className="flex items-center gap-3">
                 <AlertTriangle className={cn("w-5 h-5", stats.overdueCount > 0 ? "text-red-400" : "text-zinc-400")} />
                 <div>
@@ -266,7 +291,7 @@ export function StaffDashboard() {
                   <p className="text-xl font-bold">{stats.overdueCount}</p>
                 </div>
               </div>
-            </Card>
+            </button>
           </div>
         )}
 
@@ -310,6 +335,55 @@ export function StaffDashboard() {
                     onUpdate={updateItem}
                   />
                 ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {viewMode === "revenue" && (
+          <>
+            <p className="text-sm text-zinc-400 mb-4">
+              Today&apos;s revenue breakdown by order
+            </p>
+            <Card className="p-5 mb-4">
+              <p className="text-sm text-zinc-500">Total Revenue</p>
+              <p className="text-3xl font-bold text-emerald-400">{formatCurrency(stats?.revenue ?? 0)}</p>
+              <p className="text-xs text-zinc-500 mt-1">{todayOrders.length} orders today</p>
+            </Card>
+            <div className="space-y-3">
+              {todayOrders.length === 0 ? (
+                <Card className="p-8 text-center text-zinc-400">No orders yet today</Card>
+              ) : (
+                todayOrders.map((order) => (
+                  <TodayOrderRow key={order.id} order={order} />
+                ))
+              )}
+            </div>
+          </>
+        )}
+
+        {viewMode === "overdue" && (
+          <>
+            <p className="text-sm text-zinc-400 mb-4">
+              Items that missed their prep time — needs attention now
+            </p>
+            {orders.filter((o) => o.items.some((i) => i.isOverdue && i.status !== "SERVED")).length === 0 ? (
+              <Card className="p-12 text-center">
+                <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
+                <p className="text-zinc-400">No overdue items. All on track!</p>
+              </Card>
+            ) : (
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {orders
+                  .filter((o) => o.items.some((i) => i.isOverdue && i.status !== "SERVED"))
+                  .map((order) => (
+                    <ActiveOrderCard
+                      key={order.id}
+                      order={order}
+                      now={now}
+                      onUpdate={updateItem}
+                    />
+                  ))}
               </div>
             )}
           </>

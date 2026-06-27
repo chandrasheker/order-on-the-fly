@@ -30,16 +30,22 @@ enum OrderItemStatus {
 }
 
 model Restaurant {
-  id         String         @id @default(cuid())
-  name       String
-  slug       String         @unique
-  logoUrl    String?
-  createdAt  DateTime       @default(now())
-  users      User[]
-  tables     Table[]
-  categories MenuCategory[]
-  orders     Order[]
-  alerts     Alert[]
+  id                    String         @id @default(cuid())
+  name                  String
+  slug                  String         @unique
+  logoUrl               String?
+  rewardThresholdTea    Float          @default(250)
+  rewardThresholdBeverage Float        @default(500)
+  rewardTeaLabel        String         @default("Free Masala Chai (next visit)")
+  rewardBeverageLabel   String         @default("Free Beverage (next visit)")
+  createdAt             DateTime       @default(now())
+  users                 User[]
+  tables                Table[]
+  categories            MenuCategory[]
+  orders                Order[]
+  alerts                Alert[]
+  feedbacks             Feedback[]
+  rewards               Reward[]
 }
 
 model User {
@@ -128,6 +134,50 @@ model OrderItem {
   menuItem        MenuItem        @relation(fields: [menuItemId], references: [id])
   unitPrice       Float
   itemName        String
+}
+
+enum RewardStatus {
+  PENDING
+  REDEEMED
+}
+
+enum RewardType {
+  TEA
+  BEVERAGE
+}
+
+model Feedback {
+  id           String     @id @default(cuid())
+  stars        Int
+  message      String?
+  customerName String?
+  tableNumber  Int
+  orderId      String?
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId, createdAt])
+}
+
+model Reward {
+  id           String       @id @default(cuid())
+  code         String       @unique
+  rewardType   RewardType
+  rewardLabel  String
+  customerName String
+  tableNumber  Int
+  orderTotal   Float
+  validDate    String
+  status       RewardStatus @default(PENDING)
+  orderId      String?
+  restaurantId String
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+  redeemedAt   DateTime?
+
+  @@index([restaurantId, status])
+  @@index([validDate])
 }
 
 model Alert {

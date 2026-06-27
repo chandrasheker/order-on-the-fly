@@ -71,7 +71,12 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ order }, { status: 201 });
+    const total = order.items.reduce(
+      (sum, i) => sum + i.unitPrice * i.quantity,
+      0
+    );
+
+    return NextResponse.json({ order: { ...order, total } }, { status: 201 });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "Failed to create order" }, { status: 500 });

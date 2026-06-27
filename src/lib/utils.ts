@@ -16,6 +16,21 @@ export function todayDateString() {
   return format(new Date(), "yyyy-MM-dd");
 }
 
+export function tomorrowDateString() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return format(d, "yyyy-MM-dd");
+}
+
+export function generateRewardCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "VAR-";
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
 export function getBaseUrl() {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;

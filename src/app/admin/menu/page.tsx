@@ -80,18 +80,30 @@ export default function MenuManagePage() {
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rewardSettings, setRewardSettings] = useState({
+    rewardThresholdTea: 250,
+    rewardThresholdBeverage: 500,
+    rewardTeaLabel: "",
+    rewardBeverageLabel: "",
+  });
+  const [savingRewards, setSavingRewards] = useState(false);
 
   const fetchMenu = () => {
-    fetch("/api/menu/manage")
-      .then((r) => {
-        if (!r.ok) {
+    Promise.all([
+      fetch("/api/menu/manage"),
+      fetch("/api/rewards/settings"),
+    ])
+      .then(async ([menuRes, settingsRes]) => {
+        if (!menuRes.ok) {
           router.push("/");
-          return null;
+          return;
         }
-        return r.json();
-      })
-      .then((data) => {
-        if (data) setCategories(data.categories);
+        const menuData = await menuRes.json();
+        setCategories(menuData.categories);
+        if (settingsRes.ok) {
+          const s = await settingsRes.json();
+          setRewardSettings(s.settings);
+        }
         setLoading(false);
       });
   };
@@ -131,6 +143,16 @@ export default function MenuManagePage() {
     fetchMenu();
   };
 
+  const saveRewardSettings = async () => {
+    setSavingRewards(true);
+    await fetch("/api/rewards/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(rewardSettings),
+    });
+    setSavingRewards(false);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0a0a12]">
@@ -157,6 +179,60 @@ export default function MenuManagePage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-8">
+        <section>
+          <h2 className="text-lg font-bold mb-3">🎁 Spin Wheel Rewards</h2>
+          <p className="text-sm text-zinc-500 mb-3">
+            Set order totals that unlock rewards on the customer spin wheel (valid next visit).
+          </p>
+          <Card className="p-4 space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-zinc-500">Tea reward at (₹)</label>
+                <Input
+                  type="number"
+                  value={rewardSettings.rewardThresholdTea}
+                  onChange={(e) =>
+                    setRewardSettings((s) => ({
+                      ...s,
+                      rewardThresholdTea: parseFloat(e.target.value) || 0,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500">Beverage reward at (₹)</label>
+                <Input
+                  type="number"
+                  value={rewardSettings.rewardThresholdBeverage}
+                  onChange={(e) =>
+                    setRewardSettings((s) => ({
+                      ...s,
+                      rewardThresholdBeverage: parseFloat(e.target.value) || 0,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <Input
+              placeholder="Tea reward label"
+              value={rewardSettings.rewardTeaLabel}
+              onChange={(e) =>
+                setRewardSettings((s) => ({ ...s, rewardTeaLabel: e.target.value }))
+              }
+            />
+            <Input
+              placeholder="Beverage reward label"
+              value={rewardSettings.rewardBeverageLabel}
+              onChange={(e) =>
+                setRewardSettings((s) => ({ ...s, rewardBeverageLabel: e.target.value }))
+              }
+            />
+            <Button onClick={saveRewardSettings} disabled={savingRewards} size="sm">
+              {savingRewards ? "Saving..." : "Save Reward Settings"}
+            </Button>
+          </Card>
+        </section>
+
         {todaysSpecial && (
           <section>
             <h2 className="text-lg font-bold mb-3 flex items-center gap-2">

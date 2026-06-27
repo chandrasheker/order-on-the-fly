@@ -9,6 +9,15 @@ export async function GET(
 
   const restaurant = await prisma.restaurant.findUnique({
     where: { slug },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      rewardThresholdTea: true,
+      rewardThresholdBeverage: true,
+      rewardTeaLabel: true,
+      rewardBeverageLabel: true,
+    },
   });
 
   if (!restaurant) {
@@ -35,7 +44,15 @@ export async function GET(
   });
 
   return NextResponse.json({
-    restaurant: { id: restaurant.id, name: restaurant.name, slug: restaurant.slug },
+    restaurant: {
+      id: restaurant.id,
+      name: restaurant.name,
+      slug: restaurant.slug,
+      rewardThresholdTea: restaurant.rewardThresholdTea,
+      rewardThresholdBeverage: restaurant.rewardThresholdBeverage,
+      rewardTeaLabel: restaurant.rewardTeaLabel,
+      rewardBeverageLabel: restaurant.rewardBeverageLabel,
+    },
     table: { id: table.id, number: table.number, qrToken: table.qrToken },
     categories: categories.filter((c) => c.items.length > 0),
   });

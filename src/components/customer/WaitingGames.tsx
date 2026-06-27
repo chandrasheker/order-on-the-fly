@@ -2,76 +2,230 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Card, Button } from "@/components/ui";
+import { Card, Button, Input } from "@/components/ui";
+import { formatCurrency } from "@/lib/utils";
+
+interface RewardSettings {
+  rewardThresholdTea: number;
+  rewardThresholdBeverage: number;
+  rewardTeaLabel: string;
+  rewardBeverageLabel: string;
+}
+
+interface LastOrder {
+  id: string;
+  total: number;
+  orderNumber: number;
+}
 
 const TRIVIA = [
   { q: "Which country invented pizza?", options: ["Italy", "USA", "France", "Greece"], answer: 0 },
   { q: "What spice makes curry yellow?", options: ["Paprika", "Turmeric", "Cumin", "Saffron"], answer: 1 },
-  { q: "Biryani originated in?", options: ["Punjab", "Hyderabad", "Persia", "Delhi"], answer: 2 },
   { q: "Dosa is made from?", options: ["Wheat", "Rice & Lentils", "Corn", "Barley"], answer: 1 },
-  { q: "Which is NOT a tea type?", options: ["Oolong", "Matcha", "Espresso", "Chai"], answer: 2 },
 ];
 
 const JOKES = [
   "Why did the tomato turn red? Because it saw the salad dressing! 🍅",
   "What do you call a fake noodle? An impasta! 🍝",
-  "Why don't eggs tell jokes? They'd crack each other up! 🥚",
-  "What did the sushi say to the bee? Wasabi! 🍣",
-  "Why did the cookie go to the doctor? It felt crummy! 🍪",
-  "What's a chef's favorite music? Wrap music! 🎵",
 ];
 
-function SpinWheel() {
-  const prizes = ["Free Chai ☕", "10% Off 🎉", "Extra Samosa 🥟", "High Five ✋", "Lucky Day 🍀", "Mystery! 🎁"];
+function RewardClaimModal({
+  prize,
+  rewardType,
+  tableToken,
+  lastOrder,
+  customerName,
+  onClose,
+}: {
+  prize: string;
+  rewardType: "TEA" | "BEVERAGE";
+  tableToken: string;
+  lastOrder: LastOrder;
+  customerName: string;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(customerName);
+  const [saving, setSaving] = useState(false);
+  const [reward, setReward] = useState<{
+    code: string;
+    validDate: string;
+    rewardLabel: string;
+  } | null>(null);
+
+  const claim = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    const res = await fetch("/api/rewards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tableToken,
+        orderId: lastOrder.id,
+        customerName: name.trim(),
+        rewardType,
+        orderTotal: lastOrder.total,
+      }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      const data = await res.json();
+      setReward(data.reward);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+    >
+      <motion.div
+        initial={{ scale: 0.9 }}
+        animate={{ scale: 1 }}
+        className="w-full max-w-sm rounded-2xl bg-gradient-to-br from-orange-600/20 to-purple-600/20 border border-orange-500/30 p-6 text-center"
+      >
+        {!reward ? (
+          <>
+            <p className="text-3xl mb-2">🎉</p>
+            <h3 className="text-xl font-bold text-orange-300 mb-1">You won!</h3>
+            <p className="text-lg font-medium mb-4">{prize}</p>
+            <p className="text-sm text-zinc-400 mb-4">
+              Valid on your <strong className="text-white">next visit</strong>. Enter your name so staff can verify.
+            </p>
+            <Input
+              placeholder="Your full name *"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mb-4"
+            />
+            <Button onClick={claim} disabled={!name.trim() || saving} className="w-full mb-2">
+              {saving ? "Saving..." : "Claim Reward"}
+            </Button>
+            <button type="button" onClick={onClose} className="text-sm text-zinc-500">
+              Skip
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-3xl mb-2">🎁</p>
+            <h3 className="text-xl font-bold text-emerald-400 mb-2">Reward Saved!</h3>
+            <div className="p-4 rounded-xl bg-black/40 border border-white/10 mb-4 text-left space-y-2">
+              <p className="text-sm"><span className="text-zinc-500">Name:</span> {name}</p>
+              <p className="text-sm"><span className="text-zinc-500">Reward:</span> {reward.rewardLabel}</p>
+              <p className="text-sm"><span className="text-zinc-500">Code:</span> <span className="font-mono text-orange-400 font-bold">{reward.code}</span></p>
+              <p className="text-sm"><span className="text-zinc-500">Valid on:</span> {reward.validDate}</p>
+            </div>
+            <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-sm mb-4">
+              📸 <strong>Take a screenshot now!</strong> Show this to staff on your next visit.
+            </div>
+            <Button onClick={onClose} className="w-full">Got it!</Button>
+          </>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function SpinWheel({
+  lastOrder,
+  settings,
+  tableToken,
+  customerName,
+}: {
+  lastOrder: LastOrder | null;
+  settings: RewardSettings;
+  tableToken: string;
+  customerName: string;
+}) {
   const [spinning, setSpinning] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
+  const [claimed, setClaimed] = useState(false);
+  const [showClaim, setShowClaim] = useState(false);
+  const [wonPrize, setWonPrize] = useState<{ label: string; type: "TEA" | "BEVERAGE" } | null>(null);
+
+  const qualifiesBeverage = lastOrder && lastOrder.total >= settings.rewardThresholdBeverage;
+  const qualifiesTea =
+    lastOrder &&
+    lastOrder.total >= settings.rewardThresholdTea &&
+    !qualifiesBeverage;
+
+  const canSpinReward = (qualifiesBeverage || qualifiesTea) && !claimed;
+
+  const segments = canSpinReward
+    ? qualifiesBeverage
+      ? ["🥤 Beverage!", "🎉 Lucky!", "☕ Bonus", "🎁 Prize"]
+      : ["☕ Free Tea!", "🎉 Lucky!", "🍀 Bonus", "🎁 Prize"]
+    : ["High Five ✋", "Lucky Day 🍀", "Nice! 😊", "Fun! 🎉"];
 
   const spin = () => {
     if (spinning) return;
     setSpinning(true);
-    setResult(null);
-    const idx = Math.floor(Math.random() * prizes.length);
-    const newRot = rotation + 1440 + (360 - idx * (360 / prizes.length));
+
+    let prizeIdx = Math.floor(Math.random() * segments.length);
+    if (canSpinReward) {
+      prizeIdx = 0;
+    }
+
+    const newRot = rotation + 1440 + (360 - prizeIdx * (360 / segments.length));
     setRotation(newRot);
+
     setTimeout(() => {
-      setResult(prizes[idx]);
       setSpinning(false);
+      if (canSpinReward && prizeIdx === 0) {
+        const type = qualifiesBeverage ? "BEVERAGE" : "TEA";
+        const label = qualifiesBeverage
+          ? settings.rewardBeverageLabel
+          : settings.rewardTeaLabel;
+        setWonPrize({ label, type });
+        setShowClaim(true);
+        setClaimed(true);
+      }
     }, 3000);
   };
 
   return (
     <div className="text-center space-y-4">
+      {lastOrder && (
+        <p className="text-sm text-zinc-400">
+          Order #{lastOrder.orderNumber} · {formatCurrency(lastOrder.total)}
+          {qualifiesBeverage && (
+            <span className="block text-emerald-400 mt-1">🎁 You unlocked a spin reward!</span>
+          )}
+          {qualifiesTea && (
+            <span className="block text-emerald-400 mt-1">☕ You unlocked a tea reward spin!</span>
+          )}
+        </p>
+      )}
       <div className="relative w-48 h-48 mx-auto">
         <motion.div
-          className="w-full h-full rounded-full border-4 border-orange-500/50 overflow-hidden"
+          className="w-full h-full rounded-full border-4 border-orange-500/50"
           animate={{ rotate: rotation }}
           transition={{ duration: 3, ease: [0.2, 0.8, 0.2, 1] }}
           style={{
-            background: `conic-gradient(${prizes.map((_, i) => {
-              const colors = ["#f97316", "#ec4899", "#8b5cf6", "#06b6d4", "#10b981", "#eab308"];
-              const start = (i / prizes.length) * 360;
-              const end = ((i + 1) / prizes.length) * 360;
+            background: `conic-gradient(${segments.map((_, i) => {
+              const colors = ["#f97316", "#ec4899", "#8b5cf6", "#06b6d4"];
+              const start = (i / segments.length) * 360;
+              const end = ((i + 1) / segments.length) * 360;
               return `${colors[i]} ${start}deg ${end}deg`;
             }).join(", ")})`,
           }}
         />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 w-0 h-0 border-l-[10px] border-r-[10px] border-t-[16px] border-l-transparent border-r-transparent border-t-white z-10" />
       </div>
-      <Button onClick={spin} disabled={spinning} size="lg">
-        {spinning ? "Spinning..." : "🎡 Spin the Wheel!"}
+      <Button onClick={spin} disabled={spinning || (claimed && !!canSpinReward)} size="lg">
+        {spinning ? "Spinning..." : claimed && canSpinReward ? "Reward claimed ✓" : "🎡 Spin the Wheel!"}
       </Button>
-      <AnimatePresence>
-        {result && (
-          <motion.p
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-lg font-bold text-orange-400"
-          >
-            You won: {result}
-          </motion.p>
-        )}
-      </AnimatePresence>
+
+      {showClaim && wonPrize && lastOrder && (
+        <RewardClaimModal
+          prize={wonPrize.label}
+          rewardType={wonPrize.type}
+          tableToken={tableToken}
+          lastOrder={lastOrder}
+          customerName={customerName}
+          onClose={() => setShowClaim(false)}
+        />
+      )}
     </div>
   );
 }
@@ -80,44 +234,30 @@ function TriviaGame() {
   const [idx, setIdx] = useState(0);
   const [score, setScore] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
-  const [showResult, setShowResult] = useState(false);
-
   const q = TRIVIA[idx % TRIVIA.length];
 
   const pick = (i: number) => {
     if (selected !== null) return;
     setSelected(i);
-    setShowResult(true);
     if (i === q.answer) setScore((s) => s + 1);
     setTimeout(() => {
       setIdx((p) => p + 1);
       setSelected(null);
-      setShowResult(false);
-    }, 1500);
+    }, 1200);
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between text-sm text-zinc-400">
-        <span>Score: {score}</span>
-        <span>Question {(idx % TRIVIA.length) + 1}/{TRIVIA.length}</span>
-      </div>
-      <p className="text-lg font-medium text-white">{q.q}</p>
+    <div className="space-y-3">
+      <p className="text-sm text-zinc-400">Score: {score}</p>
+      <p className="font-medium">{q.q}</p>
       <div className="grid grid-cols-2 gap-2">
         {q.options.map((opt, i) => (
           <button
             key={opt}
+            type="button"
             onClick={() => pick(i)}
             disabled={selected !== null}
-            className={`p-3 rounded-xl text-sm font-medium transition-all border ${
-              showResult
-                ? i === q.answer
-                  ? "bg-emerald-500/30 border-emerald-500 text-emerald-300"
-                  : i === selected
-                  ? "bg-red-500/30 border-red-500 text-red-300"
-                  : "bg-white/5 border-white/10 text-zinc-500"
-                : "bg-white/5 border-white/10 text-white hover:bg-white/10 hover:border-orange-500/50"
-            }`}
+            className="p-3 rounded-xl bg-white/5 border border-white/10 text-sm"
           >
             {opt}
           </button>
@@ -127,106 +267,12 @@ function TriviaGame() {
   );
 }
 
-function MemoryGame() {
-  const emojis = ["🍕", "🍔", "🍟", "🌮", "🍩", "🍦", "🍜", "🥗"];
-  const [cards, setCards] = useState<{ id: number; emoji: string; flipped: boolean; matched: boolean }[]>([]);
-  const [flipped, setFlipped] = useState<number[]>([]);
-  const [moves, setMoves] = useState(0);
-
-  const init = useCallback(() => {
-    const deck = [...emojis, ...emojis]
-      .sort(() => Math.random() - 0.5)
-      .map((emoji, id) => ({ id, emoji, flipped: false, matched: false }));
-    setCards(deck);
-    setFlipped([]);
-    setMoves(0);
-  }, []);
-
-  useEffect(() => { init(); }, [init]);
-
-  const flip = (id: number) => {
-    if (flipped.length >= 2 || cards[id].flipped || cards[id].matched) return;
-    const newCards = cards.map((c) => (c.id === id ? { ...c, flipped: true } : c));
-    const newFlipped = [...flipped, id];
-    setCards(newCards);
-    setFlipped(newFlipped);
-
-    if (newFlipped.length === 2) {
-      setMoves((m) => m + 1);
-      const [a, b] = newFlipped;
-      if (newCards[a].emoji === newCards[b].emoji) {
-        setTimeout(() => {
-          setCards((prev) =>
-            prev.map((c) =>
-              c.id === a || c.id === b ? { ...c, matched: true } : c
-            )
-          );
-          setFlipped([]);
-        }, 400);
-      } else {
-        setTimeout(() => {
-          setCards((prev) =>
-            prev.map((c) =>
-              c.id === a || c.id === b ? { ...c, flipped: false } : c
-            )
-          );
-          setFlipped([]);
-        }, 800);
-      }
-    }
-  };
-
-  const matched = cards.filter((c) => c.matched).length;
-
-  return (
-    <div className="space-y-3">
-      <div className="flex justify-between text-sm text-zinc-400">
-        <span>Moves: {moves}</span>
-        <span>Matched: {matched / 2}/{emojis.length}</span>
-      </div>
-      <div className="grid grid-cols-4 gap-2">
-        {cards.map((card) => (
-          <button
-            key={card.id}
-            onClick={() => flip(card.id)}
-            className={`aspect-square rounded-xl text-2xl flex items-center justify-center transition-all duration-300 border ${
-              card.flipped || card.matched
-                ? "bg-orange-500/20 border-orange-500/50 scale-100"
-                : "bg-white/5 border-white/10 hover:border-orange-500/30"
-            }`}
-          >
-            {card.flipped || card.matched ? card.emoji : "?"}
-          </button>
-        ))}
-      </div>
-      {matched === emojis.length * 2 && (
-        <p className="text-center text-emerald-400 font-bold">🎉 Perfect! You win!</p>
-      )}
-      <Button variant="secondary" size="sm" onClick={init} className="w-full">
-        New Game
-      </Button>
-    </div>
-  );
-}
-
 function JokeBox() {
   const [joke, setJoke] = useState(JOKES[0]);
-
-  const nextJoke = () => {
-    setJoke(JOKES[Math.floor(Math.random() * JOKES.length)]);
-  };
-
   return (
     <div className="text-center space-y-4">
-      <motion.p
-        key={joke}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-lg text-zinc-300 leading-relaxed"
-      >
-        {joke}
-      </motion.p>
-      <Button variant="secondary" onClick={nextJoke}>
+      <p className="text-zinc-300">{joke}</p>
+      <Button variant="secondary" onClick={() => setJoke(JOKES[Math.floor(Math.random() * JOKES.length)])}>
         😂 Another One!
       </Button>
     </div>
@@ -234,15 +280,23 @@ function JokeBox() {
 }
 
 const GAMES = [
-  { id: "wheel", name: "Spin Wheel", icon: "🎡", component: SpinWheel },
-  { id: "trivia", name: "Food Trivia", icon: "🧠", component: TriviaGame },
-  { id: "memory", name: "Memory Match", icon: "🃏", component: MemoryGame },
-  { id: "jokes", name: "Food Jokes", icon: "😂", component: JokeBox },
+  { id: "wheel", name: "Spin Wheel", icon: "🎡" },
+  { id: "trivia", name: "Trivia", icon: "🧠" },
+  { id: "jokes", name: "Jokes", icon: "😂" },
 ];
 
-export function WaitingGames() {
+export function WaitingGames({
+  tableToken,
+  customerName,
+  lastOrder,
+  rewardSettings,
+}: {
+  tableToken: string;
+  customerName: string;
+  lastOrder: LastOrder | null;
+  rewardSettings: RewardSettings;
+}) {
   const [active, setActive] = useState("wheel");
-  const ActiveGame = GAMES.find((g) => g.id === active)?.component || SpinWheel;
 
   return (
     <Card className="p-5" glow>
@@ -250,25 +304,35 @@ export function WaitingGames() {
         <span className="text-2xl">🎮</span>
         <div>
           <h3 className="font-bold text-white">While You Wait...</h3>
-          <p className="text-xs text-zinc-400">Play a mini game! Time flies when you&apos;re having fun</p>
+          <p className="text-xs text-zinc-400">Play a game — big orders win real rewards!</p>
         </div>
       </div>
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
         {GAMES.map((g) => (
           <button
             key={g.id}
+            type="button"
             onClick={() => setActive(g.id)}
-            className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-medium transition-all border ${
+            className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-medium border ${
               active === g.id
                 ? "bg-orange-500/20 border-orange-500/50 text-orange-300"
-                : "bg-white/5 border-white/10 text-zinc-400 hover:text-white"
+                : "bg-white/5 border-white/10 text-zinc-400"
             }`}
           >
             {g.icon} {g.name}
           </button>
         ))}
       </div>
-      <ActiveGame />
+      {active === "wheel" && (
+        <SpinWheel
+          lastOrder={lastOrder}
+          settings={rewardSettings}
+          tableToken={tableToken}
+          customerName={customerName}
+        />
+      )}
+      {active === "trivia" && <TriviaGame />}
+      {active === "jokes" && <JokeBox />}
     </Card>
   );
 }
