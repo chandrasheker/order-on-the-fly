@@ -1,5 +1,5 @@
 export const REWARD_DISCLAIMER =
-  "Rewards are offered at the restaurant owner's sole discretion. Management may modify, withhold, or cancel any reward at any time. Spin participation does not guarantee a prize.";
+  "Rewards are offered at the restaurant owner's sole discretion. Management may modify, withhold, or cancel any reward at any time. Meet the minimum order amount to unlock your reward on the wheel.";
 
 export const REWARD_VALIDITY_HOURS = 48;
 

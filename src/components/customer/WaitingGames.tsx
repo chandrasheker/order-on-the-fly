@@ -162,7 +162,13 @@ function SpinWheel({
   const [showClaim, setShowClaim] = useState(false);
   const [wonPrize, setWonPrize] = useState<{ label: string; type: "TEA" | "BEVERAGE" } | null>(null);
 
-  const segments = ["✨", "🍀", "🎲", "⭐"];
+  const prizeLabel =
+    status?.tier === "BEVERAGE"
+      ? settings.rewardBeverageLabel
+      : status?.tier === "TEA"
+        ? settings.rewardTeaLabel
+        : null;
+  const segments = prizeLabel ? ["🎁", "🍀", "🎲", "⭐"] : ["✨", "🍀", "🎲", "⭐"];
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -279,6 +285,17 @@ function SpinWheel({
       <p className="text-sm text-zinc-400">
         Order #{lastOrder.orderNumber} · {formatCurrency(lastOrder.total)}
       </p>
+      {status?.eligible && prizeLabel && !status.spun && (
+        <p className="text-sm text-emerald-400">
+          You unlocked: <span className="font-medium">{prizeLabel}</span> — spin to claim!
+        </p>
+      )}
+      {!statusLoading && status && !status.eligible && (
+        <p className="text-sm text-zinc-500">
+          Spend {formatCurrency(settings.rewardThresholdTea)}+ for a tea reward,{" "}
+          {formatCurrency(settings.rewardThresholdBeverage)}+ for beverage (fun spin only below that).
+        </p>
+      )}
       <div className="relative w-48 h-48 mx-auto">
         <motion.div
           className="w-full h-full rounded-full border-4 border-orange-500/50"
@@ -307,7 +324,7 @@ function SpinWheel({
             exit={{ opacity: 0 }}
             className="text-sm text-zinc-400"
           >
-            Better luck next time!
+            This spin was recorded before rewards were guaranteed — place a new qualifying order to spin again.
           </motion.p>
         )}
       </AnimatePresence>

@@ -4,7 +4,6 @@ import { getRewardTier } from "@/lib/utils";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 
 const WIN_SEGMENT_INDEX = 0;
-const SEGMENT_COUNT = 4;
 
 export async function GET(req: NextRequest) {
   logApiRequest("rewards/spin", "GET");
@@ -111,8 +110,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Order does not qualify for a reward spin" }, { status: 400 });
     }
 
-    const prizeIdx = Math.floor(Math.random() * SEGMENT_COUNT);
-    const won = prizeIdx === WIN_SEGMENT_INDEX;
+    // Qualifying orders always win their tier reward — the wheel is for show.
+    const prizeIdx = WIN_SEGMENT_INDEX;
+    const won = true;
 
     await prisma.order.update({
       where: { id: orderId },
