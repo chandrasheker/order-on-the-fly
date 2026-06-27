@@ -153,7 +153,7 @@ export function OrderPageClient({ slug, token }: Props) {
             animate={{ opacity: 1, scale: 1 }}
             className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-center font-medium"
           >
-            Order placed! Spin the wheel below if your order qualifies for a reward 🎡
+            Order placed! Spin the wheel while you wait 🎡
           </motion.div>
         )}
 

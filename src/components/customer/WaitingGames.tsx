@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, Button, Input } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
@@ -139,8 +139,9 @@ function SpinWheel({
 }) {
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const [claimed, setClaimed] = useState(false);
+  const [rewardSpinUsed, setRewardSpinUsed] = useState(false);
   const [showClaim, setShowClaim] = useState(false);
+  const [showBetterLuck, setShowBetterLuck] = useState(false);
   const [wonPrize, setWonPrize] = useState<{ label: string; type: "TEA" | "BEVERAGE" } | null>(null);
 
   const qualifiesBeverage = lastOrder && lastOrder.total >= settings.rewardThresholdBeverage;
@@ -148,52 +149,48 @@ function SpinWheel({
     lastOrder &&
     lastOrder.total >= settings.rewardThresholdTea &&
     !qualifiesBeverage;
+  const eligibleForReward = Boolean(qualifiesBeverage || qualifiesTea);
 
-  const canSpinReward = (qualifiesBeverage || qualifiesTea) && !claimed;
-
-  const segments = canSpinReward
-    ? qualifiesBeverage
-      ? ["🥤 Beverage!", "🎉 Lucky!", "☕ Bonus", "🎁 Prize"]
-      : ["☕ Free Tea!", "🎉 Lucky!", "🍀 Bonus", "🎁 Prize"]
-    : ["High Five ✋", "Lucky Day 🍀", "Nice! 😊", "Fun! 🎉"];
+  const segments = ["✨", "🍀", "🎲", "⭐"];
+  const winSegmentIndex = 0;
 
   const spin = () => {
-    if (spinning) return;
+    if (spinning || (eligibleForReward && rewardSpinUsed)) return;
+
     setSpinning(true);
+    setShowBetterLuck(false);
 
-    let prizeIdx = Math.floor(Math.random() * segments.length);
-    if (canSpinReward) {
-      prizeIdx = 0;
-    }
-
+    const prizeIdx = Math.floor(Math.random() * segments.length);
     const newRot = rotation + 1440 + (360 - prizeIdx * (360 / segments.length));
     setRotation(newRot);
 
     setTimeout(() => {
       setSpinning(false);
-      if (canSpinReward && prizeIdx === 0) {
+      if (!eligibleForReward || rewardSpinUsed) return;
+
+      setRewardSpinUsed(true);
+
+      if (prizeIdx === winSegmentIndex) {
         const type = qualifiesBeverage ? "BEVERAGE" : "TEA";
         const label = qualifiesBeverage
           ? settings.rewardBeverageLabel
           : settings.rewardTeaLabel;
         setWonPrize({ label, type });
         setShowClaim(true);
-        setClaimed(true);
+      } else {
+        setShowBetterLuck(true);
       }
     }, 3000);
   };
+
+  const rewardAttemptDone = rewardSpinUsed && eligibleForReward;
+  const spinDisabled = spinning || (rewardAttemptDone && !showClaim);
 
   return (
     <div className="text-center space-y-4">
       {lastOrder && (
         <p className="text-sm text-zinc-400">
           Order #{lastOrder.orderNumber} · {formatCurrency(lastOrder.total)}
-          {qualifiesBeverage && (
-            <span className="block text-emerald-400 mt-1">🎁 You unlocked a spin reward!</span>
-          )}
-          {qualifiesTea && (
-            <span className="block text-emerald-400 mt-1">☕ You unlocked a tea reward spin!</span>
-          )}
         </p>
       )}
       <div className="relative w-48 h-48 mx-auto">
@@ -212,9 +209,28 @@ function SpinWheel({
         />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 w-0 h-0 border-l-[10px] border-r-[10px] border-t-[16px] border-l-transparent border-r-transparent border-t-white z-10" />
       </div>
-      <Button onClick={spin} disabled={spinning || (claimed && !!canSpinReward)} size="lg">
-        {spinning ? "Spinning..." : claimed && canSpinReward ? "Reward claimed ✓" : "🎡 Spin the Wheel!"}
+      <Button onClick={spin} disabled={spinDisabled} size="lg">
+        {spinning
+          ? "Spinning..."
+          : rewardAttemptDone
+            ? showBetterLuck
+              ? "Spin used"
+              : "Reward claimed ✓"
+            : "🎡 Spin the Wheel!"}
       </Button>
+
+      <AnimatePresence>
+        {showBetterLuck && (
+          <motion.p
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="text-sm text-zinc-400"
+          >
+            Better luck next time!
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       {showClaim && wonPrize && lastOrder && (
         <RewardClaimModal
@@ -304,7 +320,7 @@ export function WaitingGames({
         <span className="text-2xl">🎮</span>
         <div>
           <h3 className="font-bold text-white">While You Wait...</h3>
-          <p className="text-xs text-zinc-400">Play a game — big orders win real rewards!</p>
+          <p className="text-xs text-zinc-400">Play a game while your order is prepared</p>
         </div>
       </div>
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
