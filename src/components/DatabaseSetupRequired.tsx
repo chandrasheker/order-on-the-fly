@@ -18,7 +18,7 @@ export function DatabaseSetupRequired() {
           <Link href="/">
             <Button variant="secondary">Back to Home</Button>
           </Link>
-          <Link href="/staff/login">
+          <Link href="/">
             <Button>Staff Login</Button>
           </Link>
         </div>

@@ -37,6 +37,6 @@ export async function GET(
   return NextResponse.json({
     restaurant: { id: restaurant.id, name: restaurant.name, slug: restaurant.slug },
     table: { id: table.id, number: table.number, qrToken: table.qrToken },
-    categories,
+    categories: categories.filter((c) => c.items.length > 0),
   });
 }

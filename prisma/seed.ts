@@ -9,6 +9,13 @@ const prisma = new PrismaClient({ adapter });
 
 const menuData = [
   {
+    name: "Today's Special",
+    slug: "todays-special",
+    icon: "⭐",
+    sortOrder: 0,
+    items: [],
+  },
+  {
     name: "Beverages",
     slug: "beverages",
     icon: "🥤",
@@ -107,8 +114,8 @@ async function main() {
 
   const restaurant = await prisma.restaurant.create({
     data: {
-      name: "Spice Garden Restaurant",
-      slug: "spice-garden",
+      name: "Varanasi Restaurant",
+      slug: "varanasi",
     },
   });
 
@@ -116,10 +123,10 @@ async function main() {
 
   await prisma.user.createMany({
     data: [
-      { email: "owner@spicegarden.com", passwordHash, name: "Rajesh Kumar", role: "OWNER", restaurantId: restaurant.id },
-      { email: "manager@spicegarden.com", passwordHash, name: "Priya Sharma", role: "MANAGER", restaurantId: restaurant.id },
-      { email: "cook@spicegarden.com", passwordHash, name: "Chef Anand", role: "COOK", restaurantId: restaurant.id },
-      { email: "server@spicegarden.com", passwordHash, name: "Arun Patel", role: "SERVER", restaurantId: restaurant.id },
+      { email: "owner@varanasi.com", passwordHash, name: "Rajesh Kumar", role: "OWNER", restaurantId: restaurant.id },
+      { email: "manager@varanasi.com", passwordHash, name: "Priya Sharma", role: "MANAGER", restaurantId: restaurant.id },
+      { email: "cook@varanasi.com", passwordHash, name: "Chef Anand", role: "COOK", restaurantId: restaurant.id },
+      { email: "server@varanasi.com", passwordHash, name: "Arun Patel", role: "SERVER", restaurantId: restaurant.id },
     ],
   });
 
@@ -154,8 +161,8 @@ async function main() {
   }
 
   console.log("✅ Database seeded!");
-  console.log("🏪 Restaurant: Spice Garden (slug: spice-garden)");
-  console.log("🔑 Staff login: owner@spicegarden.com / admin123");
+  console.log("🏪 Restaurant: Varanasi (slug: varanasi)");
+  console.log("🔑 Staff login: owner@varanasi.com / admin123");
   console.log("🪑 10 tables with QR codes ready");
 }
 

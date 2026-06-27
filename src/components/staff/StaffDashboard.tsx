@@ -81,7 +81,7 @@ export function StaffDashboard() {
     ]);
 
     if (!meRes.ok) {
-      router.push("/staff/login");
+      router.push("/");
       return;
     }
     const me = await meRes.json();
@@ -122,7 +122,7 @@ export function StaffDashboard() {
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/staff/login");
+    router.push("/");
   };
 
   if (loading) {

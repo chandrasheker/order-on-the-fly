@@ -2,27 +2,78 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import { Button, Card, Spinner, Badge } from "@/components/ui";
-import { ArrowLeft, ToggleLeft, ToggleRight, Clock } from "lucide-react";
+import { Button, Card, Spinner, Badge, Input } from "@/components/ui";
+import { ArrowLeft, ToggleLeft, ToggleRight, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
 
 interface MenuItem {
   id: string;
   name: string;
-  description: string | null;
   price: number;
   prepTimeMinutes: number;
   isAvailable: boolean;
-  isVeg: boolean;
 }
 
 interface Category {
   id: string;
   name: string;
+  slug: string;
   icon: string | null;
   items: MenuItem[];
+}
+
+function AddItemForm({
+  categoryId,
+  label,
+  onAdded,
+}: {
+  categoryId: string;
+  label?: string;
+  onAdded: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !price) return;
+    setSaving(true);
+    await fetch("/api/menu/manage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categoryId, name: name.trim(), price }),
+    });
+    setName("");
+    setPrice("");
+    setSaving(false);
+    onAdded();
+  };
+
+  return (
+    <form onSubmit={submit} className="flex flex-col sm:flex-row gap-2 p-3 rounded-xl bg-orange-500/10 border border-orange-500/20">
+      <Input
+        placeholder={label ?? "Item name"}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        required
+        className="flex-1"
+      />
+      <Input
+        type="number"
+        placeholder="Price ₹"
+        value={price}
+        onChange={(e) => setPrice(e.target.value)}
+        required
+        min="0"
+        className="w-full sm:w-28"
+      />
+      <Button type="submit" disabled={saving} size="md">
+        <Plus className="w-4 h-4" /> Add
+      </Button>
+    </form>
+  );
 }
 
 export default function MenuManagePage() {
@@ -33,7 +84,10 @@ export default function MenuManagePage() {
   const fetchMenu = () => {
     fetch("/api/menu/manage")
       .then((r) => {
-        if (!r.ok) { router.push("/staff/login"); return null; }
+        if (!r.ok) {
+          router.push("/");
+          return null;
+        }
         return r.json();
       })
       .then((data) => {
@@ -42,7 +96,9 @@ export default function MenuManagePage() {
       });
   };
 
-  useEffect(() => { fetchMenu(); }, []);
+  useEffect(() => {
+    fetchMenu();
+  }, []);
 
   const toggleAvailability = async (itemId: string, isAvailable: boolean) => {
     await fetch("/api/menu/manage", {
@@ -53,11 +109,24 @@ export default function MenuManagePage() {
     fetchMenu();
   };
 
-  const updatePrepTime = async (itemId: string, prepTimeMinutes: number) => {
+  const updateItem = async (itemId: string, field: "name" | "price", value: string) => {
     await fetch("/api/menu/manage", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemId, prepTimeMinutes }),
+      body: JSON.stringify({
+        itemId,
+        [field]: field === "price" ? parseFloat(value) : value,
+      }),
+    });
+    fetchMenu();
+  };
+
+  const deleteItem = async (itemId: string) => {
+    if (!confirm("Remove this item from the menu?")) return;
+    await fetch("/api/menu/manage", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId }),
     });
     fetchMenu();
   };
@@ -70,6 +139,9 @@ export default function MenuManagePage() {
     );
   }
 
+  const todaysSpecial = categories.find((c) => c.slug === "todays-special");
+  const otherCategories = categories.filter((c) => c.slug !== "todays-special");
+
   return (
     <div className="min-h-screen bg-[#0a0a12] text-white">
       <header className="border-b border-white/5 px-4 py-4">
@@ -78,58 +150,129 @@ export default function MenuManagePage() {
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
-            <h1 className="text-xl font-bold">Menu Management</h1>
-            <p className="text-sm text-zinc-400">Toggle availability & set prep times</p>
+            <h1 className="text-xl font-bold">Menu</h1>
+            <p className="text-sm text-zinc-400">Add items, set prices, manage availability</p>
           </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        {categories.map((cat) => (
-          <motion.div key={cat.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <main className="max-w-4xl mx-auto px-4 py-6 space-y-8">
+        {todaysSpecial && (
+          <section>
+            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+              <span>{todaysSpecial.icon}</span> Today&apos;s Special
+            </h2>
+            <p className="text-sm text-zinc-500 mb-3">
+              Add today&apos;s special dish. Only one special is shown to customers at a time.
+            </p>
+            <AddItemForm
+              categoryId={todaysSpecial.id}
+              label="Special name, e.g. Chef's Biryani"
+              onAdded={fetchMenu}
+            />
+            <div className="mt-3 space-y-2">
+              {todaysSpecial.items.map((item) => (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  onToggle={toggleAvailability}
+                  onUpdate={updateItem}
+                  onDelete={deleteItem}
+                />
+              ))}
+              {todaysSpecial.items.length === 0 && (
+                <p className="text-sm text-zinc-500 py-4 text-center">No special added yet</p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {otherCategories.map((cat) => (
+          <section key={cat.id}>
             <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
               <span>{cat.icon}</span> {cat.name}
             </h2>
-            <div className="space-y-2">
+            <AddItemForm categoryId={cat.id} onAdded={fetchMenu} />
+            <div className="mt-3 space-y-2">
               {cat.items.map((item) => (
-                <Card key={item.id} className="p-4 flex items-center gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.name}</span>
-                      <Badge className={item.isAvailable ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" : "bg-red-500/15 text-red-400 border-red-500/30"}>
-                        {item.isAvailable ? "Available" : "Unavailable"}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-zinc-400">{formatCurrency(item.price)}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-zinc-500" />
-                    <select
-                      value={item.prepTimeMinutes}
-                      onChange={(e) => updatePrepTime(item.id, parseInt(e.target.value))}
-                      className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-sm text-white"
-                    >
-                      {[1, 3, 5, 8, 10, 12, 15, 18, 20, 25, 30].map((m) => (
-                        <option key={m} value={m} className="bg-[#1a1a2e]">{m} min</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    onClick={() => toggleAvailability(item.id, item.isAvailable)}
-                    className="text-2xl"
-                  >
-                    {item.isAvailable ? (
-                      <ToggleRight className="w-8 h-8 text-emerald-400" />
-                    ) : (
-                      <ToggleLeft className="w-8 h-8 text-zinc-500" />
-                    )}
-                  </button>
-                </Card>
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  onToggle={toggleAvailability}
+                  onUpdate={updateItem}
+                  onDelete={deleteItem}
+                />
               ))}
             </div>
-          </motion.div>
+          </section>
         ))}
       </main>
     </div>
+  );
+}
+
+function ItemRow({
+  item,
+  onToggle,
+  onUpdate,
+  onDelete,
+}: {
+  item: MenuItem;
+  onToggle: (id: string, available: boolean) => void;
+  onUpdate: (id: string, field: "name" | "price", value: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <Card className="p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="flex-1 flex gap-2">
+        <Input
+          defaultValue={item.name}
+          onBlur={(e) => {
+            if (e.target.value.trim() && e.target.value !== item.name) {
+              onUpdate(item.id, "name", e.target.value.trim());
+            }
+          }}
+          className="flex-1 text-sm"
+        />
+        <Input
+          type="number"
+          defaultValue={item.price}
+          onBlur={(e) => {
+            if (e.target.value && parseFloat(e.target.value) !== item.price) {
+              onUpdate(item.id, "price", e.target.value);
+            }
+          }}
+          className="w-24 text-sm"
+          min="0"
+        />
+      </div>
+      <div className="flex items-center gap-2 justify-between sm:justify-end">
+        <Badge
+          className={
+            item.isAvailable
+              ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+              : "bg-red-500/15 text-red-400 border-red-500/30"
+          }
+        >
+          {item.isAvailable ? "Live" : "Off"}
+        </Badge>
+        <span className="text-xs text-zinc-500 hidden sm:inline">
+          {formatCurrency(item.price)}
+        </span>
+        <button onClick={() => onToggle(item.id, item.isAvailable)} className="p-1">
+          {item.isAvailable ? (
+            <ToggleRight className="w-7 h-7 text-emerald-400" />
+          ) : (
+            <ToggleLeft className="w-7 h-7 text-zinc-500" />
+          )}
+        </button>
+        <button
+          onClick={() => onDelete(item.id)}
+          className="p-1 text-zinc-500 hover:text-red-400"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    </Card>
   );
 }

@@ -24,7 +24,7 @@ export default function QRPage() {
   useEffect(() => {
     fetch("/api/tables/qr")
       .then((r) => {
-        if (!r.ok) { router.push("/staff/login"); return null; }
+        if (!r.ok) { router.push("/"); return null; }
         return r.json();
       })
       .then((data) => {

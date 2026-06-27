@@ -6,20 +6,43 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+  const { action, itemId } = await req.json();
+
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { items: true, table: true },
+  });
+
+  if (!order) {
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
+
+  if (action === "alarm") {
+    await prisma.order.update({
+      where: { id },
+      data: { alarmTriggered: true },
+    });
+
+    await prisma.alert.create({
+      data: {
+        type: "ALARM",
+        message: `Table ${order.table.number} needs help! Order #${order.orderNumber}`,
+        orderId: id,
+        tableNumber: order.table.number,
+        restaurantId: order.restaurantId,
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  }
+
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = await params;
-  const { action, itemId } = await req.json();
-
-  const order = await prisma.order.findFirst({
-    where: { id, restaurantId: session.restaurantId },
-    include: { items: true, table: true },
-  });
-
-  if (!order) {
+  if (order.restaurantId !== session.restaurantId) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }
 
@@ -48,7 +71,10 @@ export async function PATCH(
       let status = "PREPARING";
       if (readyCount > 0) status = "READY";
       else if (preparingCount > 0) status = "PREPARING";
-      await prisma.order.update({ where: { id }, data: { status: status as "PREPARING" | "READY" } });
+      await prisma.order.update({
+        where: { id },
+        data: { status: status as "PREPARING" | "READY" },
+      });
     }
 
     return NextResponse.json({ success: true });
@@ -78,25 +104,6 @@ export async function PATCH(
       data: { status: "SERVED", servedAt: new Date(), isOverdue: false },
     });
     await prisma.order.update({ where: { id }, data: { status: "SERVED" } });
-    return NextResponse.json({ success: true });
-  }
-
-  if (action === "alarm") {
-    await prisma.order.update({
-      where: { id },
-      data: { alarmTriggered: true },
-    });
-
-    await prisma.alert.create({
-      data: {
-        type: "ALARM",
-        message: `🚨 Table ${order.table.number} customer triggered HELP alarm! Order #${order.orderNumber}`,
-        orderId: id,
-        tableNumber: order.table.number,
-        restaurantId: session.restaurantId,
-      },
-    });
-
     return NextResponse.json({ success: true });
   }
 
