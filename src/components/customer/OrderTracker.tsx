@@ -4,12 +4,23 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   formatCountdown,
+  formatCurrency,
   getRemainingSeconds,
   isOrderItemOpen,
   shouldShowCustomerOrder,
+  shouldShowCustomerPaymentOrder,
+  customerOrderBillTotal,
 } from "@/lib/utils";
 import { Button, Badge } from "@/components/ui";
-import { Bell, Clock, CheckCircle2, AlertTriangle, RefreshCw, Ban } from "lucide-react";
+import {
+  Bell,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Ban,
+  CircleDollarSign,
+} from "lucide-react";
 
 interface OrderItem {
   id: string;
@@ -19,6 +30,7 @@ interface OrderItem {
   prepTimeMinutes: number;
   expectedReadyAt: string;
   isOverdue: boolean;
+  unitPrice?: number;
 }
 
 interface Order {
@@ -26,6 +38,7 @@ interface Order {
   orderNumber: number;
   status: string;
   alarmTriggered: boolean;
+  paidAt?: string | null;
   items: OrderItem[];
   createdAt: string;
 }
@@ -42,6 +55,8 @@ export function OrderTracker({
   const [now, setNow] = useState(Date.now());
   const [alarmSent, setAlarmSent] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [paidIds, setPaidIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -53,9 +68,12 @@ export function OrderTracker({
     return () => clearInterval(interval);
   }, [onRefresh]);
 
-  const visibleOrders = orders.filter((o) => shouldShowCustomerOrder(o.items));
+  const activeOrders = orders.filter((o) => shouldShowCustomerOrder(o.items));
+  const paymentOrders = orders.filter(
+    (o) => shouldShowCustomerPaymentOrder(o) && !paidIds.has(o.id)
+  );
 
-  if (visibleOrders.length === 0) return null;
+  if (activeOrders.length === 0 && paymentOrders.length === 0) return null;
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -70,6 +88,23 @@ export function OrderTracker({
       body: JSON.stringify({ action: "alarm" }),
     });
     setAlarmSent(true);
+  };
+
+  const payOrder = async (orderId: string) => {
+    setPayingId(orderId);
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pay", tableToken }),
+      });
+      if (res.ok) {
+        setPaidIds((prev) => new Set(prev).add(orderId));
+        await onRefresh();
+      }
+    } finally {
+      setPayingId(null);
+    }
   };
 
   return (
@@ -87,7 +122,7 @@ export function OrderTracker({
         </button>
       </div>
 
-      {visibleOrders.map((order) => {
+      {activeOrders.map((order) => {
         const pendingItems = order.items.filter((i) => isOrderItemOpen(i.status));
         const unavailableItems = order.items.filter((i) => i.status === "UNAVAILABLE");
         const servedItems = order.items.filter((i) => i.status === "SERVED");
@@ -101,15 +136,11 @@ export function OrderTracker({
         const anyOverdue = pendingItems.some((i) => i.isOverdue);
 
         let badgeLabel = "Preparing your order";
-        let badgeClass =
-          "bg-blue-500/15 text-blue-400 border-blue-500/30";
+        let badgeClass = "bg-blue-500/15 text-blue-400 border-blue-500/30";
 
-        if (unavailableItems.length > 0 && pendingItems.length === 0) {
+        if (unavailableItems.length > 0 && pendingItems.length === 0 && servedItems.length === 0) {
           badgeLabel = "Some items could not be served";
           badgeClass = "bg-amber-500/15 text-amber-400 border-amber-500/30";
-        } else if (pendingItems.length === 0 && servedItems.length > 0) {
-          badgeLabel = "All served!";
-          badgeClass = "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
         } else if (anyOverdue) {
           badgeLabel = "Taking longer than expected";
           badgeClass = "bg-red-500/15 text-red-400 border-red-500/30 animate-pulse";
@@ -127,7 +158,7 @@ export function OrderTracker({
             animate={{ opacity: 1, y: 0 }}
             className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl p-5"
           >
-            {unavailableItems.length > 0 && (
+            {unavailableItems.length > 0 && pendingItems.length > 0 && (
               <div className="mb-4 p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-100 text-sm">
                 <p className="font-medium flex items-center gap-2">
                   <Ban className="w-4 h-4 shrink-0" />
@@ -139,7 +170,7 @@ export function OrderTracker({
                 </p>
                 <p className="text-amber-200/80 text-xs mt-1">
                   You won&apos;t be charged for unavailable items. Please try ordering something
-                  else from the menu — we apologise for the inconvenience.
+                  else from the menu.
                 </p>
               </div>
             )}
@@ -173,8 +204,8 @@ export function OrderTracker({
                       isUnavailable
                         ? "bg-amber-500/10 border border-amber-500/30"
                         : isServed
-                        ? "bg-black/50 border border-white/5 opacity-50"
-                        : "bg-white/10 border border-orange-500/25 shadow-sm shadow-orange-500/10"
+                          ? "bg-black/50 border border-white/5 opacity-60"
+                          : "bg-white/10 border border-orange-500/25 shadow-sm shadow-orange-500/10"
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -192,8 +223,8 @@ export function OrderTracker({
                           isServed
                             ? "text-zinc-500 line-through"
                             : isUnavailable
-                            ? "text-amber-100 font-medium"
-                            : "text-white font-medium"
+                              ? "text-amber-100 font-medium"
+                              : "text-white font-medium"
                         }`}
                       >
                         {item.quantity}x {item.itemName}
@@ -204,41 +235,137 @@ export function OrderTracker({
                         isUnavailable
                           ? "text-amber-300 font-medium"
                           : isServed
-                          ? "text-zinc-600"
-                          : "text-orange-300 font-medium"
+                            ? "text-zinc-600"
+                            : "text-orange-300 font-medium"
                       }`}
                     >
                       {isServed
                         ? "Served"
                         : isUnavailable
-                        ? "Not served — out of stock"
-                        : item.isOverdue
-                        ? "Delayed"
-                        : itemRemaining > 0
-                        ? formatCountdown(itemRemaining)
-                        : "Ready soon"}
+                          ? "Not served — out of stock"
+                          : item.isOverdue
+                            ? "Delayed"
+                            : itemRemaining > 0
+                              ? formatCountdown(itemRemaining)
+                              : "Ready soon"}
                     </span>
                   </div>
                 );
               })}
             </div>
 
-            {(remaining === 0 || anyOverdue) && pendingItems.length > 0 && !alarmSent && !order.alarmTriggered && (
-              <Button
-                variant="danger"
-                className="w-full animate-pulse"
-                onClick={() => triggerAlarm(order.id)}
-              >
-                <Bell className="w-4 h-4" />
-                Ring for Service — We&apos;re taking too long!
-              </Button>
-            )}
+            {(remaining === 0 || anyOverdue) &&
+              pendingItems.length > 0 &&
+              !alarmSent &&
+              !order.alarmTriggered && (
+                <Button
+                  variant="danger"
+                  className="w-full animate-pulse"
+                  onClick={() => triggerAlarm(order.id)}
+                >
+                  <Bell className="w-4 h-4" />
+                  Ring for Service — We&apos;re taking too long!
+                </Button>
+              )}
 
             {(alarmSent || order.alarmTriggered) && pendingItems.length > 0 && (
               <p className="text-center text-sm text-amber-400 animate-pulse">
                 🔔 Staff has been notified! Someone is on the way...
               </p>
             )}
+          </motion.div>
+        );
+      })}
+
+      {paymentOrders.map((order) => {
+        const billTotal = customerOrderBillTotal(order.items);
+        const unavailableItems = order.items.filter((i) => i.status === "UNAVAILABLE");
+
+        return (
+          <motion.div
+            key={order.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-white/5 backdrop-blur-xl p-5"
+          >
+            {unavailableItems.length > 0 && (
+              <div className="mb-4 p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-100 text-sm">
+                <p className="font-medium flex items-center gap-2">
+                  <Ban className="w-4 h-4 shrink-0" />
+                  {unavailableItems.length} item{unavailableItems.length > 1 ? "s were" : " was"}{" "}
+                  out of stock — not charged
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm text-zinc-400">Order #{order.orderNumber}</p>
+                <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+                  All served — ready to pay
+                </Badge>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-zinc-500">Bill total</p>
+                <p className="text-xl font-bold text-emerald-400">{formatCurrency(billTotal)}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2 mb-4">
+              {order.items.map((item) => {
+                const isServed = item.status === "SERVED";
+                const isUnavailable = item.status === "UNAVAILABLE";
+                const lineTotal = (item.unitPrice ?? 0) * item.quantity;
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex items-center justify-between py-2 px-3 rounded-xl ${
+                      isUnavailable
+                        ? "bg-amber-500/10 border border-amber-500/30"
+                        : "bg-black/40 border border-white/5 opacity-70"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isUnavailable ? (
+                        <Ban className="w-4 h-4 text-amber-400 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      )}
+                      <span
+                        className={`text-sm truncate ${
+                          isUnavailable
+                            ? "text-amber-100"
+                            : "text-zinc-400 line-through decoration-zinc-500"
+                        }`}
+                      >
+                        {item.quantity}x {item.itemName}
+                      </span>
+                    </div>
+                    <span
+                      className={`text-xs shrink-0 ml-2 ${
+                        isUnavailable ? "text-amber-300" : "text-zinc-500 line-through"
+                      }`}
+                    >
+                      {isUnavailable ? "Not served" : formatCurrency(lineTotal)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <Button
+              variant="success"
+              className="w-full bg-emerald-600 hover:bg-emerald-500"
+              disabled={payingId === order.id}
+              onClick={() => payOrder(order.id)}
+            >
+              <CircleDollarSign className="w-4 h-4" />
+              {payingId === order.id ? "Processing..." : `Pay ${formatCurrency(billTotal)}`}
+            </Button>
+            <p className="text-xs text-zinc-500 text-center mt-2">
+              Pay at the table or tap above once you&apos;ve settled with staff
+            </p>
           </motion.div>
         );
       })}

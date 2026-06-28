@@ -7,7 +7,7 @@ import {
   serveTimelineUpdate,
   syncOrderStatus,
 } from "@/lib/order-service";
-import { isOrderItemOpen } from "@/lib/utils";
+import { isOrderItemOpen, sumOrderRevenue } from "@/lib/utils";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
 
 export async function PATCH(
@@ -15,7 +15,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { action, itemId } = await req.json();
+  const { action, itemId, tableToken } = await req.json();
   logApiRequest("orders/[id]", "PATCH", { orderId: id, action, itemId });
 
   const order = await prisma.order.findUnique({
@@ -50,6 +50,48 @@ export async function PATCH(
     });
 
     return NextResponse.json({ success: true });
+  }
+
+  if (action === "pay") {
+    if (!tableToken) {
+      return NextResponse.json({ error: "Table token required" }, { status: 400 });
+    }
+
+    const table = await prisma.table.findUnique({ where: { qrToken: String(tableToken) } });
+    if (!table || table.id !== order.tableId) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    if (order.status !== "SERVED") {
+      return NextResponse.json(
+        { error: "Order must be fully served before payment" },
+        { status: 400 }
+      );
+    }
+
+    if (order.paidAt) {
+      return NextResponse.json({ error: "Order already paid" }, { status: 400 });
+    }
+
+    const billTotal = sumOrderRevenue(order.items);
+    if (billTotal <= 0) {
+      return NextResponse.json({ error: "Nothing to pay for this order" }, { status: 400 });
+    }
+
+    const paidAt = new Date();
+    await prisma.order.update({
+      where: { id },
+      data: { paidAt },
+    });
+
+    logInfo("api:orders/[id]", "Customer marked order paid", {
+      orderId: id,
+      orderNumber: order.orderNumber,
+      tableNumber: order.table.number,
+      billTotal,
+    });
+
+    return NextResponse.json({ success: true, paidAt });
   }
 
   const session = await requireSession();

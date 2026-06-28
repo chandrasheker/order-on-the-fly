@@ -123,6 +123,39 @@ export function shouldShowCustomerOrder(items: Array<{ status: string }>) {
   return items.some((i) => isOrderItemOpen(i.status));
 }
 
+export function isOrderFullyClosed(items: Array<{ status: string }>) {
+  return items.length > 0 && items.every((i) => !isOrderItemOpen(i.status));
+}
+
+export function shouldShowCustomerPaymentOrder(order: {
+  paidAt?: Date | string | null;
+  items: Array<{ status: string; unitPrice?: number; quantity: number }>;
+}) {
+  if (order.paidAt) return false;
+  if (!isOrderFullyClosed(order.items)) return false;
+  return (
+    sumOrderRevenue(
+      order.items.map((i) => ({
+        unitPrice: i.unitPrice ?? 0,
+        quantity: i.quantity,
+        status: i.status,
+      }))
+    ) > 0
+  );
+}
+
+export function customerOrderBillTotal(
+  items: Array<{ status: string; unitPrice?: number; quantity: number }>
+) {
+  return sumOrderRevenue(
+    items.map((i) => ({
+      unitPrice: i.unitPrice ?? 0,
+      quantity: i.quantity,
+      status: i.status,
+    }))
+  );
+}
+
 export function getRemainingSeconds(expectedReadyAt: string | Date) {
   const target = new Date(expectedReadyAt).getTime();
   return Math.max(0, Math.floor((target - Date.now()) / 1000));

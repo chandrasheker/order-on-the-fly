@@ -8,7 +8,7 @@ import { WaitingGames } from "@/components/customer/WaitingGames";
 import { FeedbackButton } from "@/components/customer/FeedbackButton";
 import { Input, Button, Spinner } from "@/components/ui";
 import { useCartStore } from "@/store/cart";
-import { shouldShowCustomerOrder } from "@/lib/utils";
+import { shouldShowCustomerOrder, shouldShowCustomerPaymentOrder } from "@/lib/utils";
 import { useTableSession } from "@/hooks/useTableSession";
 import { UtensilsCrossed, Sparkles, Users } from "lucide-react";
 
@@ -158,6 +158,8 @@ export function OrderPageClient({ slug, token }: Props) {
   }
 
   const hasActiveOrders = orders.some((o) => shouldShowCustomerOrder(o.items));
+  const hasPaymentOrders = orders.some((o) => shouldShowCustomerPaymentOrder(o));
+  const hasVisibleOrders = hasActiveOrders || hasPaymentOrders;
   const latestOrderId = orders[0]?.id;
   const canOrder = tableSession.active;
 
@@ -230,11 +232,11 @@ export function OrderPageClient({ slug, token }: Props) {
           <p className="text-sm text-red-400 text-center">{orderError}</p>
         )}
 
-        {hasActiveOrders && (
+        {hasVisibleOrders && (
           <OrderTracker orders={orders} tableToken={token} onRefresh={fetchOrders} />
         )}
 
-        {(hasActiveOrders || lastOrder) && canOrder && (
+        {(hasVisibleOrders || lastOrder) && canOrder && (
           <WaitingGames
             tableToken={token}
             customerName={customerName}
