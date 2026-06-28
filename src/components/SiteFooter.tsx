@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
-const CONTACT_NAME = "ChandraShekhar";
 const CONTACT_PHONE = "8904685843";
 const CONTACT_TEL = "+918904685843";
 
