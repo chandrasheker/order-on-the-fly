@@ -109,7 +109,7 @@ export function StaffDashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>("active");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
 
-  const { alertsEnabled, showEnableBanner, enableAlerts, permission } =
+  const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
     useStaffNotifications(alerts);
 
   useEffect(() => {
@@ -220,7 +220,7 @@ export function StaffDashboard() {
   return (
     <div className="min-h-screen bg-[#0a0a12] text-white">
       <AnimatePresence>
-        {showEnableBanner && permission !== "unsupported" && (
+        {showEnableBanner && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -231,14 +231,31 @@ export function StaffDashboard() {
               <div className="flex items-start gap-2 text-sm text-violet-200">
                 <Volume2 className="w-4 h-4 shrink-0 mt-0.5" />
                 <p>
-                  Enable notifications &amp; buzzer alerts for overdue items and when a table
-                  rings for service.
+                  Tap below to turn on the buzzer for overdue items and when a customer rings
+                  for service. Allow notifications if your browser asks.
                 </p>
               </div>
-              <Button size="sm" onClick={enableAlerts} className="shrink-0 w-full sm:w-auto">
-                Enable alerts
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void enableAlerts()}
+                disabled={enabling}
+                className="shrink-0 w-full sm:w-auto"
+              >
+                {enabling ? "Enabling…" : "Enable alerts"}
               </Button>
             </div>
+          </motion.div>
+        )}
+        {statusMessage && !showEnableBanner && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-emerald-500/10 border-b border-emerald-500/20"
+          >
+            <p className="max-w-7xl mx-auto px-4 py-2 text-xs text-emerald-300 text-center sm:text-left">
+              {statusMessage}
+            </p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -281,11 +298,12 @@ export function StaffDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {!alertsEnabled && permission === "granted" && (
+            {!alertsEnabled && (
               <button
                 type="button"
-                onClick={enableAlerts}
-                className="p-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-300"
+                onClick={() => void enableAlerts()}
+                disabled={enabling}
+                className="p-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 disabled:opacity-50"
                 title="Enable sound alerts"
               >
                 <Volume2 className="w-4 h-4" />

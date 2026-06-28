@@ -8,6 +8,7 @@ import {
   readStaffAlertsEnabled,
   requestStaffNotificationPermission,
   showStaffBrowserNotification,
+  unlockAudio,
   writeStaffAlertsEnabled,
   type NotificationPermissionState,
 } from "@/lib/staff-alerts";
@@ -25,33 +26,66 @@ export function useStaffNotifications(alerts: StaffAlertItem[]) {
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [permission, setPermission] = useState<NotificationPermissionState>("default");
   const [showEnableBanner, setShowEnableBanner] = useState(false);
+  const [enabling, setEnabling] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    setPermission(getNotificationPermission());
+    const perm = getNotificationPermission();
+    setPermission(perm);
     const enabled = readStaffAlertsEnabled();
     setAlertsEnabled(enabled);
-    setShowEnableBanner(!enabled && getNotificationPermission() !== "unsupported");
+    setShowEnableBanner(!enabled);
   }, []);
 
   const enableAlerts = useCallback(async () => {
-    const perm = await requestStaffNotificationPermission();
-    setPermission(perm);
-    if (perm === "granted") {
+    setEnabling(true);
+    setStatusMessage(null);
+
+    try {
+      // Always unlock sound on this click (user gesture)
+      await unlockAudio();
       writeStaffAlertsEnabled(true);
       setAlertsEnabled(true);
       setShowEnableBanner(false);
-      showStaffBrowserNotification(
-        "Alerts enabled",
-        "You will hear a buzzer when a table rings for service."
-      );
+
+      // Test chime so staff know sound works
       await playOverdueChime();
-    } else if (perm === "denied") {
+
+      let perm = getNotificationPermission();
+      if (perm === "default") {
+        perm = await requestStaffNotificationPermission();
+      } else if (perm === "granted") {
+        await unlockAudio();
+      }
+      setPermission(perm);
+
+      if (perm === "granted") {
+        showStaffBrowserNotification(
+          "Alerts enabled",
+          "Buzzer will sound when a table rings for service or items go overdue."
+        );
+        setStatusMessage("Alerts enabled — sound and notifications are on.");
+      } else if (perm === "denied") {
+        setStatusMessage(
+          "Sound alerts enabled. To get pop-up notifications, allow notifications for this site in your browser settings."
+        );
+      } else if (perm === "unsupported") {
+        setStatusMessage("Sound alerts enabled. This browser does not support notifications.");
+      } else {
+        setStatusMessage(
+          "Sound alerts enabled. Allow notifications when prompted for pop-up alerts."
+        );
+      }
+    } catch {
+      setStatusMessage("Could not enable alerts. Try again or check browser settings.");
       setShowEnableBanner(true);
+    } finally {
+      setEnabling(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!alertsEnabled || permission !== "granted") return;
+    if (!alertsEnabled) return;
 
     if (!seededRef.current) {
       for (const alert of alerts) {
@@ -68,20 +102,24 @@ export function useStaffNotifications(alerts: StaffAlertItem[]) {
       seenIdsRef.current.add(alert.id);
 
       if (alert.type === "ALARM") {
-        showStaffBrowserNotification(
-          `🚨 Table ${alert.tableNumber} — Service alarm`,
-          alert.message,
-          { tag: `alarm-${alert.id}`, urgent: true }
-        );
+        if (permission === "granted") {
+          showStaffBrowserNotification(
+            `Table ${alert.tableNumber} — Service alarm`,
+            alert.message,
+            { tag: `alarm-${alert.id}`, urgent: true }
+          );
+        }
         void playAlarmBuzzer();
       } else if (alert.type === "OVERDUE") {
-        showStaffBrowserNotification(
-          `⏱ Overdue — Table ${alert.tableNumber}`,
-          alert.message,
-          { tag: `overdue-${alert.id}` }
-        );
+        if (permission === "granted") {
+          showStaffBrowserNotification(
+            `Overdue — Table ${alert.tableNumber}`,
+            alert.message,
+            { tag: `overdue-${alert.id}` }
+          );
+        }
         void playOverdueChime();
-      } else {
+      } else if (permission === "granted") {
         showStaffBrowserNotification(`Table ${alert.tableNumber}`, alert.message, {
           tag: alert.id,
         });
@@ -93,6 +131,8 @@ export function useStaffNotifications(alerts: StaffAlertItem[]) {
     alertsEnabled,
     permission,
     showEnableBanner,
+    enabling,
+    statusMessage,
     enableAlerts,
   };
 }
