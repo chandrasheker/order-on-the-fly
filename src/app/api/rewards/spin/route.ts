@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getRewardTier } from "@/lib/utils";
+import { getRewardTier, sumBillableTotal } from "@/lib/utils";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 
 const WIN_SEGMENT_INDEX = 0;
@@ -31,10 +31,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    const orderTotal = orderWithItems.items.reduce(
-      (sum, i) => sum + i.unitPrice * i.quantity,
-      0
-    );
+    const orderTotal = sumBillableTotal(orderWithItems.items);
 
     const tier = getRewardTier(
       orderTotal,
@@ -99,7 +96,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const orderTotal = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+    const orderTotal = sumBillableTotal(order.items);
     const tier = getRewardTier(
       orderTotal,
       table.restaurant.rewardThresholdTea,

@@ -72,6 +72,48 @@ export function isOrderItemOpen(status: string) {
   return status !== "SERVED" && status !== "UNAVAILABLE";
 }
 
+/** Only served items count toward revenue totals. */
+export function countsTowardRevenue(status: string) {
+  return status === "SERVED";
+}
+
+/** Billable order total — excludes out-of-stock items; includes items still preparing. */
+export function countsTowardBillableTotal(status: string) {
+  return status !== "UNAVAILABLE";
+}
+
+export function orderItemLineTotal(item: {
+  unitPrice: number;
+  quantity: number;
+  status: string;
+}) {
+  return countsTowardRevenue(item.status) ? item.unitPrice * item.quantity : 0;
+}
+
+export function orderItemBillableTotal(item: {
+  unitPrice: number;
+  quantity: number;
+  status: string;
+}) {
+  return countsTowardBillableTotal(item.status) ? item.unitPrice * item.quantity : 0;
+}
+
+export function sumOrderRevenue(
+  items: Array<{ unitPrice: number; quantity: number; status: string }>
+) {
+  return items.reduce((sum, item) => sum + orderItemLineTotal(item), 0);
+}
+
+export function sumBillableTotal(
+  items: Array<{ unitPrice: number; quantity: number; status: string }>
+) {
+  return items.reduce((sum, item) => sum + orderItemBillableTotal(item), 0);
+}
+
+export function shouldShowCustomerOrder(items: Array<{ status: string }>) {
+  return items.some((i) => i.status !== "SERVED");
+}
+
 export function getRemainingSeconds(expectedReadyAt: string | Date) {
   const target = new Date(expectedReadyAt).getTime();
   return Math.max(0, Math.floor((target - Date.now()) / 1000));

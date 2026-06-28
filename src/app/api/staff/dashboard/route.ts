@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { getActiveOrders, getTodayOrders, getMissedTimelineItems } from "@/lib/order-service";
-import { todayDateString } from "@/lib/utils";
+import { todayDateString, sumOrderRevenue } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import { logApiRequest, logInfo } from "@/lib/logger";
 
@@ -29,8 +29,7 @@ export async function GET() {
   ]);
 
   const todayRevenue = todayOrders.reduce(
-    (sum, o) =>
-      sum + o.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0),
+    (sum, o) => sum + sumOrderRevenue(o.items),
     0
   );
 
@@ -42,7 +41,7 @@ export async function GET() {
 
   const todayOrdersWithTotal = todayOrders.map((o) => ({
     ...o,
-    total: o.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0),
+    total: sumOrderRevenue(o.items),
   }));
 
   logInfo("api:staff/dashboard", "Dashboard loaded", {

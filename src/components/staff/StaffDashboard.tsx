@@ -21,7 +21,7 @@ import {
   Ban,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
-import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen } from "@/lib/utils";
+import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -428,7 +428,7 @@ export function StaffDashboard() {
         {viewMode === "revenue" && (
           <>
             <p className="text-sm text-zinc-400 mb-4">
-              Today&apos;s revenue breakdown by order
+              Today&apos;s revenue from served items only (out-of-stock items excluded)
             </p>
             <Card className="p-5 mb-4">
               <p className="text-sm text-zinc-500">Total Revenue</p>
@@ -770,7 +770,13 @@ function ActiveOrderCard({
 function TodayOrderRow({ order }: { order: Order }) {
   const total =
     order.total ??
-    order.items.reduce((s, i) => s + (i.unitPrice ?? 0) * i.quantity, 0);
+    sumOrderRevenue(
+      order.items.map((i) => ({
+        unitPrice: i.unitPrice ?? 0,
+        quantity: i.quantity,
+        status: i.status,
+      }))
+    );
 
   return (
     <Card className="p-4">
@@ -786,25 +792,53 @@ function TodayOrderRow({ order }: { order: Order }) {
             {order.customerName && ` · ${order.customerName}`}
           </p>
           <div className="space-y-1">
-            {order.items.map((item) => (
-              <div key={item.id} className="flex justify-between text-sm">
-                <span className="text-zinc-300">
-                  {item.quantity}x {item.itemName}
-                  {item.status === "SERVED" && item.servedAt && (
-                    <span className="text-zinc-500 ml-2">
-                      served {new Date(item.servedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {order.items.map((item) => {
+              const lineTotal = orderItemLineTotal({
+                unitPrice: item.unitPrice ?? 0,
+                quantity: item.quantity,
+                status: item.status,
+              });
+              return (
+                <div key={item.id} className="flex justify-between text-sm gap-2">
+                  <span
+                    className={
+                      item.status === "UNAVAILABLE" ? "text-zinc-500" : "text-zinc-300"
+                    }
+                  >
+                    {item.quantity}x {item.itemName}
+                    {item.status === "SERVED" && item.servedAt && (
+                      <span className="text-zinc-500 ml-2">
+                        served{" "}
+                        {new Date(item.servedAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    )}
+                    {item.status === "UNAVAILABLE" && (
+                      <span className="text-amber-500/80 ml-2">not served — out of stock</span>
+                    )}
+                  </span>
+                  {item.unitPrice !== undefined && (
+                    <span
+                      className={
+                        item.status === "UNAVAILABLE"
+                          ? "text-zinc-600 line-through shrink-0"
+                          : "text-zinc-400 shrink-0"
+                      }
+                    >
+                      {item.status === "UNAVAILABLE"
+                        ? formatCurrency(0)
+                        : formatCurrency(lineTotal)}
                     </span>
                   )}
-                </span>
-                {item.unitPrice !== undefined && (
-                  <span className="text-zinc-400">{formatCurrency(item.unitPrice * item.quantity)}</span>
-                )}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
         </div>
         <div className="text-right sm:pl-4 sm:border-l sm:border-white/10">
-          <p className="text-xs text-zinc-500">Total</p>
+          <p className="text-xs text-zinc-500">Revenue (served only)</p>
           <p className="text-xl font-bold text-emerald-400">{formatCurrency(total)}</p>
         </div>
       </div>

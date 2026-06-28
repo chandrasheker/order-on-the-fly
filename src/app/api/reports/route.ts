@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { todayDateString } from "@/lib/utils";
+import { todayDateString, sumOrderRevenue, orderItemLineTotal, countsTowardRevenue } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
@@ -30,11 +30,7 @@ export async function GET(req: NextRequest) {
     date,
     restaurant: session.restaurantName,
     totalOrders: orders.length,
-    totalRevenue: orders.reduce(
-      (sum, o) =>
-        sum + o.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0),
-      0
-    ),
+    totalRevenue: orders.reduce((sum, o) => sum + sumOrderRevenue(o.items), 0),
     itemBreakdown: {} as Record<string, { quantity: number; revenue: number }>,
     tableBreakdown: {} as Record<number, { orders: number; revenue: number }>,
     orders: orders.map((o) => ({
@@ -47,12 +43,13 @@ export async function GET(req: NextRequest) {
         name: i.itemName,
         qty: i.quantity,
         price: i.unitPrice,
-        total: i.unitPrice * i.quantity,
+        total: orderItemLineTotal(i),
+        status: i.status,
         prepTime: i.prepTimeMinutes,
         served: i.servedAt,
         overdue: i.isOverdue,
       })),
-      total: o.items.reduce((s, i) => s + i.unitPrice * i.quantity, 0),
+      total: sumOrderRevenue(o.items),
     })),
   };
 
@@ -63,6 +60,7 @@ export async function GET(req: NextRequest) {
     }
     summary.tableBreakdown[tableNum].orders++;
     for (const item of order.items) {
+      if (!countsTowardRevenue(item.status)) continue;
       const rev = item.unitPrice * item.quantity;
       summary.tableBreakdown[tableNum].revenue += rev;
       if (!summary.itemBreakdown[item.itemName]) {
