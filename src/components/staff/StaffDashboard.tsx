@@ -19,11 +19,13 @@ import {
   TimerOff,
   X,
   Ban,
+  Volume2,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 
 interface OrderItem {
   id: string;
@@ -106,6 +108,9 @@ export function StaffDashboard() {
   const [now, setNow] = useState(Date.now());
   const [viewMode, setViewMode] = useState<ViewMode>("active");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
+
+  const { alertsEnabled, showEnableBanner, enableAlerts, permission } =
+    useStaffNotifications(alerts);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -215,6 +220,30 @@ export function StaffDashboard() {
   return (
     <div className="min-h-screen bg-[#0a0a12] text-white">
       <AnimatePresence>
+        {showEnableBanner && permission !== "unsupported" && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="bg-violet-500/15 border-b border-violet-500/30 overflow-hidden"
+          >
+            <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-start gap-2 text-sm text-violet-200">
+                <Volume2 className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>
+                  Enable notifications &amp; buzzer alerts for overdue items and when a table
+                  rings for service.
+                </p>
+              </div>
+              <Button size="sm" onClick={enableAlerts} className="shrink-0 w-full sm:w-auto">
+                Enable alerts
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {alerts.length > 0 && (
           <motion.div
             initial={{ height: 0 }}
@@ -252,6 +281,16 @@ export function StaffDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {!alertsEnabled && permission === "granted" && (
+              <button
+                type="button"
+                onClick={enableAlerts}
+                className="p-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-300"
+                title="Enable sound alerts"
+              >
+                <Volume2 className="w-4 h-4" />
+              </button>
+            )}
             <button onClick={fetchData} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
               <RefreshCw className="w-4 h-4" />
             </button>
