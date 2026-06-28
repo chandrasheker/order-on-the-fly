@@ -123,6 +123,16 @@ export function shouldShowCustomerOrder(items: Array<{ status: string }>) {
   return items.some((i) => isOrderItemOpen(i.status));
 }
 
+export function isOrderFullyOutOfStock(items: Array<{ status: string }>) {
+  return items.length > 0 && items.every((i) => i.status === "UNAVAILABLE");
+}
+
+export function orderUnavailableItems(
+  items: Array<{ status: string; itemName?: string; quantity?: number }>
+) {
+  return items.filter((i) => i.status === "UNAVAILABLE");
+}
+
 export function isOrderFullyClosed(items: Array<{ status: string }>) {
   return items.length > 0 && items.every((i) => !isOrderItemOpen(i.status));
 }

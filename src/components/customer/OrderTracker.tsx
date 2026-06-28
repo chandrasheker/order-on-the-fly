@@ -172,7 +172,7 @@ export function OrderTracker({
             animate={{ opacity: 1, y: 0 }}
             className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl p-5"
           >
-            {unavailableItems.length > 0 && pendingItems.length > 0 && (
+            {unavailableItems.length > 0 && (
               <div className="mb-4 p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-100 text-sm">
                 <p className="font-medium flex items-center gap-2">
                   <Ban className="w-4 h-4 shrink-0" />
@@ -182,7 +182,14 @@ export function OrderTracker({
                     : `${unavailableItems.length} items`}{" "}
                   (out of stock)
                 </p>
-                <p className="text-amber-200/80 text-xs mt-1">
+                <ul className="mt-2 space-y-0.5 text-xs text-amber-200/90">
+                  {unavailableItems.map((item) => (
+                    <li key={item.id}>
+                      {item.itemName} × {item.quantity}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-amber-200/80 text-xs mt-2">
                   You won&apos;t be charged for unavailable items. Please try ordering something
                   else from the menu.
                 </p>

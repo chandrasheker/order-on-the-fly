@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MenuView } from "@/components/customer/MenuView";
 import { OrderTracker } from "@/components/customer/OrderTracker";
+import { OutOfStockNotice } from "@/components/customer/OutOfStockNotice";
 import { WaitingGames } from "@/components/customer/WaitingGames";
 import { FeedbackButton } from "@/components/customer/FeedbackButton";
 import { Input, Button, Spinner } from "@/components/ui";
@@ -68,6 +69,7 @@ export function OrderPageClient({ slug, token }: Props) {
   const [orderError, setOrderError] = useState("");
   const [paymentBlocked, setPaymentBlocked] = useState(false);
   const [showThankYou, setShowThankYou] = useState(false);
+  const [oosRefreshTick, setOosRefreshTick] = useState(0);
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { customerName, setCustomerName, items, clearCart } = useCartStore();
@@ -82,6 +84,10 @@ export function OrderPageClient({ slug, token }: Props) {
     }
     setLoading(false);
   }, [slug, token]);
+
+  const handleOosDismiss = useCallback(() => {
+    setOosRefreshTick((tick) => tick + 1);
+  }, []);
 
   const fetchOrders = useCallback(async () => {
     const res = await fetch(`/api/orders?tableToken=${token}`);
@@ -328,6 +334,15 @@ export function OrderPageClient({ slug, token }: Props) {
 
         {orderError && (
           <p className="text-sm text-red-400 text-center">{orderError}</p>
+        )}
+
+        {!showThankYou && (
+          <OutOfStockNotice
+            orders={orders}
+            cartItemCount={items.length}
+            refreshTick={oosRefreshTick}
+            onDismiss={handleOosDismiss}
+          />
         )}
 
         {hasVisibleOrders && !showThankYou && (
