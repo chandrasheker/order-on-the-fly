@@ -339,7 +339,7 @@ export function OrderPageClient({ slug, token }: Props) {
         {!showThankYou && (
           <OutOfStockNotice
             orders={orders}
-            cartItemCount={items.length}
+            tableToken={token}
             refreshTick={oosRefreshTick}
             onDismiss={handleOosDismiss}
           />
