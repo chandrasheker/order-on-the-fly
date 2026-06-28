@@ -110,6 +110,7 @@ async function main() {
   await prisma.menuCategory.deleteMany();
   await prisma.table.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.platformAdmin.deleteMany();
   await prisma.restaurant.deleteMany();
 
   const restaurant = await prisma.restaurant.create({
@@ -169,6 +170,15 @@ async function main() {
   console.log("🪑 10 tables with QR codes ready");
   console.log(`📱 Table 1 order URL: /order/${restaurant.slug}/${restaurant.slug}-table-1`);
   console.log(`📱 Quick demo URL: /order/${restaurant.slug}/demo`);
+
+  const adminPasswordHash = await bcrypt.hash("admin@varanasi", 10);
+  await prisma.platformAdmin.create({
+    data: {
+      email: "admin@varanasi.com",
+      passwordHash: adminPasswordHash,
+      name: "Platform Admin",
+    },
+  });
 }
 
 main()

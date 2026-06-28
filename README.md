@@ -16,6 +16,7 @@ Set `NEXT_PUBLIC_APP_URL` in `.env` to your public domain so QR codes point to t
 ## Access
 
 - **Staff/Owner** — login at `/` to access dashboard, menu, QR codes, and reports
+- **Platform admin** — login at `/platform/login` to manage staff names, emails, passwords, and roles
 - **Customers** — scan table QR code to order (no login needed)
 
 ## Owner Features

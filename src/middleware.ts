@@ -6,11 +6,24 @@ const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "tabletap-super-secret-key-change-in-production"
 );
 
-async function getSession(request: NextRequest) {
+async function getStaffSession(request: NextRequest) {
   const token = request.cookies.get("tabletap_session")?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
+    if (payload.type === "platform_admin") return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function getPlatformAdminSession(request: NextRequest) {
+  const token = request.cookies.get("tabletap_admin_session")?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    if (payload.type !== "platform_admin") return null;
     return payload;
   } catch {
     return null;
@@ -31,6 +44,7 @@ function isPublicApi(pathname: string, request: NextRequest) {
   if (pathname === "/api/rewards/spin") return true;
   if (pathname === "/api/rewards" && request.method === "POST") return true;
   if (pathname === "/api/tables/session") return true;
+  if (pathname === "/api/platform/auth/login" && request.method === "POST") return true;
   if (/^\/api\/orders\/[^/]+$/.test(pathname) && request.method === "PATCH") {
     return true;
   }
@@ -39,7 +53,31 @@ function isPublicApi(pathname: string, request: NextRequest) {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const session = await getSession(request);
+  const session = await getStaffSession(request);
+  const platformAdmin = await getPlatformAdminSession(request);
+
+  if (pathname.startsWith("/platform")) {
+    if (pathname === "/platform/login") {
+      if (platformAdmin) {
+        return NextResponse.redirect(new URL("/platform", request.url));
+      }
+      return NextResponse.next();
+    }
+    if (!platformAdmin) {
+      return NextResponse.redirect(new URL("/platform/login", request.url));
+    }
+    return NextResponse.next();
+  }
+
+  if (pathname.startsWith("/api/platform/")) {
+    if (pathname === "/api/platform/auth/login" && request.method === "POST") {
+      return NextResponse.next();
+    }
+    if (!platformAdmin) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
 
   if (pathname === "/staff/login") {
     return NextResponse.redirect(new URL("/", request.url));

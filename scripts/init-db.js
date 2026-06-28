@@ -60,6 +60,7 @@ try {
   execSync("npx prisma migrate deploy", { stdio: "inherit" });
   execSync("npx prisma generate", { stdio: "inherit" });
   logInfo("init-db", "Migrations applied and Prisma client generated");
+  execSync("npx tsx scripts/ensure-platform-admin.ts", { stdio: "inherit" });
 } catch (err) {
   logError("init-db", "Migration failed", { error: err.message });
   console.error("Migration failed. Run: npm run db:reset");
