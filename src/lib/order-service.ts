@@ -1,11 +1,27 @@
 import { prisma } from "@/lib/prisma";
-import { isOrderItemOpen, todayDateString } from "@/lib/utils";
+import { isOrderItemOpen, todayDateString, sumOrderRevenue } from "@/lib/utils";
 
 export async function clearAlertsForOrderItem(orderItemId: string) {
   await prisma.alert.updateMany({
     where: { orderItemId, isRead: false },
     data: { isRead: true },
   });
+}
+
+export async function autoCompleteZeroBillOrder(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+  if (!order || order.status !== "SERVED" || order.paidAt) return;
+
+  const billTotal = sumOrderRevenue(order.items);
+  if (billTotal === 0) {
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { paidAt: new Date() },
+    });
+  }
 }
 
 export async function syncOrderStatus(orderId: string) {
@@ -17,6 +33,7 @@ export async function syncOrderStatus(orderId: string) {
       where: { id: orderId },
       data: { status: "SERVED" },
     });
+    await autoCompleteZeroBillOrder(orderId);
     return;
   }
 
@@ -147,7 +164,7 @@ export async function getTodayOrders(restaurantId: string) {
 }
 
 export async function getPendingPaymentOrders(restaurantId: string) {
-  return prisma.order.findMany({
+  const orders = await prisma.order.findMany({
     where: {
       restaurantId,
       date: todayDateString(),
@@ -163,6 +180,14 @@ export async function getPendingPaymentOrders(restaurantId: string) {
     },
     orderBy: { updatedAt: "desc" },
   });
+
+  for (const order of orders) {
+    if (sumOrderRevenue(order.items) === 0) {
+      await autoCompleteZeroBillOrder(order.id);
+    }
+  }
+
+  return orders.filter((o) => sumOrderRevenue(o.items) > 0);
 }
 
 export async function getCompletedOrders(restaurantId: string) {

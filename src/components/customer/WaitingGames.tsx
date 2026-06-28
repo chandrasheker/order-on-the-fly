@@ -65,6 +65,9 @@ function RewardClaimModal({
     rewardLabel: string;
   } | null>(null);
 
+  const winHeadline =
+    rewardType === "BEVERAGE" ? "You won a free beverage!" : "You won a free tea!";
+
   const claim = async () => {
     if (!name.trim()) return;
     setSaving(true);
@@ -100,11 +103,11 @@ function RewardClaimModal({
       >
         {!reward ? (
           <>
-            <p className="text-3xl mb-2">🎉</p>
-            <h3 className="text-xl font-bold text-orange-300 mb-1">You won!</h3>
-            <p className="text-lg font-medium mb-4">{prize}</p>
+            <p className="text-4xl mb-2">🎉</p>
+            <h3 className="text-xl font-bold text-orange-300 mb-1">{winHeadline}</h3>
+            <p className="text-lg font-medium text-white mb-1">{prize}</p>
             <p className="text-sm text-zinc-400 mb-4">
-              Valid for <strong className="text-white">48 hours</strong> after claim. Enter your name so staff can verify.
+              Valid for <strong className="text-white">48 hours</strong> after claim. Enter your name so staff can verify on your next visit.
             </p>
             <Input
               placeholder="Your full name *"
@@ -161,14 +164,11 @@ function SpinWheel({
   const [statusLoading, setStatusLoading] = useState(true);
   const [showClaim, setShowClaim] = useState(false);
   const [wonPrize, setWonPrize] = useState<{ label: string; type: "TEA" | "BEVERAGE" } | null>(null);
+  const [winReveal, setWinReveal] = useState<{ label: string; type: "TEA" | "BEVERAGE" } | null>(null);
 
-  const prizeLabel =
-    status?.tier === "BEVERAGE"
-      ? settings.rewardBeverageLabel
-      : status?.tier === "TEA"
-        ? settings.rewardTeaLabel
-        : null;
-  const segments = prizeLabel ? ["🎁", "🍀", "🎲", "⭐"] : ["✨", "🍀", "🎲", "⭐"];
+  const mysterySegments = ["🎁", "✨", "🍀", "⭐"];
+  const funSegments = ["✨", "🍀", "🎲", "⭐"];
+  const segments = status?.eligible ? mysterySegments : funSegments;
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -186,11 +186,20 @@ function SpinWheel({
           claimed: data.claimed,
           tier: data.tier,
         });
+        if (data.spun && data.won && !data.claimed && data.tier && data.tier !== "NONE") {
+          setWonPrize({
+            label:
+              data.tier === "BEVERAGE"
+                ? settings.rewardBeverageLabel
+                : settings.rewardTeaLabel,
+            type: data.tier === "BEVERAGE" ? "BEVERAGE" : "TEA",
+          });
+        }
       }
     } finally {
       setStatusLoading(false);
     }
-  }, [lastOrder.id, tableToken]);
+  }, [lastOrder.id, tableToken, settings.rewardBeverageLabel, settings.rewardTeaLabel]);
 
   useEffect(() => {
     loadStatus();
@@ -248,11 +257,15 @@ function SpinWheel({
         });
 
         if (data.won) {
-          setWonPrize({
+          const prize = {
             label: data.rewardLabel,
-            type: data.rewardType,
-          });
-          setShowClaim(true);
+            type: data.rewardType as "TEA" | "BEVERAGE",
+          };
+          setWinReveal(prize);
+          setWonPrize(prize);
+          setTimeout(() => {
+            setShowClaim(true);
+          }, 1200);
         }
       }, 3000);
     } catch {
@@ -274,28 +287,51 @@ function SpinWheel({
         ? "🎡 Spin for Fun!"
         : status.claimed
           ? "Reward claimed ✓"
-          : status.lost
-            ? "Spin used"
-            : status.spun && status.won
-              ? "Claim your reward"
-              : "🎡 Spin the Wheel!";
+          : status.spun && status.won
+            ? "Claim your reward"
+            : "🎡 Spin the Wheel!";
+
+  const teaserText = statusLoading
+    ? null
+    : status?.eligible && !status.spun
+      ? "🎁 Your order unlocked a mystery reward — spin to reveal what you won!"
+      : !status?.eligible
+        ? "🎡 Pass the time with a lucky spin while your order is prepared!"
+        : null;
+
+  const winBannerText = winReveal
+    ? winReveal.type === "BEVERAGE"
+      ? `🎉 You won a free beverage — ${winReveal.label}!`
+      : `🎉 You won a free tea — ${winReveal.label}!`
+    : null;
 
   return (
     <div className="text-center space-y-4">
       <p className="text-sm text-zinc-400">
         Order #{lastOrder.orderNumber} · {formatCurrency(lastOrder.total)}
       </p>
-      {status?.eligible && prizeLabel && !status.spun && (
-        <p className="text-sm text-emerald-400">
-          You unlocked: <span className="font-medium">{prizeLabel}</span> — spin to claim!
-        </p>
+      {teaserText && (
+        <motion.p
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-sm font-medium text-orange-300 px-2"
+        >
+          {teaserText}
+        </motion.p>
       )}
-      {!statusLoading && status && !status.eligible && (
-        <p className="text-sm text-zinc-500">
-          Spend {formatCurrency(settings.rewardThresholdTea)}+ for a tea reward,{" "}
-          {formatCurrency(settings.rewardThresholdBeverage)}+ for beverage (fun spin only below that).
-        </p>
-      )}
+      <AnimatePresence>
+        {winBannerText && !showClaim && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="p-4 rounded-2xl bg-gradient-to-r from-orange-500/20 to-emerald-500/20 border border-orange-500/40"
+          >
+            <p className="text-lg font-bold text-white">{winBannerText}</p>
+            <p className="text-sm text-emerald-300 mt-1">Tap below to claim your reward</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="relative w-48 h-48 mx-auto">
         <motion.div
           className="w-full h-full rounded-full border-4 border-orange-500/50"
@@ -312,7 +348,17 @@ function SpinWheel({
         />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 w-0 h-0 border-l-[10px] border-r-[10px] border-t-[16px] border-l-transparent border-r-transparent border-t-white z-10" />
       </div>
-      <Button onClick={spin} disabled={spinDisabled} size="lg">
+      <Button
+        onClick={() => {
+          if (status?.spun && status.won && wonPrize && !status.claimed) {
+            setShowClaim(true);
+            return;
+          }
+          void spin();
+        }}
+        disabled={spinDisabled}
+        size="lg"
+      >
         {buttonLabel}
       </Button>
 
@@ -324,7 +370,7 @@ function SpinWheel({
             exit={{ opacity: 0 }}
             className="text-sm text-zinc-400"
           >
-            This spin was recorded before rewards were guaranteed — place a new qualifying order to spin again.
+            Spin again on your next qualifying order.
           </motion.p>
         )}
       </AnimatePresence>
@@ -340,6 +386,7 @@ function SpinWheel({
           customerName={customerName}
           onClose={() => {
             setShowClaim(false);
+            setWinReveal(null);
             loadStatus();
           }}
           onClaimed={() => {
