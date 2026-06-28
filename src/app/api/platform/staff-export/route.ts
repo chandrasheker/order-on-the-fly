@@ -20,6 +20,8 @@ export async function GET(req: NextRequest) {
   }
 
   const restaurantId = req.nextUrl.searchParams.get("restaurantId");
+  const reset = req.nextUrl.searchParams.get("reset") === "true";
+
   if (!restaurantId) {
     return NextResponse.json({ error: "restaurantId required" }, { status: 400 });
   }
@@ -47,14 +49,21 @@ export async function GET(req: NextRequest) {
 
     for (const slotKey of slotKeys) {
       const user = restaurant.users.find((u) => u.slotKey === slotKey);
-      const password = generatePassword();
-      const passwordHash = await hashPassword(password);
 
       if (user) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { passwordHash },
-        });
+        let password = user.plainPassword ?? "";
+
+        if (reset || !password) {
+          password = generatePassword();
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              passwordHash: await hashPassword(password),
+              plainPassword: password,
+            },
+          });
+        }
+
         rows.push({
           restaurant: restaurant.name,
           slotKey,
@@ -67,13 +76,15 @@ export async function GET(req: NextRequest) {
         const role = roleForSlotKey(slotKey)!;
         const email = defaultEmailForSlot(restaurant.slug, slotKey);
         const name = defaultNameForSlot(slotKey);
+        const password = generatePassword();
         await prisma.user.create({
           data: {
             name,
             email,
             role,
             slotKey,
-            passwordHash,
+            passwordHash: await hashPassword(password),
+            plainPassword: password,
             restaurantId: restaurant.id,
           },
         });
@@ -88,16 +99,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    await prisma.restaurant.update({
-      where: { id: restaurant.id },
-      data: { staffConfigured: true },
-    });
-
     const csv = slotsToCsv(rows);
     logInfo("platform/staff-export", "Staff credentials exported", {
       adminId: admin.id,
       restaurantId,
       slotCount: rows.length,
+      reset,
     });
 
     return new NextResponse(csv, {

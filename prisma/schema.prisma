@@ -63,6 +63,7 @@ model User {
   name         String
   role         Role
   slotKey      String?
+  plainPassword String?
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   createdAt    DateTime   @default(now())

@@ -130,8 +130,7 @@ export async function POST(req: NextRequest) {
         const email = String(draft?.email ?? defaultEmailForSlot(restaurant.slug, slotKey))
           .trim()
           .toLowerCase();
-        const password = String(draft?.password ?? "").trim() || generatePassword();
-        const passwordHash = await hashPassword(password);
+        const enteredPassword = String(draft?.password ?? "").trim();
 
         const existing = bySlot.get(slotKey);
         if (existing) {
@@ -142,15 +141,23 @@ export async function POST(req: NextRequest) {
             throw new Error(`Email already in use: ${email}`);
           }
 
+          const updateData: {
+            name: string;
+            email: string;
+            role: Role;
+            slotKey: string;
+            passwordHash?: string;
+            plainPassword?: string;
+          } = { name, email, role, slotKey };
+
+          if (enteredPassword) {
+            updateData.passwordHash = await hashPassword(enteredPassword);
+            updateData.plainPassword = enteredPassword;
+          }
+
           await tx.user.update({
             where: { id: existing.id },
-            data: {
-              name,
-              email,
-              role,
-              slotKey,
-              ...(draft?.password?.trim() ? { passwordHash } : {}),
-            },
+            data: updateData,
           });
           keepIds.add(existing.id);
         } else {
@@ -159,6 +166,9 @@ export async function POST(req: NextRequest) {
             throw new Error(`Email already in use: ${email}`);
           }
 
+          const password = enteredPassword || generatePassword();
+          const passwordHash = await hashPassword(password);
+
           const created = await tx.user.create({
             data: {
               name,
@@ -166,6 +176,7 @@ export async function POST(req: NextRequest) {
               role,
               slotKey,
               passwordHash,
+              plainPassword: password,
               restaurantId,
             },
           });

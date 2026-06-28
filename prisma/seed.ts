@@ -140,6 +140,7 @@ async function main() {
     data: slotUsers.map((u) => ({
       ...u,
       passwordHash,
+      plainPassword: "admin123",
       restaurantId: restaurant.id,
     })),
   });

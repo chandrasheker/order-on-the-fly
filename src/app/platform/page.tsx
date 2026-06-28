@@ -146,7 +146,10 @@ export default function PlatformUsersPage() {
     });
 
     if (res.ok) {
-      setMessage({ type: "ok", text: "Staff configuration saved" });
+      setMessage({
+        type: "ok",
+        text: "Staff configuration saved. Passwords you entered are now active — use Download CSV to export them.",
+      });
       await load();
     } else {
       const data = await res.json();
@@ -155,8 +158,8 @@ export default function PlatformUsersPage() {
     setSavingId(null);
   };
 
-  const downloadCsv = (restaurantId: string) => {
-    window.location.href = `/api/platform/staff-export?restaurantId=${restaurantId}`;
+  const downloadCsv = (restaurantId: string, reset = false) => {
+    window.location.href = `/api/platform/staff-export?restaurantId=${restaurantId}${reset ? "&reset=true" : ""}`;
   };
 
   if (loading) {
@@ -222,13 +225,22 @@ export default function PlatformUsersPage() {
                     </Badge>
                   )}
                 </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => downloadCsv(restaurant.id)}
-                >
-                  <Download className="w-4 h-4" /> Download CSV
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => downloadCsv(restaurant.id)}
+                  >
+                    <Download className="w-4 h-4" /> Download CSV
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => downloadCsv(restaurant.id, true)}
+                  >
+                    Reset &amp; export
+                  </Button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -345,8 +357,9 @@ export default function PlatformUsersPage() {
               </Button>
 
               <p className="text-xs text-zinc-500">
-                Download CSV generates fresh passwords for all slots and includes username + password
-                for handoff to the restaurant team.
+                Save first with the passwords you want staff to use. Download CSV exports those saved
+                passwords without changing them. Use &quot;Reset &amp; export&quot; only if you need
+                new random passwords.
               </p>
             </Card>
           );
