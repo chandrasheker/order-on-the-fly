@@ -20,9 +20,13 @@ import {
   X,
   Ban,
   Volume2,
+  Wallet,
+  CircleDollarSign,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
+import { canAccessTab, canPerformOrderAction, canAccessAdminMenu, canAccessReports, type StaffTab } from "@/lib/staff-permissions";
+import type { Role } from "@/generated/prisma/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
@@ -46,10 +50,12 @@ interface Order {
   customerName: string | null;
   status: string;
   alarmTriggered: boolean;
+  paidAt?: string | null;
   table: { number: number };
   items: OrderItem[];
   createdAt: string;
   total?: number;
+  paidTotal?: number;
 }
 
 interface Alert {
@@ -63,8 +69,9 @@ interface Alert {
 
 interface Stats {
   activeOrders: number;
+  pendingPayments: number;
+  completedOrders: number;
   todayOrders: number;
-  servedToday: number;
   revenue: number;
   overdueCount: number;
   missedTimelineCount: number;
@@ -92,14 +99,16 @@ interface MissedSummary {
   avgMinutesLate: number;
 }
 
-type ViewMode = "active" | "today" | "revenue" | "overdue" | "missed" | "alerts";
+type ViewMode = StaffTab;
 type ItemFilter = "all" | "overdue" | "alarm";
 
 export function StaffDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<{ name: string; role: string; restaurantName: string } | null>(null);
+  const [user, setUser] = useState<{ name: string; role: Role; restaurantName: string } | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [todayOrders, setTodayOrders] = useState<Order[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
+  const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
+  const [allowedTabs, setAllowedTabs] = useState<StaffTab[]>(["active"]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [missedTimeline, setMissedTimeline] = useState<MissedTimelineItem[]>([]);
   const [missedSummary, setMissedSummary] = useState<MissedSummary[]>([]);
@@ -138,7 +147,9 @@ export function StaffDashboard() {
       if (dashRes.ok) {
         const data = await dashRes.json();
         setOrders(data.orders);
-        setTodayOrders(data.todayOrders);
+        setPendingOrders(data.pendingOrders ?? []);
+        setCompletedOrders(data.completedOrders ?? []);
+        setAllowedTabs(data.permissions?.tabs ?? ["active"]);
         setAlerts(data.alerts);
         setMissedTimeline(data.missedTimeline ?? []);
         setMissedSummary(data.missedSummary ?? []);
@@ -161,7 +172,16 @@ export function StaffDashboard() {
     await fetch(`/api/orders/${orderId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, itemId }),
+      body: JSON.stringify({ action, itemId: itemId || undefined }),
+    });
+    fetchData();
+  };
+
+  const markOrderPaid = async (orderId: string) => {
+    await fetch(`/api/orders/${orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "mark-paid" }),
     });
     fetchData();
   };
@@ -215,7 +235,9 @@ export function StaffDashboard() {
     setItemFilter("overdue");
   };
 
-  const isManager = user?.role === "OWNER" || user?.role === "MANAGER";
+  const isManager = user ? canAccessAdminMenu(user.role) : false;
+  const role = user?.role;
+  const showTab = (tab: StaffTab) => role && canAccessTab(role, tab) && allowedTabs.includes(tab);
 
   return (
     <div className="min-h-screen bg-[#0a0a12] text-white">
@@ -325,9 +347,11 @@ export function StaffDashboard() {
                 </Link>
               </>
             )}
-            <Link href="/admin/reports" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
-              <BarChart3 className="w-4 h-4" />
-            </Link>
+            {user && canAccessReports(user.role) && (
+              <Link href="/admin/reports" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
+                <BarChart3 className="w-4 h-4" />
+              </Link>
+            )}
             <button onClick={logout} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
               <LogOut className="w-4 h-4" />
             </button>
@@ -337,103 +361,132 @@ export function StaffDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-            <button
-              onClick={() => { setViewMode("active"); setItemFilter("all"); }}
-              className={cn(
-                "text-left rounded-2xl border p-4 transition-all",
-                viewMode === "active"
-                  ? "border-orange-500/50 bg-orange-500/10"
-                  : "border-white/10 bg-white/5 hover:border-white/20"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <LayoutDashboard className="w-5 h-5 text-orange-400" />
-                <div>
-                  <p className="text-xs text-zinc-500">Active Orders</p>
-                  <p className="text-xl font-bold">{stats.activeOrders}</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+            {showTab("active") && (
+              <button
+                onClick={() => { setViewMode("active"); setItemFilter("all"); }}
+                className={cn(
+                  "text-left rounded-2xl border p-4 transition-all",
+                  viewMode === "active"
+                    ? "border-orange-500/50 bg-orange-500/10"
+                    : "border-white/10 bg-white/5 hover:border-white/20"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <LayoutDashboard className="w-5 h-5 text-orange-400" />
+                  <div>
+                    <p className="text-xs text-zinc-500">Active Orders</p>
+                    <p className="text-xl font-bold">{stats.activeOrders}</p>
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+            )}
 
-            <button
-              onClick={() => setViewMode("today")}
-              className={cn(
-                "text-left rounded-2xl border p-4 transition-all",
-                viewMode === "today"
-                  ? "border-blue-500/50 bg-blue-500/10"
-                  : "border-white/10 bg-white/5 hover:border-white/20"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <History className="w-5 h-5 text-blue-400" />
-                <div>
-                  <p className="text-xs text-zinc-500">Today&apos;s Orders</p>
-                  <p className="text-xl font-bold">{stats.todayOrders}</p>
-                  <p className="text-xs text-zinc-500">{stats.servedToday} served</p>
+            {showTab("pending") && (
+              <button
+                onClick={() => setViewMode("pending")}
+                className={cn(
+                  "text-left rounded-2xl border p-4 transition-all",
+                  viewMode === "pending"
+                    ? "border-yellow-500/50 bg-yellow-500/10"
+                    : "border-white/10 bg-white/5 hover:border-white/20"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <Wallet className="w-5 h-5 text-yellow-400" />
+                  <div>
+                    <p className="text-xs text-zinc-500">Pending Payments</p>
+                    <p className="text-xl font-bold">{stats.pendingPayments}</p>
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => setViewMode("revenue")}
-              className={cn(
-                "text-left rounded-2xl border p-4 transition-all",
-                viewMode === "revenue"
-                  ? "border-emerald-500/50 bg-emerald-500/10"
-                  : "border-white/10 bg-white/5 hover:border-white/20"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <BarChart3 className="w-5 h-5 text-emerald-400" />
-                <div>
-                  <p className="text-xs text-zinc-500">Revenue Today</p>
-                  <p className="text-xl font-bold">{formatCurrency(stats.revenue)}</p>
+            {showTab("completed") && (
+              <button
+                onClick={() => setViewMode("completed")}
+                className={cn(
+                  "text-left rounded-2xl border p-4 transition-all",
+                  viewMode === "completed"
+                    ? "border-blue-500/50 bg-blue-500/10"
+                    : "border-white/10 bg-white/5 hover:border-white/20"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <History className="w-5 h-5 text-blue-400" />
+                  <div>
+                    <p className="text-xs text-zinc-500">Completed Orders</p>
+                    <p className="text-xl font-bold">{stats.completedOrders}</p>
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setViewMode("overdue");
-                setItemFilter("overdue");
-              }}
-              className={cn(
-                "text-left rounded-2xl border p-4 transition-all",
-                viewMode === "overdue"
-                  ? "border-red-500/50 bg-red-500/10"
-                  : "border-white/10 bg-white/5 hover:border-white/20"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <AlertTriangle className={cn("w-5 h-5", stats.overdueCount > 0 ? "text-red-400" : "text-zinc-400")} />
-                <div>
-                  <p className="text-xs text-zinc-500">Overdue Items</p>
-                  <p className="text-xl font-bold">{stats.overdueCount}</p>
+            {showTab("revenue") && (
+              <button
+                type="button"
+                onClick={() => setViewMode("revenue")}
+                className={cn(
+                  "text-left rounded-2xl border p-4 transition-all",
+                  viewMode === "revenue"
+                    ? "border-emerald-500/50 bg-emerald-500/10"
+                    : "border-white/10 bg-white/5 hover:border-white/20"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <CircleDollarSign className="w-5 h-5 text-emerald-400" />
+                  <div>
+                    <p className="text-xs text-zinc-500">Revenue Today</p>
+                    <p className="text-xl font-bold">{formatCurrency(stats.revenue)}</p>
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => setViewMode("missed")}
-              className={cn(
-                "text-left rounded-2xl border p-4 transition-all",
-                viewMode === "missed"
-                  ? "border-amber-500/50 bg-amber-500/10"
-                  : "border-white/10 bg-white/5 hover:border-white/20"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <TimerOff className={cn("w-5 h-5", stats.missedTimelineCount > 0 ? "text-amber-400" : "text-zinc-400")} />
-                <div>
-                  <p className="text-xs text-zinc-500">Missed Timelines</p>
-                  <p className="text-xl font-bold">{stats.missedTimelineCount}</p>
+            {showTab("overdue") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("overdue");
+                  setItemFilter("overdue");
+                }}
+                className={cn(
+                  "text-left rounded-2xl border p-4 transition-all",
+                  viewMode === "overdue"
+                    ? "border-red-500/50 bg-red-500/10"
+                    : "border-white/10 bg-white/5 hover:border-white/20"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className={cn("w-5 h-5", stats.overdueCount > 0 ? "text-red-400" : "text-zinc-400")} />
+                  <div>
+                    <p className="text-xs text-zinc-500">Overdue Items</p>
+                    <p className="text-xl font-bold">{stats.overdueCount}</p>
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+            )}
+
+            {showTab("missed") && (
+              <button
+                type="button"
+                onClick={() => setViewMode("missed")}
+                className={cn(
+                  "text-left rounded-2xl border p-4 transition-all",
+                  viewMode === "missed"
+                    ? "border-amber-500/50 bg-amber-500/10"
+                    : "border-white/10 bg-white/5 hover:border-white/20"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <TimerOff className={cn("w-5 h-5", stats.missedTimelineCount > 0 ? "text-amber-400" : "text-zinc-400")} />
+                  <div>
+                    <p className="text-xs text-zinc-500">Missed Timelines</p>
+                    <p className="text-xl font-bold">{stats.missedTimelineCount}</p>
+                  </div>
+                </div>
+              </button>
+            )}
           </div>
         )}
 
@@ -461,10 +514,10 @@ export function StaffDashboard() {
                 <ChefHat className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
                 <p className="text-zinc-400 mb-2">No active orders right now.</p>
                 <button
-                  onClick={() => setViewMode("today")}
-                  className="text-sm text-blue-400 hover:text-blue-300"
+                  onClick={() => setViewMode("pending")}
+                  className="text-sm text-yellow-400 hover:text-yellow-300"
                 >
-                  View today&apos;s completed orders →
+                  View pending payments →
                 </button>
               </Card>
             ) : (
@@ -474,6 +527,7 @@ export function StaffDashboard() {
                     key={order.id}
                     order={order}
                     now={now}
+                    role={role!}
                     onUpdate={updateItem}
                   />
                 ))}
@@ -485,22 +539,67 @@ export function StaffDashboard() {
         {viewMode === "revenue" && (
           <>
             <p className="text-sm text-zinc-400 mb-4">
-              Today&apos;s revenue from served items only (out-of-stock items excluded)
+              Today&apos;s revenue from paid orders only (served items, out-of-stock excluded)
             </p>
             <Card className="p-5 mb-4">
               <p className="text-sm text-zinc-500">Total Revenue</p>
               <p className="text-3xl font-bold text-emerald-400">{formatCurrency(stats?.revenue ?? 0)}</p>
-              <p className="text-xs text-zinc-500 mt-1">{todayOrders.length} orders today</p>
+              <p className="text-xs text-zinc-500 mt-1">{stats?.completedOrders ?? 0} paid orders today</p>
             </Card>
             <div className="space-y-3">
-              {todayOrders.length === 0 ? (
-                <Card className="p-8 text-center text-zinc-400">No orders yet today</Card>
+              {completedOrders.length === 0 ? (
+                <Card className="p-8 text-center text-zinc-400">No paid orders yet today</Card>
               ) : (
-                todayOrders.map((order) => (
-                  <TodayOrderRow key={order.id} order={order} />
+                completedOrders.map((order) => (
+                  <CompletedOrderRow key={order.id} order={order} />
                 ))
               )}
             </div>
+          </>
+        )}
+
+        {viewMode === "pending" && (
+          <>
+            <p className="text-sm text-zinc-400 mb-4">
+              Served orders awaiting payment — mark paid once the customer settles the bill
+            </p>
+            {pendingOrders.length === 0 ? (
+              <Card className="p-12 text-center">
+                <Wallet className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+                <p className="text-zinc-400">No pending payments. All served orders are paid.</p>
+              </Card>
+            ) : (
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {pendingOrders.map((order) => (
+                  <PendingPaymentCard
+                    key={order.id}
+                    order={order}
+                    role={role!}
+                    onMarkPaid={markOrderPaid}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {viewMode === "completed" && (
+          <>
+            <p className="text-sm text-zinc-400 mb-4">
+              Today&apos;s completed orders — served and paid
+            </p>
+            {completedOrders.length === 0 ? (
+              <Card className="p-12 text-center">
+                <History className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+                <p className="text-zinc-400">No completed orders yet today.</p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {completedOrders.map((order) => (
+                  <CompletedOrderRow key={order.id} order={order} />
+                ))}
+              </div>
+            )}
           </>
         )}
 
@@ -523,6 +622,7 @@ export function StaffDashboard() {
                       key={order.id}
                       order={order}
                       now={now}
+                      role={role!}
                       onUpdate={updateItem}
                     />
                   ))}
@@ -684,25 +784,6 @@ export function StaffDashboard() {
           </>
         )}
 
-        {viewMode === "today" && (
-          <>
-            <p className="text-sm text-zinc-400 mb-4">
-              All orders from today — including served. Data is saved here for the full day.
-            </p>
-            {todayOrders.length === 0 ? (
-              <Card className="p-12 text-center">
-                <History className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-                <p className="text-zinc-400">No orders yet today.</p>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {todayOrders.map((order) => (
-                  <TodayOrderRow key={order.id} order={order} />
-                ))}
-              </div>
-            )}
-          </>
-        )}
       </main>
     </div>
   );
@@ -711,12 +792,20 @@ export function StaffDashboard() {
 function ActiveOrderCard({
   order,
   now,
+  role,
   onUpdate,
 }: {
   order: Order;
   now: number;
+  role: Role;
   onUpdate: (orderId: string, itemId: string, action: string) => void;
 }) {
+  const canStart = canPerformOrderAction(role, "prepare-item");
+  const canReady = canPerformOrderAction(role, "ready-item");
+  const canServe = canPerformOrderAction(role, "serve-item");
+  const canReject = canPerformOrderAction(role, "reject-item");
+  const canServeAll = canPerformOrderAction(role, "serve-all");
+
   return (
     <motion.div
       layout
@@ -775,31 +864,35 @@ function ActiveOrderCard({
                   </span>
                 )}
               </div>
-              {isOrderItemOpen(item.status) && (
+              {isOrderItemOpen(item.status) && (canStart || canReady || canServe || canReject) && (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex gap-1.5">
-                    {item.status === "PENDING" && (
+                    {canStart && item.status === "PENDING" && (
                       <Button size="sm" variant="secondary" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "prepare-item")}>
                         Start
                       </Button>
                     )}
-                    {(item.status === "PENDING" || item.status === "PREPARING") && (
+                    {canReady && (item.status === "PENDING" || item.status === "PREPARING") && (
                       <Button size="sm" variant="secondary" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "ready-item")}>
                         Ready
                       </Button>
                     )}
-                    <Button size="sm" variant="success" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "serve-item")}>
-                      <CheckCircle2 className="w-3 h-3" /> Serve
-                    </Button>
+                    {canServe && (
+                      <Button size="sm" variant="success" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "serve-item")}>
+                        <CheckCircle2 className="w-3 h-3" /> Serve
+                      </Button>
+                    )}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    className="w-full text-xs"
-                    onClick={() => onUpdate(order.id, item.id, "reject-item")}
-                  >
-                    <Ban className="w-3 h-3" /> Out of stock / Can&apos;t serve
-                  </Button>
+                  {canReject && (
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      className="w-full text-xs"
+                      onClick={() => onUpdate(order.id, item.id, "reject-item")}
+                    >
+                      <Ban className="w-3 h-3" /> Out of stock / Can&apos;t serve
+                    </Button>
+                  )}
                 </div>
               )}
               {item.status === "SERVED" && (
@@ -817,14 +910,88 @@ function ActiveOrderCard({
         })}
       </div>
 
-      <Button variant="primary" size="sm" className="w-full" onClick={() => onUpdate(order.id, "", "serve-all")}>
-        Mark All Served
-      </Button>
+      {canServeAll && (
+        <Button variant="primary" size="sm" className="w-full" onClick={() => onUpdate(order.id, "", "serve-all")}>
+          Mark All Served
+        </Button>
+      )}
     </motion.div>
   );
 }
 
-function TodayOrderRow({ order }: { order: Order }) {
+function PendingPaymentCard({
+  order,
+  role,
+  onMarkPaid,
+}: {
+  order: Order;
+  role: Role;
+  onMarkPaid: (orderId: string) => void;
+}) {
+  const total =
+    order.total ??
+    sumOrderRevenue(
+      order.items.map((i) => ({
+        unitPrice: i.unitPrice ?? 0,
+        quantity: i.quantity,
+        status: i.status,
+      }))
+    );
+  const canMarkPaid = canPerformOrderAction(role, "mark-paid");
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="rounded-2xl border border-yellow-500/30 bg-yellow-500/5 p-5 backdrop-blur-xl"
+    >
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <span className="text-2xl font-bold">T{order.table.number}</span>
+          <p className="text-sm text-zinc-400">
+            #{order.orderNumber}
+            {order.customerName && ` · ${order.customerName}`}
+          </p>
+        </div>
+        <Badge className="bg-yellow-500/15 text-yellow-400 border-yellow-500/30">Awaiting payment</Badge>
+      </div>
+
+      <div className="space-y-1 mb-4">
+        {order.items.map((item) => (
+          <div key={item.id} className="flex justify-between text-sm">
+            <span className={item.status === "UNAVAILABLE" ? "text-zinc-500" : "text-zinc-300"}>
+              {item.quantity}x {item.itemName}
+            </span>
+            <span className="text-zinc-400">
+              {item.status === "UNAVAILABLE"
+                ? formatCurrency(0)
+                : formatCurrency((item.unitPrice ?? 0) * item.quantity)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
+        <span className="text-sm text-zinc-400">Bill total</span>
+        <span className="text-lg font-bold text-yellow-400">{formatCurrency(total)}</span>
+      </div>
+
+      {canMarkPaid && (
+        <Button
+          variant="success"
+          size="sm"
+          className="w-full bg-emerald-600 hover:bg-emerald-500"
+          onClick={() => onMarkPaid(order.id)}
+        >
+          <CircleDollarSign className="w-4 h-4" /> Mark Paid
+        </Button>
+      )}
+    </motion.div>
+  );
+}
+
+function CompletedOrderRow({ order }: { order: Order }) {
   const total =
     order.total ??
     sumOrderRevenue(
@@ -843,10 +1010,15 @@ function TodayOrderRow({ order }: { order: Order }) {
             <span className="text-lg font-bold">Table {order.table.number}</span>
             <span className="text-zinc-500">#{order.orderNumber}</span>
             <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+            {order.paidAt && (
+              <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30">Paid</Badge>
+            )}
           </div>
           <p className="text-xs text-zinc-500 mb-3">
             {new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             {order.customerName && ` · ${order.customerName}`}
+            {order.paidAt &&
+              ` · Paid ${new Date(order.paidAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
           </p>
           <div className="space-y-1">
             {order.items.map((item) => {
@@ -895,7 +1067,7 @@ function TodayOrderRow({ order }: { order: Order }) {
           </div>
         </div>
         <div className="text-right sm:pl-4 sm:border-l sm:border-white/10">
-          <p className="text-xs text-zinc-500">Revenue (served only)</p>
+          <p className="text-xs text-zinc-500">Bill total</p>
           <p className="text-xl font-bold text-emerald-400">{formatCurrency(total)}</p>
         </div>
       </div>

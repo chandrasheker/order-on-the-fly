@@ -41,6 +41,11 @@ model Restaurant {
   rewardTeaLabel        String         @default("Free Masala Chai (next visit)")
   rewardBeverageLabel   String         @default("Free Beverage (next visit)")
   defaultMaxSessions  Int            @default(2)
+  ownerSlots            Int            @default(1)
+  managerSlots          Int            @default(2)
+  cookSlots             Int            @default(3)
+  serverSlots           Int            @default(4)
+  staffConfigured       Boolean        @default(false)
   createdAt             DateTime       @default(now())
   users                 User[]
   tables                Table[]
@@ -57,9 +62,12 @@ model User {
   passwordHash String
   name         String
   role         Role
+  slotKey      String?
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   createdAt    DateTime   @default(now())
+
+  @@unique([restaurantId, slotKey])
 }
 
 model PlatformAdmin {
@@ -137,6 +145,7 @@ model Order {
   items          OrderItem[]
   alarmTriggered Boolean     @default(false)
   rewardSpun     Boolean     @default(false)
+  paidAt         DateTime?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   date           String

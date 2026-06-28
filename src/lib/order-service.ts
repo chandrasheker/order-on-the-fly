@@ -146,6 +146,41 @@ export async function getTodayOrders(restaurantId: string) {
   });
 }
 
+export async function getPendingPaymentOrders(restaurantId: string) {
+  return prisma.order.findMany({
+    where: {
+      restaurantId,
+      date: todayDateString(),
+      status: "SERVED",
+      paidAt: null,
+    },
+    include: {
+      table: true,
+      items: {
+        include: { menuItem: { include: { category: true } } },
+        orderBy: { expectedReadyAt: "asc" },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function getCompletedOrders(restaurantId: string) {
+  return prisma.order.findMany({
+    where: {
+      restaurantId,
+      date: todayDateString(),
+      status: "SERVED",
+      paidAt: { not: null },
+    },
+    include: {
+      table: true,
+      items: true,
+    },
+    orderBy: { paidAt: "desc" },
+  });
+}
+
 export async function getMissedTimelineItems(restaurantId: string) {
   await checkOverdueItems(restaurantId);
 

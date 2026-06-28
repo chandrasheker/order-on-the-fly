@@ -8,6 +8,7 @@ import {
   syncOrderStatus,
 } from "@/lib/order-service";
 import { isOrderItemOpen } from "@/lib/utils";
+import { canPerformOrderAction } from "@/lib/staff-permissions";
 
 export async function PATCH(
   req: NextRequest,
@@ -58,6 +59,41 @@ export async function PATCH(
 
   if (order.restaurantId !== session.restaurantId) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
+
+  const staffActions = [
+    "serve-item",
+    "reject-item",
+    "prepare-item",
+    "ready-item",
+    "serve-all",
+    "mark-paid",
+  ] as const;
+
+  if (staffActions.includes(action as (typeof staffActions)[number])) {
+    if (!canPerformOrderAction(session.role, action)) {
+      return NextResponse.json({ error: "Action not allowed for your role" }, { status: 403 });
+    }
+  }
+
+  if (action === "mark-paid") {
+    if (order.status !== "SERVED") {
+      return NextResponse.json(
+        { error: "Order must be fully served before marking paid" },
+        { status: 400 }
+      );
+    }
+    if (order.paidAt) {
+      return NextResponse.json({ error: "Order already marked paid" }, { status: 400 });
+    }
+
+    await prisma.order.update({
+      where: { id },
+      data: { paidAt: new Date() },
+    });
+
+    logInfo("api:orders/[id]", "Order marked paid", { orderId: id });
+    return NextResponse.json({ success: true });
   }
 
   if (action === "serve-item" && itemId) {

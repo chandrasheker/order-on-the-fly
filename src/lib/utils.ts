@@ -104,6 +104,15 @@ export function sumOrderRevenue(
   return items.reduce((sum, item) => sum + orderItemLineTotal(item), 0);
 }
 
+/** Revenue counts only when order is marked paid. */
+export function sumPaidOrderRevenue(
+  order: { paidAt?: Date | string | null },
+  items: Array<{ unitPrice: number; quantity: number; status: string }>
+) {
+  if (!order.paidAt) return 0;
+  return sumOrderRevenue(items);
+}
+
 export function sumBillableTotal(
   items: Array<{ unitPrice: number; quantity: number; status: string }>
 ) {
