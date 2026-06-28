@@ -1,11 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import {
-  dismissOutOfStockOrder,
-  readDismissedOutOfStockOrderIds,
-} from "@/lib/oos-notice-dismiss";
 import { isOrderFullyOutOfStock, orderUnavailableItems } from "@/lib/utils";
 
 type OrderItem = {
@@ -18,27 +14,42 @@ type OrderItem = {
 type Order = {
   id: string;
   orderNumber: number;
+  oosNoticeDismissedAt?: string | null;
   items: OrderItem[];
 };
 
 type Props = {
   orders: Order[];
   tableToken: string;
-  refreshTick: number;
-  onDismiss: () => void;
+  onDismissed: () => void;
 };
 
-export function OutOfStockNotice({ orders, tableToken, refreshTick, onDismiss }: Props) {
-  const fullyOutOfStockOrders = useMemo(
-    () => orders.filter((order) => isOrderFullyOutOfStock(order.items)),
+export function OutOfStockNotice({ orders, tableToken, onDismissed }: Props) {
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
+
+  const visibleOrders = useMemo(
+    () =>
+      orders.filter(
+        (order) => isOrderFullyOutOfStock(order.items) && !order.oosNoticeDismissedAt,
+      ),
     [orders],
   );
 
-  const visibleOrders = useMemo(() => {
-    void refreshTick;
-    const dismissed = new Set(readDismissedOutOfStockOrderIds(tableToken));
-    return fullyOutOfStockOrders.filter((order) => !dismissed.has(order.id));
-  }, [fullyOutOfStockOrders, refreshTick, tableToken]);
+  const dismissNotice = async (orderId: string) => {
+    setDismissingId(orderId);
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dismiss-oos-notice", tableToken }),
+      });
+      if (res.ok) {
+        onDismissed();
+      }
+    } finally {
+      setDismissingId(null);
+    }
+  };
 
   if (visibleOrders.length === 0) return null;
 
@@ -70,13 +81,11 @@ export function OutOfStockNotice({ orders, tableToken, refreshTick, onDismiss }:
                 </ul>
                 <button
                   type="button"
-                  onClick={() => {
-                    dismissOutOfStockOrder(tableToken, order.id);
-                    onDismiss();
-                  }}
-                  className="mt-3 text-sm font-medium text-amber-300 underline underline-offset-2 hover:text-amber-200"
+                  disabled={dismissingId === order.id}
+                  onClick={() => void dismissNotice(order.id)}
+                  className="mt-3 text-sm font-medium text-amber-300 underline underline-offset-2 hover:text-amber-200 disabled:opacity-50"
                 >
-                  Dismiss
+                  {dismissingId === order.id ? "Dismissing..." : "Dismiss"}
                 </button>
               </div>
             </div>

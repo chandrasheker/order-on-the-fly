@@ -149,6 +149,7 @@ model Order {
   rewardSpun     Boolean     @default(false)
   paidAt         DateTime?
   paymentRequestedAt DateTime?
+  oosNoticeDismissedAt DateTime?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   date           String

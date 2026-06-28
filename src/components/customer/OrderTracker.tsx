@@ -11,7 +11,6 @@ import {
   shouldShowCustomerPaymentOrder,
   customerOrderBillTotal,
 } from "@/lib/utils";
-import { dismissOutOfStockOrder, isOutOfStockNoticeDismissed } from "@/lib/oos-notice-dismiss";
 import { PaymentModal } from "@/components/customer/PaymentModal";
 import { Button, Badge } from "@/components/ui";
 import {
@@ -42,6 +41,7 @@ interface Order {
   alarmTriggered: boolean;
   paidAt?: string | null;
   paymentRequestedAt?: string | null;
+  oosNoticeDismissedAt?: string | null;
   items: OrderItem[];
   createdAt: string;
 }
@@ -64,7 +64,7 @@ export function OrderTracker({
   const [refreshing, setRefreshing] = useState(false);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payModalOrder, setPayModalOrder] = useState<Order | null>(null);
-  const [oosDismissTick, setOosDismissTick] = useState(0);
+  const [dismissingOosId, setDismissingOosId] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -123,6 +123,22 @@ export function OrderTracker({
     setPayModalOrder(order);
   };
 
+  const dismissOosNotice = async (orderId: string) => {
+    setDismissingOosId(orderId);
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dismiss-oos-notice", tableToken }),
+      });
+      if (res.ok) {
+        await onRefresh();
+      }
+    } finally {
+      setDismissingOosId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -139,7 +155,6 @@ export function OrderTracker({
       </div>
 
       {activeOrders.map((order) => {
-        void oosDismissTick;
         const pendingItems = order.items.filter((i) => isOrderItemOpen(i.status));
         const unavailableItems = order.items.filter((i) => i.status === "UNAVAILABLE");
         const servedItems = order.items.filter((i) => i.status === "SERVED");
@@ -175,7 +190,7 @@ export function OrderTracker({
             animate={{ opacity: 1, y: 0 }}
             className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl p-5"
           >
-            {unavailableItems.length > 0 && !isOutOfStockNoticeDismissed(tableToken, order.id) && (
+            {unavailableItems.length > 0 && !order.oosNoticeDismissedAt && (
               <div className="mb-4 p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-100 text-sm">
                 <p className="font-medium flex items-center gap-2">
                   <Ban className="w-4 h-4 shrink-0" />
@@ -198,13 +213,11 @@ export function OrderTracker({
                 </p>
                 <button
                   type="button"
-                  onClick={() => {
-                    dismissOutOfStockOrder(tableToken, order.id);
-                    setOosDismissTick((tick) => tick + 1);
-                  }}
-                  className="mt-2 text-xs font-medium text-amber-300 underline underline-offset-2 hover:text-amber-200"
+                  disabled={dismissingOosId === order.id}
+                  onClick={() => void dismissOosNotice(order.id)}
+                  className="mt-2 text-xs font-medium text-amber-300 underline underline-offset-2 hover:text-amber-200 disabled:opacity-50"
                 >
-                  Dismiss
+                  {dismissingOosId === order.id ? "Dismissing..." : "Dismiss"}
                 </button>
               </div>
             )}
