@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { todayDateString, sumOrderRevenue, formatCurrency } from "@/lib/utils";
+import { paymentQrExists } from "@/lib/payment-qr-storage";
 
 export async function isTablePaymentBlocked(tableId: string) {
   const pending = await prisma.order.findFirst({
@@ -60,7 +61,7 @@ export async function requestOrderPayment(orderId: string, tableToken: string) {
   });
 
   if (!existing) {
-    const hasQr = Boolean(order.restaurant.paymentQrUrl?.trim());
+    const hasQr = await paymentQrExists(order.restaurantId);
     await prisma.alert.create({
       data: {
         type: "PAYMENT",
@@ -78,6 +79,6 @@ export async function requestOrderPayment(orderId: string, tableToken: string) {
     ok: true as const,
     paymentRequestedAt,
     billTotal,
-    hasPaymentQr: Boolean(order.restaurant.paymentQrUrl?.trim()),
+    hasPaymentQr: await paymentQrExists(order.restaurantId),
   };
 }

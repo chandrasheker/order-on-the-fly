@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, canManageMenu } from "@/lib/auth";
+import { getPaymentQrPublicUrl, paymentQrExists, removePaymentQrFile } from "@/lib/payment-qr-storage";
 
 export async function GET() {
   const session = await requireSession(["OWNER", "MANAGER"]);
@@ -10,11 +11,15 @@ export async function GET() {
 
   const restaurant = await prisma.restaurant.findUnique({
     where: { id: session.restaurantId },
-    select: { paymentQrUrl: true },
+    select: { slug: true },
   });
 
+  const hasPaymentQr = await paymentQrExists(session.restaurantId);
+  const paymentQrUrl =
+    hasPaymentQr && restaurant?.slug ? getPaymentQrPublicUrl(restaurant.slug) : "";
+
   return NextResponse.json({
-    settings: { paymentQrUrl: restaurant?.paymentQrUrl ?? "" },
+    settings: { paymentQrUrl },
   });
 }
 
@@ -25,16 +30,15 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json();
-  const paymentQrUrl =
-    body.paymentQrUrl === null || body.paymentQrUrl === ""
-      ? null
-      : String(body.paymentQrUrl).trim() || null;
 
-  const updated = await prisma.restaurant.update({
-    where: { id: session.restaurantId },
-    data: { paymentQrUrl },
-    select: { paymentQrUrl: true },
-  });
+  if (body.paymentQrUrl === null || body.paymentQrUrl === "") {
+    await removePaymentQrFile(session.restaurantId);
+    await prisma.restaurant.update({
+      where: { id: session.restaurantId },
+      data: { paymentQrUrl: null },
+    });
+    return NextResponse.json({ settings: { paymentQrUrl: "" } });
+  }
 
-  return NextResponse.json({ settings: updated });
+  return NextResponse.json({ error: "Use file upload to set payment QR." }, { status: 400 });
 }

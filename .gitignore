@@ -47,6 +47,9 @@ next-env.d.ts
 *.db-journal
 prisma/dev.db
 
+# runtime uploads
+/data/payments/
+
 # runtime logs and crash dumps (kept locally for debugging)
 /logs/
 !/logs/.gitkeep
