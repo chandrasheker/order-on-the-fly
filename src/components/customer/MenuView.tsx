@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Minus, ShoppingBag, Flame, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { Plus, Minus, ShoppingBag, Flame, ChevronLeft, ChevronRight, ChevronDown, Search, X } from "lucide-react";
 import { formatCurrency, getPrepTimeLabel, cn } from "@/lib/utils";
 import { Button, Badge, Input } from "@/components/ui";
 import { useCartStore } from "@/store/cart";
@@ -110,6 +110,9 @@ export function MenuView({
 }) {
   const [activeCategory, setActiveCategory] = useState(categories[0]?.slug || "");
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedSlugs, setExpandedSlugs] = useState<Set<string>>(
+    () => new Set(categories.map((c) => c.slug))
+  );
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -142,6 +145,7 @@ export function MenuView({
 
   const jumpToCategory = (slug: string) => {
     setActiveCategory(slug);
+    setExpandedSlugs((prev) => new Set(prev).add(slug));
     const section = sectionRefs.current[slug];
     if (section) {
       const top = section.getBoundingClientRect().top + window.scrollY - 72;
@@ -209,6 +213,32 @@ export function MenuView({
         }))
         .filter((cat) => cat.items.length > 0)
     : categories;
+
+  useEffect(() => {
+    if (!normalizedQuery) return;
+    const slugs = categories
+      .filter((cat) =>
+        cat.items.some(
+          (item) =>
+            item.name.toLowerCase().includes(normalizedQuery) ||
+            item.description?.toLowerCase().includes(normalizedQuery)
+        )
+      )
+      .map((c) => c.slug);
+    setExpandedSlugs(new Set(slugs));
+  }, [normalizedQuery, categories]);
+
+  const toggleCategory = (slug: string) => {
+    setExpandedSlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  };
+
+  const expandAll = () => setExpandedSlugs(new Set(categories.map((c) => c.slug)));
+  const collapseAll = () => setExpandedSlugs(new Set());
 
   return (
     <div className="pb-32">
@@ -293,8 +323,27 @@ export function MenuView({
         <p className="text-center text-xs text-zinc-500 px-4">
           {isSearching
             ? `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`
-            : "Tap a category or scroll down to browse the full menu"}
+            : "Tap category tabs to jump · tap headers to expand or collapse"}
         </p>
+        {!isSearching && categories.length > 1 && (
+          <div className="flex justify-center gap-2 px-4">
+            <button
+              type="button"
+              onClick={expandAll}
+              className="text-xs text-orange-400 hover:text-orange-300"
+            >
+              Expand all
+            </button>
+            <span className="text-zinc-600">·</span>
+            <button
+              type="button"
+              onClick={collapseAll}
+              className="text-xs text-zinc-400 hover:text-zinc-300"
+            >
+              Collapse all
+            </button>
+          </div>
+        )}
       </div>
 
       {/* All categories — vertical scroll */}
@@ -305,7 +354,9 @@ export function MenuView({
             <p>No items match &ldquo;{searchQuery}&rdquo;</p>
           </div>
         )}
-        {visibleCategories.map((cat) => (
+        {visibleCategories.map((cat) => {
+          const isExpanded = expandedSlugs.has(cat.slug);
+          return (
           <section
             key={cat.slug}
             ref={(el) => {
@@ -314,35 +365,59 @@ export function MenuView({
             id={`menu-${cat.slug}`}
             className="scroll-mt-20"
           >
-            <h2 className="text-lg font-bold text-white mb-3 flex items-center gap-2 sticky top-[4.5rem] z-10 py-2 bg-[#0f0f1a]/90 backdrop-blur-sm -mx-1 px-1">
+            <button
+              type="button"
+              onClick={() => toggleCategory(cat.slug)}
+              className="w-full text-left text-lg font-bold text-white mb-3 flex items-center gap-2 sticky top-[4.5rem] z-10 py-2 bg-[#0f0f1a]/90 backdrop-blur-sm -mx-1 px-1 rounded-lg hover:bg-white/5 transition-colors"
+              aria-expanded={isExpanded}
+            >
               <span className="text-xl">{cat.icon}</span>
-              {cat.name}
+              <span className="flex-1">{cat.name}</span>
               <span className="text-xs font-normal text-zinc-500">({cat.items.length})</span>
-            </h2>
-            <div className="space-y-3">
-              {cat.items.map((item) => {
-                const inCart = items.find((i) => i.menuItemId === item.id);
-                return (
-                  <MenuItemCard
-                    key={item.id}
-                    item={item}
-                    inCart={inCart}
-                    onAdd={() => {
-                      if (!canOrder) return;
-                      addItem({
-                        menuItemId: item.id,
-                        name: item.name,
-                        price: item.price,
-                        prepTimeMinutes: item.prepTimeMinutes,
-                      });
-                    }}
-                    onUpdateQty={(qty) => canOrder && updateQuantity(item.id, qty)}
-                  />
-                );
-              })}
-            </div>
+              <ChevronDown
+                className={cn(
+                  "w-5 h-5 text-zinc-400 shrink-0 transition-transform duration-200",
+                  isExpanded && "rotate-180"
+                )}
+              />
+            </button>
+            <AnimatePresence initial={false}>
+              {isExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-3 pb-2">
+                    {cat.items.map((item) => {
+                      const inCart = items.find((i) => i.menuItemId === item.id);
+                      return (
+                        <MenuItemCard
+                          key={item.id}
+                          item={item}
+                          inCart={inCart}
+                          onAdd={() => {
+                            if (!canOrder) return;
+                            addItem({
+                              menuItemId: item.id,
+                              name: item.name,
+                              price: item.price,
+                              prepTimeMinutes: item.prepTimeMinutes,
+                            });
+                          }}
+                          onUpdateQty={(qty) => canOrder && updateQuantity(item.id, qty)}
+                        />
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </section>
-        ))}
+        );
+        })}
       </div>
 
       {/* Floating cart */}
