@@ -1,3 +1,6 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 const CONTACT_NAME = "ChandraShekhar";
@@ -6,6 +9,24 @@ const CONTACT_TEL = "+918904685843";
 
 export function SiteFooter() {
   const year = new Date().getFullYear();
+  const [contactVisible, setContactVisible] = useState(false);
+
+  const revealContact = useCallback(() => {
+    setContactVisible(true);
+  }, []);
+
+  useEffect(() => {
+    if (contactVisible) return;
+
+    const onScroll = () => {
+      if (window.scrollY > 24) {
+        setContactVisible(true);
+      }
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [contactVisible]);
 
   return (
     <footer
@@ -25,20 +46,38 @@ export function SiteFooter() {
               Powered by{" "}
               <span className="text-zinc-300 font-medium">DVAD Tech</span>
             </p>
-            <span className="hidden sm:inline text-zinc-700" aria-hidden>
-              |
-            </span>
-            <p>
-              Contact:{" "}
-              <span className="text-zinc-400">{CONTACT_NAME}</span>
-              {" · "}
-              <Link
-                href={`tel:${CONTACT_TEL}`}
-                className="text-orange-400/90 hover:text-orange-300 transition-colors whitespace-nowrap"
-              >
-                {CONTACT_PHONE}
-              </Link>
-            </p>
+
+            {!contactVisible ? (
+              <>
+                <span className="hidden sm:inline text-zinc-700" aria-hidden>
+                  |
+                </span>
+                <button
+                  type="button"
+                  onClick={revealContact}
+                  className="text-orange-400/90 hover:text-orange-300 transition-colors underline-offset-2 hover:underline"
+                >
+                  Contact
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="hidden sm:inline text-zinc-700" aria-hidden>
+                  |
+                </span>
+                <p className="transition-opacity duration-300">
+                  Contact:{" "}
+                  <span className="text-zinc-400">{CONTACT_NAME}</span>
+                  {" · "}
+                  <Link
+                    href={`tel:${CONTACT_TEL}`}
+                    className="text-orange-400/90 hover:text-orange-300 transition-colors whitespace-nowrap"
+                  >
+                    {CONTACT_PHONE}
+                  </Link>
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
