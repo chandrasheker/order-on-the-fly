@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { MenuView } from "@/components/customer/MenuView";
 import { OrderTracker } from "@/components/customer/OrderTracker";
 import { WaitingGames } from "@/components/customer/WaitingGames";
 import { FeedbackButton } from "@/components/customer/FeedbackButton";
 import { Input, Button, Spinner } from "@/components/ui";
 import { useCartStore } from "@/store/cart";
-import { shouldShowCustomerOrder, shouldShowCustomerPaymentOrder } from "@/lib/utils";
+import { shouldShowCustomerOrder, shouldShowCustomerPaymentOrder, customerOrderBillTotal } from "@/lib/utils";
 import { useTableSession } from "@/hooks/useTableSession";
-import { UtensilsCrossed, Sparkles, Users } from "lucide-react";
+import { UtensilsCrossed, Sparkles, Users, Heart } from "lucide-react";
 
 interface Props {
   slug: string;
@@ -67,6 +67,9 @@ export function OrderPageClient({ slug, token }: Props) {
   const [showNameInput, setShowNameInput] = useState(true);
   const [orderError, setOrderError] = useState("");
   const [paymentBlocked, setPaymentBlocked] = useState(false);
+  const [showThankYou, setShowThankYou] = useState(false);
+  const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
+  const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { customerName, setCustomerName, items, clearCart } = useCartStore();
   const tableSession = useTableSession(token);
 
@@ -95,6 +98,55 @@ export function OrderPageClient({ slug, token }: Props) {
     fetchMenu();
     fetchOrders();
   }, [fetchMenu, fetchOrders]);
+
+  useEffect(() => {
+    if (!paymentBlocked) return;
+    const interval = setInterval(fetchOrders, 3000);
+    return () => clearInterval(interval);
+  }, [paymentBlocked, fetchOrders]);
+
+  useEffect(() => {
+    let paymentConfirmed = false;
+
+    for (const order of orders) {
+      const isPaid = Boolean(order.paidAt);
+      const wasTracked = trackedUnpaidOrderIds.current.has(order.id);
+      const isUnpaidBill =
+        order.status === "SERVED" &&
+        !isPaid &&
+        customerOrderBillTotal(order.items) > 0;
+
+      if (wasTracked && isPaid) {
+        paymentConfirmed = true;
+      }
+
+      if (isUnpaidBill) {
+        trackedUnpaidOrderIds.current.add(order.id);
+      } else if (isPaid) {
+        trackedUnpaidOrderIds.current.delete(order.id);
+      }
+    }
+
+    if (paymentConfirmed && !showThankYou) {
+      setShowThankYou(true);
+      setPaymentBlocked(false);
+      setLastOrder(null);
+
+      if (thankYouTimerRef.current) clearTimeout(thankYouTimerRef.current);
+      thankYouTimerRef.current = setTimeout(() => {
+        setShowThankYou(false);
+        void fetchOrders();
+        void fetchMenu();
+        document.getElementById("customer-menu")?.scrollIntoView({ behavior: "smooth" });
+      }, 5000);
+    }
+  }, [orders, showThankYou, fetchOrders, fetchMenu]);
+
+  useEffect(() => {
+    return () => {
+      if (thankYouTimerRef.current) clearTimeout(thankYouTimerRef.current);
+    };
+  }, []);
 
   const placeOrder = async () => {
     if (!items.length || !tableSession.active || !tableSession.sessionKey) return;
@@ -176,6 +228,33 @@ export function OrderPageClient({ slug, token }: Props) {
     <div className="min-h-screen text-white relative">
       <OrderPageBackground imageUrl={data.restaurant.backgroundImageUrl} />
 
+      <AnimatePresence>
+        {showThankYou && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#0f0f1a]/95 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="max-w-sm w-full text-center rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/20 to-orange-500/10 p-8 shadow-2xl"
+            >
+              <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
+                <Heart className="w-8 h-8 text-emerald-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">Thank you!</h2>
+              <p className="text-emerald-300 font-medium mb-1">Payment confirmed</p>
+              <p className="text-zinc-400 text-sm">
+                We hope you enjoyed dining at {data.restaurant.name}. Please visit again!
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-orange-600/15 via-transparent to-purple-600/10" />
         <div className="relative px-4 pt-8 pb-6 max-w-lg mx-auto text-center">
@@ -251,7 +330,7 @@ export function OrderPageClient({ slug, token }: Props) {
           <p className="text-sm text-red-400 text-center">{orderError}</p>
         )}
 
-        {hasVisibleOrders && (
+        {hasVisibleOrders && !showThankYou && (
           <OrderTracker
             orders={orders}
             tableToken={token}
@@ -261,7 +340,7 @@ export function OrderPageClient({ slug, token }: Props) {
           />
         )}
 
-        {(hasVisibleOrders || lastOrder) && canOrder && (
+        {(hasVisibleOrders || lastOrder) && canOrder && !showThankYou && (
           <WaitingGames
             tableToken={token}
             customerName={customerName}
@@ -275,12 +354,14 @@ export function OrderPageClient({ slug, token }: Props) {
           />
         )}
 
-        <MenuView
-          categories={data.categories}
-          onOrder={placeOrder}
-          ordering={ordering}
-          canOrder={canOrder}
-        />
+        <div id="customer-menu">
+          <MenuView
+            categories={data.categories}
+            onOrder={placeOrder}
+            ordering={ordering}
+            canOrder={canOrder && !showThankYou}
+          />
+        </div>
       </div>
 
       <FeedbackButton
