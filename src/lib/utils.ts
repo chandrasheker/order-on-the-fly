@@ -120,7 +120,7 @@ export function sumBillableTotal(
 }
 
 export function shouldShowCustomerOrder(items: Array<{ status: string }>) {
-  return items.some((i) => i.status !== "SERVED");
+  return items.some((i) => isOrderItemOpen(i.status));
 }
 
 export function getRemainingSeconds(expectedReadyAt: string | Date) {
