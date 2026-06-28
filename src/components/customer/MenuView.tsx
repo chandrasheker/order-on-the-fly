@@ -2,9 +2,9 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Minus, ShoppingBag, Flame, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Minus, ShoppingBag, Flame, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { formatCurrency, getPrepTimeLabel, cn } from "@/lib/utils";
-import { Button, Badge } from "@/components/ui";
+import { Button, Badge, Input } from "@/components/ui";
 import { useCartStore } from "@/store/cart";
 
 interface MenuItem {
@@ -109,6 +109,7 @@ export function MenuView({
   canOrder?: boolean;
 }) {
   const [activeCategory, setActiveCategory] = useState(categories[0]?.slug || "");
+  const [searchQuery, setSearchQuery] = useState("");
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -181,10 +182,61 @@ export function MenuView({
     };
   }, [categories]);
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const isSearching = normalizedQuery.length > 0;
+
+  const searchResults = isSearching
+    ? categories.flatMap((cat) =>
+        cat.items
+          .filter(
+            (item) =>
+              item.name.toLowerCase().includes(normalizedQuery) ||
+              item.description?.toLowerCase().includes(normalizedQuery)
+          )
+          .map((item) => ({ item, category: cat }))
+      )
+    : [];
+
+  const visibleCategories = isSearching
+    ? categories
+        .map((cat) => ({
+          ...cat,
+          items: cat.items.filter(
+            (item) =>
+              item.name.toLowerCase().includes(normalizedQuery) ||
+              item.description?.toLowerCase().includes(normalizedQuery)
+          ),
+        }))
+        .filter((cat) => cat.items.length > 0)
+    : categories;
+
   return (
     <div className="pb-32">
       {/* Sticky category jump nav */}
-      <div className="sticky top-0 z-20 -mx-4 px-2 py-2 bg-[#0f0f1a]/95 backdrop-blur-xl border-b border-white/5">
+      <div className="sticky top-0 z-20 -mx-4 px-2 py-2 bg-[#0f0f1a]/95 backdrop-blur-xl border-b border-white/5 space-y-2">
+        <div className="relative px-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+          <Input
+            type="search"
+            placeholder="Search menu items..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 pr-9"
+            aria-label="Search menu items"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+              aria-label="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {!isSearching && (
         <div className="relative flex items-center">
           {canScrollLeft && (
             <button
@@ -237,14 +289,23 @@ export function MenuView({
             </button>
           )}
         </div>
-        <p className="text-center text-xs text-zinc-500 mt-1 px-4">
-          Tap a category or scroll down to browse the full menu
+        )}
+        <p className="text-center text-xs text-zinc-500 px-4">
+          {isSearching
+            ? `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`
+            : "Tap a category or scroll down to browse the full menu"}
         </p>
       </div>
 
       {/* All categories — vertical scroll */}
       <div className="mt-5 space-y-8">
-        {categories.map((cat) => (
+        {isSearching && searchResults.length === 0 && (
+          <div className="text-center py-12 text-zinc-500">
+            <Search className="w-10 h-10 mx-auto mb-3 opacity-40" />
+            <p>No items match &ldquo;{searchQuery}&rdquo;</p>
+          </div>
+        )}
+        {visibleCategories.map((cat) => (
           <section
             key={cat.slug}
             ref={(el) => {

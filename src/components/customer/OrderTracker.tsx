@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { formatCountdown, getRemainingSeconds } from "@/lib/utils";
+import { formatCountdown, getRemainingSeconds, isOrderItemOpen } from "@/lib/utils";
 import { Button, Badge } from "@/components/ui";
 import { Bell, Clock, CheckCircle2, AlertTriangle, RefreshCw } from "lucide-react";
 
@@ -26,7 +26,7 @@ interface Order {
 }
 
 function hasPendingItems(order: Order) {
-  return order.items.some((i) => i.status !== "SERVED");
+  return order.items.some((i) => isOrderItemOpen(i.status));
 }
 
 export function OrderTracker({
@@ -88,7 +88,7 @@ export function OrderTracker({
       </div>
 
       {visibleOrders.map((order) => {
-        const pendingItems = order.items.filter((i) => i.status !== "SERVED");
+        const pendingItems = order.items.filter((i) => isOrderItemOpen(i.status));
         const maxExpected = pendingItems.reduce((max, item) => {
           const t = new Date(item.expectedReadyAt).getTime();
           return t > max ? t : max;
@@ -145,13 +145,15 @@ export function OrderTracker({
             <div className="space-y-2 mb-4">
               {order.items.map((item) => {
                 const isServed = item.status === "SERVED";
+                const isUnavailable = item.status === "UNAVAILABLE";
+                const isDone = isServed || isUnavailable;
                 const itemRemaining = getRemainingSeconds(item.expectedReadyAt);
 
                 return (
                   <div
                     key={item.id}
                     className={`flex items-center justify-between py-2 px-3 rounded-xl transition-all ${
-                      isServed
+                      isDone
                         ? "bg-black/50 border border-white/5 opacity-50"
                         : "bg-white/10 border border-orange-500/25 shadow-sm shadow-orange-500/10"
                     }`}
@@ -159,6 +161,8 @@ export function OrderTracker({
                     <div className="flex items-center gap-2 min-w-0">
                       {isServed ? (
                         <CheckCircle2 className="w-4 h-4 text-zinc-500 shrink-0" />
+                      ) : isUnavailable ? (
+                        <AlertTriangle className="w-4 h-4 text-zinc-500 shrink-0" />
                       ) : item.isOverdue ? (
                         <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
                       ) : (
@@ -166,7 +170,7 @@ export function OrderTracker({
                       )}
                       <span
                         className={`text-sm truncate ${
-                          isServed ? "text-zinc-500 line-through" : "text-white font-medium"
+                          isDone ? "text-zinc-500 line-through" : "text-white font-medium"
                         }`}
                       >
                         {item.quantity}x {item.itemName}
@@ -174,11 +178,13 @@ export function OrderTracker({
                     </div>
                     <span
                       className={`text-xs shrink-0 ml-2 ${
-                        isServed ? "text-zinc-600" : "text-orange-300 font-medium"
+                        isDone ? "text-zinc-600" : "text-orange-300 font-medium"
                       }`}
                     >
                       {isServed
                         ? "Served"
+                        : isUnavailable
+                        ? "Unavailable"
                         : item.isOverdue
                         ? "Delayed"
                         : itemRemaining > 0

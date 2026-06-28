@@ -17,9 +17,11 @@ import {
   History,
   Gift,
   TimerOff,
+  X,
+  Ban,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
-import { formatCurrency, formatCountdown, getStatusColor, cn } from "@/lib/utils";
+import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -88,7 +90,7 @@ interface MissedSummary {
   avgMinutesLate: number;
 }
 
-type ViewMode = "active" | "today" | "revenue" | "overdue" | "missed";
+type ViewMode = "active" | "today" | "revenue" | "overdue" | "missed" | "alerts";
 type ItemFilter = "all" | "overdue" | "alarm";
 
 export function StaffDashboard() {
@@ -159,6 +161,19 @@ export function StaffDashboard() {
     fetchData();
   };
 
+  const dismissAlert = async (alertId: string) => {
+    await fetch("/api/alerts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alertIds: [alertId] }),
+    });
+    fetchData();
+  };
+
+  const openAlertsView = () => {
+    setViewMode("alerts");
+  };
+
   const dismissAlerts = async () => {
     await fetch("/api/alerts", {
       method: "PATCH",
@@ -182,10 +197,18 @@ export function StaffDashboard() {
   }
 
   const filteredActive = orders.filter((o) => {
-    if (itemFilter === "overdue") return o.items.some((i) => i.isOverdue && i.status !== "SERVED");
+    if (itemFilter === "overdue")
+      return o.items.some((i) => i.isOverdue && isOrderItemOpen(i.status));
     if (itemFilter === "alarm") return o.alarmTriggered;
     return true;
   });
+
+  const isItemActive = (status: string) => isOrderItemOpen(status);
+
+  const goToOverdueFromAlert = () => {
+    setViewMode("overdue");
+    setItemFilter("overdue");
+  };
 
   const isManager = user?.role === "OWNER" || user?.role === "MANAGER";
 
@@ -199,16 +222,23 @@ export function StaffDashboard() {
             exit={{ height: 0 }}
             className="bg-red-500/20 border-b border-red-500/30 overflow-hidden"
           >
-            <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-red-300 text-sm">
-                <Bell className="w-4 h-4 animate-bounce" />
-                <span className="font-medium">{alerts.length} alert{alerts.length > 1 ? "s" : ""}</span>
-                <span className="text-red-400/70 hidden sm:inline">— {alerts[0]?.message}</span>
+            <button
+              type="button"
+              onClick={openAlertsView}
+              className="w-full max-w-7xl mx-auto px-4 py-2 flex items-center justify-between text-left hover:bg-red-500/10 transition-colors"
+            >
+              <div className="flex items-center gap-2 text-red-300 text-sm min-w-0">
+                <Bell className="w-4 h-4 animate-bounce shrink-0" />
+                <span className="font-medium shrink-0">
+                  {alerts.length} alert{alerts.length > 1 ? "s" : ""}
+                </span>
+                <span className="text-red-400/70 truncate hidden sm:inline">
+                  — {alerts[0]?.message}
+                </span>
+                <span className="text-xs text-red-300/80 sm:hidden">Tap to view</span>
               </div>
-              <button onClick={dismissAlerts} className="text-xs text-red-300 hover:text-white">
-                Dismiss all
-              </button>
-            </div>
+              <span className="text-xs text-red-300 shrink-0 ml-2 hidden sm:inline">View all →</span>
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -422,7 +452,7 @@ export function StaffDashboard() {
             <p className="text-sm text-zinc-400 mb-4">
               Items that missed their prep time — needs attention now
             </p>
-            {orders.filter((o) => o.items.some((i) => i.isOverdue && i.status !== "SERVED")).length === 0 ? (
+            {orders.filter((o) => o.items.some((i) => i.isOverdue && isItemActive(i.status))).length === 0 ? (
               <Card className="p-12 text-center">
                 <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
                 <p className="text-zinc-400">No overdue items. All on track!</p>
@@ -430,7 +460,7 @@ export function StaffDashboard() {
             ) : (
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {orders
-                  .filter((o) => o.items.some((i) => i.isOverdue && i.status !== "SERVED"))
+                  .filter((o) => o.items.some((i) => i.isOverdue && isItemActive(i.status)))
                   .map((order) => (
                     <ActiveOrderCard
                       key={order.id}
@@ -522,6 +552,81 @@ export function StaffDashboard() {
           </>
         )}
 
+        {viewMode === "alerts" && (
+          <>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <p className="text-sm text-zinc-400">
+                Active alerts — overdue items and customer alarms
+              </p>
+              <div className="flex gap-2">
+                <Button size="sm" variant="secondary" onClick={goToOverdueFromAlert}>
+                  <AlertTriangle className="w-4 h-4" /> View overdue orders
+                </Button>
+                {alerts.length > 0 && (
+                  <Button size="sm" variant="secondary" onClick={dismissAlerts}>
+                    Dismiss all
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {alerts.length === 0 ? (
+              <Card className="p-12 text-center">
+                <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
+                <p className="text-zinc-400">No active alerts.</p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {alerts.map((alert) => (
+                  <Card
+                    key={alert.id}
+                    className={cn(
+                      "p-4",
+                      alert.type === "OVERDUE"
+                        ? "border-red-500/30"
+                        : "border-amber-500/30"
+                    )}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge
+                            className={
+                              alert.type === "OVERDUE"
+                                ? "bg-red-500/15 text-red-400 border-red-500/30"
+                                : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                            }
+                          >
+                            {alert.type === "OVERDUE" ? "Overdue" : "Alarm"}
+                          </Badge>
+                          <span className="text-sm text-zinc-500">Table {alert.tableNumber}</span>
+                        </div>
+                        <p className="font-medium text-white">{alert.message}</p>
+                        <p className="text-xs text-zinc-500 mt-1">
+                          {new Date(alert.createdAt).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        {alert.type === "OVERDUE" && (
+                          <Button size="sm" variant="secondary" onClick={goToOverdueFromAlert}>
+                            View order
+                          </Button>
+                        )}
+                        <Button size="sm" variant="secondary" onClick={() => dismissAlert(alert.id)}>
+                          <X className="w-3.5 h-3.5" /> Dismiss
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
         {viewMode === "today" && (
           <>
             <p className="text-sm text-zinc-400 mb-4">
@@ -564,7 +669,7 @@ function ActiveOrderCard({
         "rounded-2xl border p-5 backdrop-blur-xl",
         order.alarmTriggered
           ? "border-red-500/50 bg-red-500/10 animate-pulse"
-          : order.items.some((i) => i.isOverdue && i.status !== "SERVED")
+          : order.items.some((i) => i.isOverdue && isOrderItemOpen(i.status))
           ? "border-amber-500/30 bg-amber-500/5"
           : "border-white/10 bg-white/5"
       )}
@@ -598,7 +703,7 @@ function ActiveOrderCard({
               key={item.id}
               className={cn(
                 "p-3 rounded-xl border",
-                item.isOverdue && item.status !== "SERVED"
+                item.isOverdue && isOrderItemOpen(item.status)
                   ? "bg-red-500/10 border-red-500/30"
                   : "bg-white/5 border-white/10"
               )}
@@ -607,32 +712,47 @@ function ActiveOrderCard({
                 <span className="font-medium text-sm">
                   {item.quantity}x {item.itemName}
                 </span>
-                {item.status !== "SERVED" && (
+                {isOrderItemOpen(item.status) && (
                   <span className={cn("text-xs font-mono", item.isOverdue ? "text-red-400" : "text-zinc-400")}>
                     {item.isOverdue ? "OVERDUE" : remaining > 0 ? formatCountdown(remaining) : "Due now"}
                   </span>
                 )}
               </div>
-              {item.status !== "SERVED" && (
-                <div className="flex gap-1.5">
-                  {item.status === "PENDING" && (
-                    <Button size="sm" variant="secondary" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "prepare-item")}>
-                      Start
+              {isOrderItemOpen(item.status) && (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-1.5">
+                    {item.status === "PENDING" && (
+                      <Button size="sm" variant="secondary" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "prepare-item")}>
+                        Start
+                      </Button>
+                    )}
+                    {(item.status === "PENDING" || item.status === "PREPARING") && (
+                      <Button size="sm" variant="secondary" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "ready-item")}>
+                        Ready
+                      </Button>
+                    )}
+                    <Button size="sm" variant="success" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "serve-item")}>
+                      <CheckCircle2 className="w-3 h-3" /> Serve
                     </Button>
-                  )}
-                  {(item.status === "PENDING" || item.status === "PREPARING") && (
-                    <Button size="sm" variant="secondary" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "ready-item")}>
-                      Ready
-                    </Button>
-                  )}
-                  <Button size="sm" variant="success" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "serve-item")}>
-                    <CheckCircle2 className="w-3 h-3" /> Serve
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    className="w-full text-xs"
+                    onClick={() => onUpdate(order.id, item.id, "reject-item")}
+                  >
+                    <Ban className="w-3 h-3" /> Out of stock / Can&apos;t serve
                   </Button>
                 </div>
               )}
               {item.status === "SERVED" && (
                 <span className="text-xs text-emerald-400 flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" /> Served
+                </span>
+              )}
+              {item.status === "UNAVAILABLE" && (
+                <span className="text-xs text-zinc-500 flex items-center gap-1">
+                  <Ban className="w-3 h-3" /> Out of stock — not served
                 </span>
               )}
             </div>

@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { logApiRequest, logInfo } from "@/lib/logger";
-import { serveTimelineUpdate } from "@/lib/order-service";
+import {
+  clearAlertsForOrderItem,
+  serveTimelineUpdate,
+  syncOrderStatus,
+} from "@/lib/order-service";
+import { isOrderItemOpen } from "@/lib/utils";
 
 export async function PATCH(
   req: NextRequest,
@@ -71,32 +76,26 @@ export async function PATCH(
       },
     });
 
-    const remaining = await prisma.orderItem.count({
-      where: { orderId: id, status: { not: "SERVED" } },
-    });
-
-    if (remaining === 0) {
-      await prisma.order.update({
-        where: { id },
-        data: { status: "SERVED" },
-      });
-    } else {
-      const readyCount = await prisma.orderItem.count({
-        where: { orderId: id, status: "READY" },
-      });
-      const preparingCount = await prisma.orderItem.count({
-        where: { orderId: id, status: "PREPARING" },
-      });
-      let status = "PREPARING";
-      if (readyCount > 0) status = "READY";
-      else if (preparingCount > 0) status = "PREPARING";
-      await prisma.order.update({
-        where: { id },
-        data: { status: status as "PREPARING" | "READY" },
-      });
-    }
+    await clearAlertsForOrderItem(itemId);
+    await syncOrderStatus(id);
 
     logInfo("api:orders/[id]", "Item served", { orderId: id, itemId });
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === "reject-item" && itemId) {
+    await prisma.orderItem.update({
+      where: { id: itemId },
+      data: {
+        status: "UNAVAILABLE",
+        isOverdue: false,
+      },
+    });
+
+    await clearAlertsForOrderItem(itemId);
+    await syncOrderStatus(id);
+
+    logInfo("api:orders/[id]", "Item marked unavailable", { orderId: id, itemId });
     return NextResponse.json({ success: true });
   }
 
@@ -121,6 +120,8 @@ export async function PATCH(
   if (action === "serve-all") {
     const servedAt = new Date();
     for (const item of order.items) {
+      if (!isOrderItemOpen(item.status)) continue;
+
       const timeline = serveTimelineUpdate(item.expectedReadyAt, servedAt, item);
       await prisma.orderItem.update({
         where: { id: item.id },
@@ -130,8 +131,9 @@ export async function PATCH(
           ...timeline,
         },
       });
+      await clearAlertsForOrderItem(item.id);
     }
-    await prisma.order.update({ where: { id }, data: { status: "SERVED" } });
+    await syncOrderStatus(id);
     return NextResponse.json({ success: true });
   }
 

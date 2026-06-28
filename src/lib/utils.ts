@@ -61,9 +61,15 @@ export function getStatusColor(status: string, isOverdue?: boolean) {
       return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
     case "SERVED":
       return "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
+    case "UNAVAILABLE":
+      return "bg-zinc-500/15 text-zinc-500 border-zinc-500/30";
     default:
       return "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
   }
+}
+
+export function isOrderItemOpen(status: string) {
+  return status !== "SERVED" && status !== "UNAVAILABLE";
 }
 
 export function getRemainingSeconds(expectedReadyAt: string | Date) {

@@ -1,5 +1,36 @@
 import { prisma } from "@/lib/prisma";
-import { todayDateString } from "@/lib/utils";
+import { isOrderItemOpen, todayDateString } from "@/lib/utils";
+
+export async function clearAlertsForOrderItem(orderItemId: string) {
+  await prisma.alert.updateMany({
+    where: { orderItemId, isRead: false },
+    data: { isRead: true },
+  });
+}
+
+export async function syncOrderStatus(orderId: string) {
+  const items = await prisma.orderItem.findMany({ where: { orderId } });
+  const openItems = items.filter((i) => isOrderItemOpen(i.status));
+
+  if (openItems.length === 0) {
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { status: "SERVED" },
+    });
+    return;
+  }
+
+  const readyCount = openItems.filter((i) => i.status === "READY").length;
+  const preparingCount = openItems.filter((i) => i.status === "PREPARING").length;
+  let status: "PENDING" | "PREPARING" | "READY" = "PENDING";
+  if (readyCount > 0) status = "READY";
+  else if (preparingCount > 0) status = "PREPARING";
+
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { status },
+  });
+}
 
 export function minutesLateFromExpected(expectedReadyAt: Date, at = new Date()) {
   const diffMs = at.getTime() - expectedReadyAt.getTime();
@@ -39,7 +70,7 @@ export async function checkOverdueItems(restaurantId: string) {
     where: {
       isOverdue: false,
       servedAt: null,
-      status: { not: "SERVED" },
+      status: { notIn: ["SERVED", "UNAVAILABLE"] },
       expectedReadyAt: { lt: now },
       order: { restaurantId, status: { not: "SERVED" } },
     },

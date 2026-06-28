@@ -35,7 +35,8 @@ export async function GET() {
   );
 
   const overdueCount = orders.reduce(
-    (sum, o) => sum + o.items.filter((i) => i.isOverdue && i.status !== "SERVED").length,
+    (sum, o) =>
+      sum + o.items.filter((i) => i.isOverdue && i.status !== "SERVED" && i.status !== "UNAVAILABLE").length,
     0
   );
 

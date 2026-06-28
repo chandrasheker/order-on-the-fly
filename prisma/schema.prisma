@@ -27,6 +27,7 @@ enum OrderItemStatus {
   PREPARING
   READY
   SERVED
+  UNAVAILABLE
 }
 
 model Restaurant {
