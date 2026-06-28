@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logApiError, logApiRequest, logWarn } from "@/lib/logger";
+import { isTablePaymentBlocked } from "@/lib/payment-service";
 
 export async function GET(
   _req: NextRequest,
@@ -21,6 +22,7 @@ export async function GET(
         rewardTeaLabel: true,
         rewardBeverageLabel: true,
         backgroundImageUrl: true,
+        paymentQrUrl: true,
       },
     });
 
@@ -49,6 +51,8 @@ export async function GET(
       orderBy: { sortOrder: "asc" },
     });
 
+    const paymentBlocked = await isTablePaymentBlocked(table.id);
+
     return NextResponse.json({
       restaurant: {
         id: restaurant.id,
@@ -59,8 +63,10 @@ export async function GET(
         rewardTeaLabel: restaurant.rewardTeaLabel,
         rewardBeverageLabel: restaurant.rewardBeverageLabel,
         backgroundImageUrl: restaurant.backgroundImageUrl,
+        paymentQrUrl: restaurant.paymentQrUrl,
       },
       table: { id: table.id, number: table.number, qrToken: table.qrToken },
+      paymentBlocked,
       categories: categories.filter((c) => c.items.length > 0),
     });
   } catch (error) {

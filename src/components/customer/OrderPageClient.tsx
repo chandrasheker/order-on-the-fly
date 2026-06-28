@@ -24,6 +24,7 @@ interface RestaurantData {
   rewardTeaLabel: string;
   rewardBeverageLabel: string;
   backgroundImageUrl?: string | null;
+  paymentQrUrl?: string | null;
 }
 
 function OrderPageBackground({ imageUrl }: { imageUrl?: string | null }) {
@@ -65,12 +66,17 @@ export function OrderPageClient({ slug, token }: Props) {
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [showNameInput, setShowNameInput] = useState(true);
   const [orderError, setOrderError] = useState("");
+  const [paymentBlocked, setPaymentBlocked] = useState(false);
   const { customerName, setCustomerName, items, clearCart } = useCartStore();
   const tableSession = useTableSession(token);
 
   const fetchMenu = useCallback(async () => {
     const res = await fetch(`/api/menu/${slug}/${token}`);
-    if (res.ok) setData(await res.json());
+    if (res.ok) {
+      const json = await res.json();
+      setData(json);
+      setPaymentBlocked(Boolean(json.paymentBlocked));
+    }
     setLoading(false);
   }, [slug, token]);
 
@@ -79,6 +85,9 @@ export function OrderPageClient({ slug, token }: Props) {
     if (res.ok) {
       const json = await res.json();
       setOrders(json.orders);
+      if (json.paymentBlocked !== undefined) {
+        setPaymentBlocked(Boolean(json.paymentBlocked));
+      }
     }
   }, [token]);
 
@@ -161,7 +170,7 @@ export function OrderPageClient({ slug, token }: Props) {
   const hasPaymentOrders = orders.some((o) => shouldShowCustomerPaymentOrder(o));
   const hasVisibleOrders = hasActiveOrders || hasPaymentOrders;
   const latestOrderId = orders[0]?.id;
-  const canOrder = tableSession.active;
+  const canOrder = tableSession.active && !paymentBlocked;
 
   return (
     <div className="min-h-screen text-white relative">
@@ -183,7 +192,17 @@ export function OrderPageClient({ slug, token }: Props) {
       </div>
 
       <div className="max-w-lg mx-auto px-4 space-y-6 pb-8">
-        {!canOrder && (
+        {paymentBlocked && (
+          <div className="p-4 rounded-2xl bg-yellow-500/15 border border-yellow-500/30 text-center space-y-2">
+            <p className="font-semibold text-yellow-300">Table locked — payment pending</p>
+            <p className="text-sm text-zinc-400">
+              Complete payment for your current bill before ordering more. Staff will confirm once
+              payment is received.
+            </p>
+          </div>
+        )}
+
+        {!canOrder && !paymentBlocked && (
           <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-center space-y-3">
             <Users className="w-8 h-8 text-red-400 mx-auto" />
             <div>
@@ -233,7 +252,13 @@ export function OrderPageClient({ slug, token }: Props) {
         )}
 
         {hasVisibleOrders && (
-          <OrderTracker orders={orders} tableToken={token} onRefresh={fetchOrders} />
+          <OrderTracker
+            orders={orders}
+            tableToken={token}
+            paymentQrUrl={data.restaurant.paymentQrUrl}
+            onRefresh={fetchOrders}
+            onPaymentRequested={() => setPaymentBlocked(true)}
+          />
         )}
 
         {(hasVisibleOrders || lastOrder) && canOrder && (

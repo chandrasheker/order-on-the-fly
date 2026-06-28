@@ -741,7 +741,9 @@ export function StaffDashboard() {
                       "p-4",
                       alert.type === "OVERDUE"
                         ? "border-red-500/30"
-                        : "border-amber-500/30"
+                        : alert.type === "PAYMENT"
+                          ? "border-emerald-500/30"
+                          : "border-amber-500/30"
                     )}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -751,10 +753,16 @@ export function StaffDashboard() {
                             className={
                               alert.type === "OVERDUE"
                                 ? "bg-red-500/15 text-red-400 border-red-500/30"
-                                : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                                : alert.type === "PAYMENT"
+                                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                                  : "bg-amber-500/15 text-amber-400 border-amber-500/30"
                             }
                           >
-                            {alert.type === "OVERDUE" ? "Overdue" : "Alarm"}
+                            {alert.type === "OVERDUE"
+                              ? "Overdue"
+                              : alert.type === "PAYMENT"
+                                ? "Payment"
+                                : "Alarm"}
                           </Badge>
                           <span className="text-sm text-zinc-500">Table {alert.tableNumber}</span>
                         </div>
@@ -767,6 +775,15 @@ export function StaffDashboard() {
                         </p>
                       </div>
                       <div className="flex gap-2 shrink-0">
+                        {alert.type === "PAYMENT" && showTab("pending") && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setViewMode("pending")}
+                          >
+                            View pending
+                          </Button>
+                        )}
                         {alert.type === "OVERDUE" && (
                           <Button size="sm" variant="secondary" onClick={goToOverdueFromAlert}>
                             View order

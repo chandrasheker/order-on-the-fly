@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getNextOrderNumber } from "@/lib/order-service";
+import { isTablePaymentBlocked } from "@/lib/payment-service";
 import { todayDateString } from "@/lib/utils";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 
@@ -24,6 +25,17 @@ export async function POST(req: NextRequest) {
 
     if (!table || !table.isActive) {
       return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    }
+
+    if (await isTablePaymentBlocked(table.id)) {
+      return NextResponse.json(
+        {
+          error:
+            "Please complete payment for your current bill before placing a new order. Ask staff if you need help.",
+          code: "TABLE_PAYMENT_BLOCKED",
+        },
+        { status: 403 }
+      );
     }
 
     const { validateTableSession } = await import("@/lib/table-session-service");
@@ -129,7 +141,10 @@ export async function GET(req: NextRequest) {
       include: { items: { include: { menuItem: true } } },
       orderBy: { createdAt: "desc" },
     });
-    return NextResponse.json({ orders });
+    return NextResponse.json({
+      orders,
+      paymentBlocked: await isTablePaymentBlocked(table.id),
+    });
   }
 
   if (restaurantId) {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button, Card, Spinner, Input } from "@/components/ui";
-import { ArrowLeft, Download, Printer, QrCode, Users } from "lucide-react";
+import { ArrowLeft, Download, Printer, QrCode, Users, CircleDollarSign, Save } from "lucide-react";
 import Link from "next/link";
 
 interface QRData {
@@ -31,13 +31,16 @@ export default function QRPage() {
   const [defaultMaxSessions, setDefaultMaxSessions] = useState(2);
   const [loading, setLoading] = useState(true);
   const [savingDefault, setSavingDefault] = useState(false);
+  const [paymentQrUrl, setPaymentQrUrl] = useState("");
+  const [savingPaymentQr, setSavingPaymentQr] = useState(false);
 
   const loadAll = () => {
     Promise.all([
       fetch("/api/tables/qr").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/tables/manage").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/payment/settings").then((r) => (r.ok ? r.json() : null)),
     ])
-      .then(([qrData, manageData]) => {
+      .then(([qrData, manageData, paymentData]) => {
         if (!qrData) {
           router.push("/");
           return;
@@ -47,6 +50,9 @@ export default function QRPage() {
         if (manageData) {
           setTables(manageData.tables);
           setDefaultMaxSessions(manageData.defaultMaxSessions);
+        }
+        if (paymentData?.settings) {
+          setPaymentQrUrl(paymentData.settings.paymentQrUrl ?? "");
         }
       })
       .catch((err) => console.error("Failed to load:", err))
@@ -75,6 +81,16 @@ export default function QRPage() {
       body: JSON.stringify({ tableId, maxSessions }),
     });
     loadAll();
+  };
+
+  const savePaymentQr = async () => {
+    setSavingPaymentQr(true);
+    await fetch("/api/payment/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentQrUrl: paymentQrUrl.trim() || null }),
+    });
+    setSavingPaymentQr(false);
   };
 
   const printAll = () => {
@@ -137,6 +153,43 @@ export default function QRPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <CircleDollarSign className="w-5 h-5 text-emerald-400" />
+            <h2 className="text-lg font-bold">PhonePe payment QR</h2>
+          </div>
+          <p className="text-sm text-zinc-400 mb-4">
+            Upload your PhonePe static QR image to the server (e.g.{" "}
+            <code className="text-orange-300">/public/payments/phonepe-qr.png</code>) and paste the
+            URL here. Customers will scan this when they tap Pay. Leave empty to use offline
+            collection — staff gets alerted and must mark paid manually.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <Input
+              placeholder="/payments/phonepe-qr.png"
+              value={paymentQrUrl}
+              onChange={(e) => setPaymentQrUrl(e.target.value)}
+              className="flex-1"
+            />
+            <Button onClick={savePaymentQr} disabled={savingPaymentQr} className="shrink-0">
+              {savingPaymentQr ? "Saving..." : (
+                <>
+                  <Save className="w-4 h-4" /> Save QR
+                </>
+              )}
+            </Button>
+          </div>
+          {paymentQrUrl.trim() && (
+            <div className="inline-block p-3 rounded-xl bg-white">
+              <img
+                src={paymentQrUrl}
+                alt="Payment QR preview"
+                className="w-32 h-32 object-contain"
+              />
+            </div>
+          )}
+        </Card>
+
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-3">
             <Users className="w-5 h-5 text-orange-400" />

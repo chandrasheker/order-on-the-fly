@@ -119,6 +119,15 @@ export function useStaffNotifications(alerts: StaffAlertItem[]) {
           );
         }
         void playOverdueChime();
+      } else if (alert.type === "PAYMENT") {
+        if (permission === "granted") {
+          showStaffBrowserNotification(
+            `Payment — Table ${alert.tableNumber}`,
+            alert.message,
+            { tag: `payment-${alert.id}`, urgent: true }
+          );
+        }
+        void playOverdueChime();
       } else if (permission === "granted") {
         showStaffBrowserNotification(`Table ${alert.tableNumber}`, alert.message, {
           tag: alert.id,

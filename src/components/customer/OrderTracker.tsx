@@ -11,6 +11,7 @@ import {
   shouldShowCustomerPaymentOrder,
   customerOrderBillTotal,
 } from "@/lib/utils";
+import { PaymentModal } from "@/components/customer/PaymentModal";
 import { Button, Badge } from "@/components/ui";
 import {
   Bell,
@@ -39,6 +40,7 @@ interface Order {
   status: string;
   alarmTriggered: boolean;
   paidAt?: string | null;
+  paymentRequestedAt?: string | null;
   items: OrderItem[];
   createdAt: string;
 }
@@ -46,17 +48,21 @@ interface Order {
 export function OrderTracker({
   orders,
   tableToken,
+  paymentQrUrl,
   onRefresh,
+  onPaymentRequested,
 }: {
   orders: Order[];
   tableToken: string;
+  paymentQrUrl?: string | null;
   onRefresh: () => void;
+  onPaymentRequested?: () => void;
 }) {
   const [now, setNow] = useState(Date.now());
   const [alarmSent, setAlarmSent] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [payingId, setPayingId] = useState<string | null>(null);
-  const [paidIds, setPaidIds] = useState<Set<string>>(new Set());
+  const [payModalOrder, setPayModalOrder] = useState<Order | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -69,9 +75,7 @@ export function OrderTracker({
   }, [onRefresh]);
 
   const activeOrders = orders.filter((o) => shouldShowCustomerOrder(o.items));
-  const paymentOrders = orders.filter(
-    (o) => shouldShowCustomerPaymentOrder(o) && !paidIds.has(o.id)
-  );
+  const paymentOrders = orders.filter((o) => shouldShowCustomerPaymentOrder(o));
 
   if (activeOrders.length === 0 && paymentOrders.length === 0) return null;
 
@@ -90,21 +94,31 @@ export function OrderTracker({
     setAlarmSent(true);
   };
 
-  const payOrder = async (orderId: string) => {
-    setPayingId(orderId);
+  const openPayModal = (order: Order) => {
+    setPayModalOrder(order);
+  };
+
+  const confirmPaymentRequest = async () => {
+    if (!payModalOrder) return;
+    setPayingId(payModalOrder.id);
     try {
-      const res = await fetch(`/api/orders/${orderId}`, {
+      const res = await fetch(`/api/orders/${payModalOrder.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "pay", tableToken }),
+        body: JSON.stringify({ action: "request-payment", tableToken }),
       });
       if (res.ok) {
-        setPaidIds((prev) => new Set(prev).add(orderId));
+        setPayModalOrder(null);
+        onPaymentRequested?.();
         await onRefresh();
       }
     } finally {
       setPayingId(null);
     }
+  };
+
+  const requestPaymentOffline = async (order: Order) => {
+    setPayModalOrder(order);
   };
 
   return (
@@ -280,13 +294,18 @@ export function OrderTracker({
       {paymentOrders.map((order) => {
         const billTotal = customerOrderBillTotal(order.items);
         const unavailableItems = order.items.filter((i) => i.status === "UNAVAILABLE");
+        const paymentPending = Boolean(order.paymentRequestedAt);
 
         return (
           <motion.div
             key={order.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-white/5 backdrop-blur-xl p-5"
+            className={`rounded-2xl border backdrop-blur-xl p-5 ${
+              paymentPending
+                ? "border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 to-white/5"
+                : "border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-white/5"
+            }`}
           >
             {unavailableItems.length > 0 && (
               <div className="mb-4 p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-100 text-sm">
@@ -301,8 +320,14 @@ export function OrderTracker({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm text-zinc-400">Order #{order.orderNumber}</p>
-                <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
-                  All served — ready to pay
+                <Badge
+                  className={
+                    paymentPending
+                      ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30"
+                      : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  }
+                >
+                  {paymentPending ? "Awaiting payment confirmation" : "All served — ready to pay"}
                 </Badge>
               </div>
               <div className="text-right">
@@ -354,21 +379,60 @@ export function OrderTracker({
               })}
             </div>
 
-            <Button
-              variant="success"
-              className="w-full bg-emerald-600 hover:bg-emerald-500"
-              disabled={payingId === order.id}
-              onClick={() => payOrder(order.id)}
-            >
-              <CircleDollarSign className="w-4 h-4" />
-              {payingId === order.id ? "Processing..." : `Pay ${formatCurrency(billTotal)}`}
-            </Button>
-            <p className="text-xs text-zinc-500 text-center mt-2">
-              Pay at the table or tap above once you&apos;ve settled with staff
-            </p>
+            {paymentPending ? (
+              <div className="space-y-3">
+                <div className="p-3 rounded-xl bg-yellow-500/15 border border-yellow-500/30 text-yellow-100 text-sm text-center">
+                  <p className="font-medium">Payment pending</p>
+                  <p className="text-yellow-200/80 text-xs mt-1">
+                    Staff has been notified. Please complete payment
+                    {paymentQrUrl ? " via PhonePe or with staff" : " with staff"} — this table is
+                    locked until your bill is confirmed.
+                  </p>
+                </div>
+                {paymentQrUrl && (
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => openPayModal(order)}
+                  >
+                    View PhonePe QR again
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <>
+                <Button
+                  variant="success"
+                  className="w-full bg-emerald-600 hover:bg-emerald-500"
+                  disabled={payingId === order.id}
+                  onClick={() =>
+                    paymentQrUrl ? openPayModal(order) : requestPaymentOffline(order)
+                  }
+                >
+                  <CircleDollarSign className="w-4 h-4" />
+                  {payingId === order.id ? "Processing..." : `Pay ${formatCurrency(billTotal)}`}
+                </Button>
+                <p className="text-xs text-zinc-500 text-center mt-2">
+                  {paymentQrUrl
+                    ? "Scan PhonePe QR to pay, or alert staff after paying"
+                    : "Alert staff to collect payment at the table"}
+                </p>
+              </>
+            )}
           </motion.div>
         );
       })}
+
+      {payModalOrder && (
+        <PaymentModal
+          orderNumber={payModalOrder.orderNumber}
+          billTotal={customerOrderBillTotal(payModalOrder.items)}
+          paymentQrUrl={paymentQrUrl}
+          confirming={payingId === payModalOrder.id}
+          onClose={() => setPayModalOrder(null)}
+          onConfirm={confirmPaymentRequest}
+        />
+      )}
     </div>
   );
 }

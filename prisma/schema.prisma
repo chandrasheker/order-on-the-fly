@@ -46,6 +46,7 @@ model Restaurant {
   cookSlots             Int            @default(3)
   serverSlots           Int            @default(4)
   staffConfigured       Boolean        @default(false)
+  paymentQrUrl          String?
   createdAt             DateTime       @default(now())
   users                 User[]
   tables                Table[]
@@ -147,6 +148,7 @@ model Order {
   alarmTriggered Boolean     @default(false)
   rewardSpun     Boolean     @default(false)
   paidAt         DateTime?
+  paymentRequestedAt DateTime?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   date           String

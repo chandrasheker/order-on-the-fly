@@ -7,7 +7,8 @@ import {
   serveTimelineUpdate,
   syncOrderStatus,
 } from "@/lib/order-service";
-import { isOrderItemOpen, sumOrderRevenue } from "@/lib/utils";
+import { clearPaymentAlerts, requestOrderPayment } from "@/lib/payment-service";
+import { isOrderItemOpen } from "@/lib/utils";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
 
 export async function PATCH(
@@ -52,46 +53,30 @@ export async function PATCH(
     return NextResponse.json({ success: true });
   }
 
-  if (action === "pay") {
+  if (action === "request-payment" || action === "pay") {
     if (!tableToken) {
       return NextResponse.json({ error: "Table token required" }, { status: 400 });
     }
 
-    const table = await prisma.table.findUnique({ where: { qrToken: String(tableToken) } });
-    if (!table || table.id !== order.tableId) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    const result = await requestOrderPayment(id, String(tableToken));
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    if (order.status !== "SERVED") {
-      return NextResponse.json(
-        { error: "Order must be fully served before payment" },
-        { status: 400 }
-      );
-    }
-
-    if (order.paidAt) {
-      return NextResponse.json({ error: "Order already paid" }, { status: 400 });
-    }
-
-    const billTotal = sumOrderRevenue(order.items);
-    if (billTotal <= 0) {
-      return NextResponse.json({ error: "Nothing to pay for this order" }, { status: 400 });
-    }
-
-    const paidAt = new Date();
-    await prisma.order.update({
-      where: { id },
-      data: { paidAt },
-    });
-
-    logInfo("api:orders/[id]", "Customer marked order paid", {
+    logInfo("api:orders/[id]", "Customer requested payment", {
       orderId: id,
       orderNumber: order.orderNumber,
       tableNumber: order.table.number,
-      billTotal,
+      billTotal: result.billTotal,
+      hasPaymentQr: result.hasPaymentQr,
     });
 
-    return NextResponse.json({ success: true, paidAt });
+    return NextResponse.json({
+      success: true,
+      paymentRequestedAt: result.paymentRequestedAt,
+      billTotal: result.billTotal,
+      tableBlocked: true,
+    });
   }
 
   const session = await requireSession();
@@ -133,6 +118,8 @@ export async function PATCH(
       where: { id },
       data: { paidAt: new Date() },
     });
+
+    await clearPaymentAlerts(id);
 
     logInfo("api:orders/[id]", "Order marked paid", { orderId: id });
     return NextResponse.json({ success: true });
