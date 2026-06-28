@@ -67,8 +67,6 @@ export function SiteFooter() {
                 </span>
                 <p className="transition-opacity duration-300">
                   Contact:{" "}
-                  <span className="text-zinc-400">{CONTACT_NAME}</span>
-                  {" · "}
                   <Link
                     href={`tel:${CONTACT_TEL}`}
                     className="text-orange-400/90 hover:text-orange-300 transition-colors whitespace-nowrap"
