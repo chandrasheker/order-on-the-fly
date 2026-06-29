@@ -235,7 +235,12 @@ export function OrderPageClient({ slug, token }: Props) {
   const hasVisibleOrders = hasActiveOrders || hasPaymentOrders;
   const latestOrderId = orders[0]?.id;
   const canOrder = tableSession.canOrder && !paymentBlocked;
-  const showOrderingGate = !canOrder && !paymentBlocked && !tableSession.loading;
+  const showOrderingGate =
+    !canOrder &&
+    !paymentBlocked &&
+    !tableSession.loading &&
+    !tableSession.canTrackExistingOrder &&
+    !hasVisibleOrders;
 
   return (
     <div className="min-h-screen text-white relative">

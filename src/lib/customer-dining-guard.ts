@@ -7,6 +7,7 @@ import {
   readDiningTokenFromRequest,
 } from "@/lib/dining-access";
 import { joinTableSession, validateTableSession } from "@/lib/table-session-service";
+import { hasOpenTableWork } from "@/lib/table-ordering-service";
 
 export async function assertCustomerDiningAccess(
   req: import("next/server").NextRequest,
@@ -15,14 +16,16 @@ export async function assertCustomerDiningAccess(
 ) {
   const table = await prisma.table.findUnique({
     where: { qrToken: tableToken },
-    select: { id: true, orderingEnabled: true, isActive: true },
+    select: { id: true, orderingEnabled: true, isActive: true, maxSessions: true },
   });
 
   if (!table || !table.isActive) {
     return { ok: false as const, status: 404, error: "Table not found" };
   }
 
-  if (!table.orderingEnabled) {
+  const openTableWork = await hasOpenTableWork(table.id);
+
+  if (!table.orderingEnabled && !openTableWork) {
     return {
       ok: false as const,
       status: 403,
@@ -48,7 +51,12 @@ export async function assertCustomerDiningAccess(
     };
   }
 
-  const sessionValid = await validateTableSession(table.id, effectiveSessionKey);
+  let sessionValid = await validateTableSession(table.id, effectiveSessionKey);
+  if (!sessionValid && (table.orderingEnabled || openTableWork)) {
+    const joined = await joinTableSession(table.id, effectiveSessionKey, table.maxSessions);
+    sessionValid = joined.active;
+  }
+
   if (!sessionValid) {
     return {
       ok: false as const,

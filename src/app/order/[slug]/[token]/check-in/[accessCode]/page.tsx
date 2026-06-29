@@ -3,7 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { isDatabaseNotReadyError } from "@/lib/db-errors";
 import { DatabaseSetupRequired } from "@/components/DatabaseSetupRequired";
 import { StaleTableLink } from "@/components/customer/StaleTableLink";
-import { currentTableAccessCode } from "@/lib/table-access-code";
+import {
+  currentTableAccessCode,
+  validateCurrentTableAccessCode,
+} from "@/lib/table-access-code";
+import { TableCheckInClient } from "../TableCheckInClient";
 
 async function resolveTable(slug: string, token: string) {
   const byToken = await prisma.table.findFirst({
@@ -25,12 +29,12 @@ async function resolveTable(slug: string, token: string) {
   return null;
 }
 
-export default async function CheckInPage({
+export default async function CodedCheckInPage({
   params,
 }: {
-  params: Promise<{ slug: string; token: string }>;
+  params: Promise<{ slug: string; token: string; accessCode: string }>;
 }) {
-  const { slug, token } = await params;
+  const { slug, token, accessCode } = await params;
 
   try {
     const table = await resolveTable(slug, token);
@@ -39,11 +43,23 @@ export default async function CheckInPage({
     }
 
     if (table.qrToken !== token) {
-      redirect(`/order/${slug}/${table.qrToken}/check-in`);
+      redirect(`/order/${slug}/${table.qrToken}/check-in/${currentTableAccessCode(table)}`);
     }
 
-    const accessCode = currentTableAccessCode(table);
-    redirect(`/order/${slug}/${table.qrToken}/check-in/${accessCode}`);
+    const normalizedCode = accessCode.toUpperCase();
+    if (!validateCurrentTableAccessCode(table, normalizedCode)) {
+      return (
+        <TableCheckInClient
+          slug={slug}
+          token={table.qrToken}
+          accessCode={normalizedCode}
+          initialMessage="This QR session expired. Please scan the table QR again."
+          expired
+        />
+      );
+    }
+
+    return <TableCheckInClient slug={slug} token={table.qrToken} accessCode={normalizedCode} />;
   } catch (error) {
     if (isDatabaseNotReadyError(error)) {
       return <DatabaseSetupRequired />;
@@ -51,3 +67,4 @@ export default async function CheckInPage({
     throw error;
   }
 }
+

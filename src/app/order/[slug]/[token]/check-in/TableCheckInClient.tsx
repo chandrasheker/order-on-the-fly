@@ -19,18 +19,32 @@ function getOrCreateSessionKey(tableToken: string) {
   return sessionKey;
 }
 
-export function TableCheckInClient({ slug, token }: { slug: string; token: string }) {
+export function TableCheckInClient({
+  slug,
+  token,
+  accessCode,
+  initialMessage = "Verifying your table…",
+  expired = false,
+}: {
+  slug: string;
+  token: string;
+  accessCode: string;
+  initialMessage?: string;
+  expired?: boolean;
+}) {
   const router = useRouter();
-  const [message, setMessage] = useState("Verifying your table…");
+  const [message, setMessage] = useState(initialMessage);
 
   const runCheckIn = useCallback(async () => {
+    if (expired) return;
+
     const sessionKey = getOrCreateSessionKey(token);
     try {
       const res = await fetch("/api/tables/check-in", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ tableToken: token, sessionKey }),
+        body: JSON.stringify({ tableToken: token, sessionKey, accessCode }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -41,7 +55,7 @@ export function TableCheckInClient({ slug, token }: { slug: string; token: strin
     } catch {
       setMessage("Network error. Please scan the QR code again.");
     }
-  }, [router, slug, token]);
+  }, [accessCode, expired, router, slug, token]);
 
   useEffect(() => {
     void runCheckIn();
@@ -51,11 +65,13 @@ export function TableCheckInClient({ slug, token }: { slug: string; token: strin
     <div className="min-h-screen bg-[#0f0f1a] text-white flex items-center justify-center p-6">
       <div className="max-w-sm w-full text-center space-y-4">
         <UtensilsCrossed className="w-10 h-10 text-orange-400 mx-auto" />
-        <Spinner className="w-8 h-8 mx-auto" />
+        {!expired && <Spinner className="w-8 h-8 mx-auto" />}
         <p className="text-zinc-300">{message}</p>
         {message !== "Verifying your table…" && (
           <p className="text-sm text-zinc-500">
-            Ask your server to enable ordering for your table, then scan the QR code again.
+            {expired
+              ? "This link was time-limited. Use the physical QR code on your table to get a fresh link."
+              : "Ask your server to enable ordering for your table, then scan the QR code again."}
           </p>
         )}
       </div>
