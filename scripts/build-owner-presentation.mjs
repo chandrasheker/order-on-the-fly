@@ -6,7 +6,6 @@ import { chromium } from "playwright";
 import { mkdirSync } from "fs";
 import { execSync } from "child_process";
 import path from "path";
-import crypto from "node:crypto";
 
 const BASE = "http://localhost:3000";
 const OUT = path.join(process.cwd(), "presentation", "screenshots");
@@ -46,18 +45,6 @@ async function main() {
     deviceScaleFactor: 2,
   });
   const mobile = await ctx.newPage();
-
-  // Seed session + dining cookie via check-in API
-  const sessionKey = crypto.randomUUID();
-  await ctx.request.post(`${BASE}/api/tables/check-in`, {
-    data: { tableToken: TABLE_TOKEN, sessionKey },
-  });
-  await mobile.addInitScript(
-    ({ token, key }) => {
-      sessionStorage.setItem(`tabletap-session-${token}`, key);
-    },
-    { token: TABLE_TOKEN, key: sessionKey },
-  );
 
   const desktopCtx = await browser.newContext({
     viewport: { width: 1440, height: 900 },
