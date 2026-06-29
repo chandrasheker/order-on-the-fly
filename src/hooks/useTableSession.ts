@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const HEARTBEAT_MS = 2 * 60 * 1000;
 
@@ -21,6 +21,7 @@ export interface TableSessionState {
   loading: boolean;
   active: boolean;
   canOrder: boolean;
+  canTrackExistingOrder: boolean;
   orderingEnabled: boolean;
   diningVerified: boolean;
   maxSessions: number;
@@ -35,13 +36,13 @@ export function useTableSession(tableToken: string, slug: string): TableSessionS
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState(false);
   const [canOrder, setCanOrder] = useState(false);
+  const [canTrackExistingOrder, setCanTrackExistingOrder] = useState(false);
   const [orderingEnabled, setOrderingEnabled] = useState(false);
   const [diningVerified, setDiningVerified] = useState(false);
   const [maxSessions, setMaxSessions] = useState(2);
   const [activeCount, setActiveCount] = useState(0);
   const [gateMessage, setGateMessage] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState("");
-  const joinedRef = useRef(false);
 
   const checkInPath = `/order/${slug}/${tableToken}/check-in`;
 
@@ -61,21 +62,22 @@ export function useTableSession(tableToken: string, slug: string): TableSessionS
         setDiningVerified(Boolean(data.diningVerified));
         setActive(Boolean(data.sessionActive));
         setCanOrder(Boolean(data.canOrder));
+        setCanTrackExistingOrder(Boolean(data.canTrackExistingOrder));
         setMaxSessions(data.maxSessions ?? 2);
+        setActiveCount(data.activeCount ?? 0);
         setGateMessage(data.message ?? null);
-        joinedRef.current = Boolean(data.sessionActive);
       } else {
         const data = await res.json().catch(() => ({}));
         setCanOrder(false);
+        setCanTrackExistingOrder(false);
         setActive(false);
         setGateMessage(data.message || data.error || "Scan the QR code at your table to order.");
-        joinedRef.current = false;
       }
     } catch {
       setCanOrder(false);
+      setCanTrackExistingOrder(false);
       setActive(false);
       setGateMessage("Could not verify table access. Scan the QR code at your table.");
-      joinedRef.current = false;
     } finally {
       setLoading(false);
     }
@@ -101,20 +103,8 @@ export function useTableSession(tableToken: string, slug: string): TableSessionS
       }
     }, HEARTBEAT_MS);
 
-    const leave = () => {
-      if (!joinedRef.current || !sessionKey) return;
-      fetch("/api/tables/session", {
-        method: "DELETE",
-        keepalive: true,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tableToken, sessionKey }),
-      }).catch(() => {});
-    };
-
-    window.addEventListener("pagehide", leave);
     return () => {
       clearInterval(heartbeat);
-      window.removeEventListener("pagehide", leave);
     };
   }, [tableToken, sessionKey, diningVerified, active]);
 
@@ -122,6 +112,7 @@ export function useTableSession(tableToken: string, slug: string): TableSessionS
     loading,
     active,
     canOrder,
+    canTrackExistingOrder,
     orderingEnabled,
     diningVerified,
     maxSessions,

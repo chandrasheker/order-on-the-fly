@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { readDiningTokenFromRequest } from "@/lib/dining-access";
-import { validateTableSession } from "@/lib/table-session-service";
+import {
+  countActiveTableSessions,
+  joinTableSession,
+  validateTableSession,
+} from "@/lib/table-session-service";
+import { hasOpenTableWork } from "@/lib/table-ordering-service";
 
 export async function GET(req: NextRequest) {
   const tableToken = req.nextUrl.searchParams.get("tableToken");
@@ -28,14 +33,24 @@ export async function GET(req: NextRequest) {
       dining.tableId === table.id,
   );
 
-  const sessionActive = diningMatch
-    ? await validateTableSession(table.id, sessionKey)
-    : false;
+  const openTableWork = await hasOpenTableWork(table.id);
+
+  let sessionActive = diningMatch ? await validateTableSession(table.id, sessionKey) : false;
+  let activeCount = 0;
+
+  if (diningMatch && !sessionActive && (table.orderingEnabled || openTableWork)) {
+    const joined = await joinTableSession(table.id, sessionKey, table.maxSessions);
+    sessionActive = joined.active;
+    activeCount = joined.activeCount;
+  } else if (sessionActive) {
+    activeCount = await countActiveTableSessions(table.id);
+  }
 
   const canOrder = table.orderingEnabled && diningMatch && sessionActive;
+  const canTrackExistingOrder = openTableWork && diningMatch && sessionActive;
 
   let message: string | null = null;
-  if (!table.orderingEnabled) {
+  if (!table.orderingEnabled && !canTrackExistingOrder) {
     message =
       "This table is not open for ordering. Please ask your server to enable it when you are seated.";
   } else if (!diningMatch) {
@@ -50,7 +65,9 @@ export async function GET(req: NextRequest) {
     diningVerified: diningMatch,
     sessionActive,
     canOrder,
+    canTrackExistingOrder,
     maxSessions: table.maxSessions,
+    activeCount,
     message,
   });
 }

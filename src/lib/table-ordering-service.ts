@@ -1,5 +1,24 @@
 import { prisma } from "@/lib/prisma";
-import { leaveTableSession, purgeStaleTableSessions } from "@/lib/table-session-service";
+import { purgeStaleTableSessions } from "@/lib/table-session-service";
+import { todayDateString } from "@/lib/utils";
+
+export async function hasOpenTableWork(tableId: string) {
+  const count = await prisma.order.count({
+    where: {
+      tableId,
+      date: todayDateString(),
+      status: { not: "CANCELLED" },
+      OR: [
+        { status: { not: "SERVED" } },
+        {
+          paidAt: null,
+          items: { some: { status: "SERVED" } },
+        },
+      ],
+    },
+  });
+  return count > 0;
+}
 
 export async function closeTableOrdering(tableId: string) {
   await purgeStaleTableSessions(tableId);
