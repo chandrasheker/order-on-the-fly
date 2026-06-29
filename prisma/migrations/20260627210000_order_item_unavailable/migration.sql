@@ -1,0 +1,1 @@
+-- SQLite stores enums as TEXT; UNAVAILABLE is valid for new order item statuses.
