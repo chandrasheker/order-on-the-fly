@@ -15,6 +15,7 @@
     "db:setup": "node scripts/init-db.js",
     "db:reset": "rm -f dev.db dev.db-journal dev.db-wal dev.db-shm && node scripts/init-db.js",
     "db:reseed": "npx tsx prisma/seed.ts",
+    "presentation": "node scripts/build-owner-presentation.mjs",
     "crash-dump": "node scripts/crash-dump.js --reason manual",
     "postinstall": "prisma generate"
   },
