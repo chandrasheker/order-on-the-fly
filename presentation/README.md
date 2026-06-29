@@ -1,40 +1,51 @@
-# TableTap — Owner Presentation
+# TableTap — Owner Presentation Decks
 
-## Download
+## Download the two PPTX files
 
-**PowerPoint deck:** [`TableTap-Restaurant-Owner-Deck.pptx`](./TableTap-Restaurant-Owner-Deck.pptx)
+1. **Visual pitch deck (recommended for presenting):**
+   [`TableTap-Restaurant-Owner-Visual-Deck.pptx`](./TableTap-Restaurant-Owner-Visual-Deck.pptx)
+
+2. **Detailed owner deck (more complete backup):**
+   [`TableTap-Restaurant-Owner-Detailed-Deck.pptx`](./TableTap-Restaurant-Owner-Detailed-Deck.pptx)
+
+A compatibility copy is also available as:
+[`TableTap-Restaurant-Owner-Deck.pptx`](./TableTap-Restaurant-Owner-Deck.pptx)
 
 Screenshots are in [`screenshots/`](./screenshots/).
 
-## What's inside (15 slides)
+## Which one should you use?
 
-1. Title — TableTap overview  
-2. Problem — pain points for restaurants  
-3. Solution — QR ordering platform  
-4. Customer experience — mobile menu  
-5. Anti-misuse — staff opens table + QR check-in  
-6. Staff dashboard — live orders  
-7. Table ordering control  
-8. Payments — PhonePe QR & pending/completed  
-9. QR codes & PhonePe setup  
-10. Menu management  
-11. Reports & revenue  
-12. Role-based permissions  
-13. Benefits for owners  
-14. Getting started  
-15. Thank you  
+### Visual pitch deck — 12 slides
+Use this for restaurant-owner meetings. It has:
 
-## Regenerate (after UI changes)
+- Big screenshots
+- Very short text
+- Eye-catching dark theme
+- Faster, less boring flow
+
+### Detailed owner deck — 15 slides
+Use this as backup if someone asks for more explanation. It includes more context around:
+
+- Problem statement
+- Customer journey
+- Staff dashboard
+- Payments
+- QR setup
+- Reports
+- Roles
+- Getting started
+
+## Regenerate after UI changes
 
 1. Start the app: `npm run dev`
 2. Run: `npm run presentation`
+
+This captures fresh screenshots and rebuilds the visual deck.
 
 Requires Python 3 with `python-pptx` (`pip install python-pptx`).
 
 ## Presenting live
 
-- **Staff demo:** `owner@varanasi.com` / `admin123`  
-- **Customer demo:** open a table in Staff Dashboard → scan Table 1 QR  
-- Or visit `/order/varanasi/demo` after opening Table 1  
-
-Replace "Varanasi Restaurant" branding in slide 1 if pitching to a different client.
+- **Staff demo:** `owner@varanasi.com` / `admin123`
+- **Customer demo:** open Table 1 in Staff Dashboard, then scan the Table 1 QR
+- Keep the pitch conversational; the slides are intentionally visual and light on text.
