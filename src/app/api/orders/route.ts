@@ -4,6 +4,7 @@ import { getNextOrderNumber } from "@/lib/order-service";
 import { isTablePaymentBlocked } from "@/lib/payment-service";
 import { todayDateString } from "@/lib/utils";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
+import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 
 export async function POST(req: NextRequest) {
   logApiRequest("orders", "POST");
@@ -46,6 +47,14 @@ export async function POST(req: NextRequest) {
           error: `This table allows ${table.maxSessions} active ordering session(s). Please scan again when a slot opens.`,
         },
         { status: 403 }
+      );
+    }
+
+    const dining = await assertCustomerDiningAccess(req, tableToken, sessionKey);
+    if (!dining.ok) {
+      return NextResponse.json(
+        { error: dining.error, code: dining.code },
+        { status: dining.status },
       );
     }
 
@@ -131,6 +140,26 @@ export async function GET(req: NextRequest) {
   if (tableToken) {
     const table = await prisma.table.findUnique({ where: { qrToken: tableToken } });
     if (!table) return NextResponse.json({ orders: [] });
+
+    const sessionKey = req.nextUrl.searchParams.get("sessionKey");
+    if (sessionKey) {
+      const dining = await assertCustomerDiningAccess(req, tableToken, sessionKey);
+      if (!dining.ok) {
+        return NextResponse.json(
+          { error: dining.error, code: dining.code, orders: [] },
+          { status: dining.status },
+        );
+      }
+    } else {
+      return NextResponse.json(
+        {
+          error: "Scan the QR code at your table to view orders.",
+          code: "DINING_CHECKIN_REQUIRED",
+          orders: [],
+        },
+        { status: 403 },
+      );
+    }
 
     const orders = await prisma.order.findMany({
       where: {

@@ -11,7 +11,8 @@ import { Input, Button, Spinner } from "@/components/ui";
 import { useCartStore } from "@/store/cart";
 import { shouldShowCustomerOrder, shouldShowCustomerPaymentOrder, customerOrderBillTotal } from "@/lib/utils";
 import { useTableSession } from "@/hooks/useTableSession";
-import { UtensilsCrossed, Sparkles, Users, Heart } from "lucide-react";
+import { UtensilsCrossed, Sparkles, Users, Heart, QrCode, ShieldAlert } from "lucide-react";
+import Link from "next/link";
 
 interface Props {
   slug: string;
@@ -72,7 +73,7 @@ export function OrderPageClient({ slug, token }: Props) {
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { customerName, setCustomerName, items, clearCart } = useCartStore();
-  const tableSession = useTableSession(token);
+  const tableSession = useTableSession(token, slug);
 
   const fetchMenu = useCallback(async () => {
     const res = await fetch(`/api/menu/${slug}/${token}`);
@@ -85,20 +86,29 @@ export function OrderPageClient({ slug, token }: Props) {
   }, [slug, token]);
 
   const fetchOrders = useCallback(async () => {
-    const res = await fetch(`/api/orders?tableToken=${token}`);
+    if (!tableSession.sessionKey) return;
+    const res = await fetch(
+      `/api/orders?tableToken=${encodeURIComponent(token)}&sessionKey=${encodeURIComponent(tableSession.sessionKey)}`,
+      { credentials: "include" },
+    );
     if (res.ok) {
       const json = await res.json();
-      setOrders(json.orders);
+      setOrders(json.orders ?? []);
       if (json.paymentBlocked !== undefined) {
         setPaymentBlocked(Boolean(json.paymentBlocked));
       }
+    } else if (res.status === 403) {
+      setOrders([]);
     }
-  }, [token]);
+  }, [token, tableSession.sessionKey]);
 
   useEffect(() => {
+    if (tableSession.loading) return;
     fetchMenu();
-    fetchOrders();
-  }, [fetchMenu, fetchOrders]);
+    if (tableSession.diningVerified) {
+      fetchOrders();
+    }
+  }, [fetchMenu, fetchOrders, tableSession.loading, tableSession.diningVerified]);
 
   useEffect(() => {
     if (!paymentBlocked) return;
@@ -150,13 +160,14 @@ export function OrderPageClient({ slug, token }: Props) {
   }, []);
 
   const placeOrder = async () => {
-    if (!items.length || !tableSession.active || !tableSession.sessionKey) return;
+    if (!items.length || !tableSession.canOrder || !tableSession.sessionKey) return;
     setOrdering(true);
     setOrderError("");
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           tableToken: token,
           sessionKey: tableSession.sessionKey,
@@ -223,7 +234,8 @@ export function OrderPageClient({ slug, token }: Props) {
   const hasPaymentOrders = orders.some((o) => shouldShowCustomerPaymentOrder(o));
   const hasVisibleOrders = hasActiveOrders || hasPaymentOrders;
   const latestOrderId = orders[0]?.id;
-  const canOrder = tableSession.active && !paymentBlocked;
+  const canOrder = tableSession.canOrder && !paymentBlocked;
+  const showOrderingGate = !canOrder && !paymentBlocked && !tableSession.loading;
 
   return (
     <div className="min-h-screen text-white relative">
@@ -282,19 +294,54 @@ export function OrderPageClient({ slug, token }: Props) {
           </div>
         )}
 
-        {!canOrder && !paymentBlocked && (
+        {showOrderingGate && (
           <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-center space-y-3">
-            <Users className="w-8 h-8 text-red-400 mx-auto" />
-            <div>
-              <p className="font-semibold text-red-300">Table is full for ordering</p>
-              <p className="text-sm text-zinc-400 mt-1">
-                This table allows {tableSession.maxSessions} active ordering session
-                {tableSession.maxSessions === 1 ? "" : "s"} at a time (
-                {tableSession.activeCount}/{tableSession.maxSessions} in use). You can browse the
-                menu, but only the first {tableSession.maxSessions} scanned devices can place
-                orders.
-              </p>
-            </div>
+            {!tableSession.orderingEnabled ? (
+              <>
+                <ShieldAlert className="w-8 h-8 text-amber-400 mx-auto" />
+                <div>
+                  <p className="font-semibold text-amber-300">Ordering not open yet</p>
+                  <p className="text-sm text-zinc-400 mt-1">
+                    {tableSession.gateMessage ||
+                      "Please ask your server to enable ordering when you are seated at this table."}
+                  </p>
+                </div>
+              </>
+            ) : !tableSession.diningVerified ? (
+              <>
+                <QrCode className="w-8 h-8 text-red-400 mx-auto" />
+                <div>
+                  <p className="font-semibold text-red-300">Scan the QR at your table</p>
+                  <p className="text-sm text-zinc-400 mt-1">
+                    {tableSession.gateMessage ||
+                      "Saved links cannot be used to order remotely. Scan the QR code on your table to verify you are dining here."}
+                  </p>
+                </div>
+                <Link
+                  href={tableSession.checkInPath}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-white"
+                >
+                  Scan / check in again
+                </Link>
+              </>
+            ) : (
+              <>
+                <Users className="w-8 h-8 text-red-400 mx-auto" />
+                <div>
+                  <p className="font-semibold text-red-300">Session unavailable</p>
+                  <p className="text-sm text-zinc-400 mt-1">
+                    {tableSession.gateMessage ||
+                      "Your table session expired or this table is full. Scan the QR code again."}
+                  </p>
+                </div>
+                <Link
+                  href={tableSession.checkInPath}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-white"
+                >
+                  Scan QR again
+                </Link>
+              </>
+            )}
             <Button variant="secondary" size="sm" onClick={tableSession.retry}>
               Check again
             </Button>

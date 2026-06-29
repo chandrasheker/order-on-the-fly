@@ -39,8 +39,12 @@ export function getBaseUrl() {
   return raw.replace(/\/+$/, "");
 }
 
+export function getTableCheckInUrl(slug: string, qrToken: string) {
+  return `${getBaseUrl()}/order/${slug}/${qrToken}/check-in`;
+}
+
 export function getTableOrderUrl(slug: string, qrToken: string) {
-  return `${getBaseUrl()}/order/${slug}/${qrToken}`;
+  return getTableCheckInUrl(slug, qrToken);
 }
 
 export function getPrepTimeLabel(minutes: number) {
