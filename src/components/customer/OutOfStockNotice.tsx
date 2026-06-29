@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { isOrderFullyOutOfStock, orderUnavailableItems } from "@/lib/utils";
-
-const DISMISS_KEY = "tabletap-oos-dismissed";
 
 type OrderItem = {
   id: string;
@@ -16,62 +14,42 @@ type OrderItem = {
 type Order = {
   id: string;
   orderNumber: number;
+  oosNoticeDismissedAt?: string | null;
   items: OrderItem[];
 };
 
-function readDismissedIds(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = sessionStorage.getItem(DISMISS_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistDismissedIds(ids: string[]) {
-  sessionStorage.setItem(DISMISS_KEY, JSON.stringify(ids));
-}
-
-export function dismissOutOfStockNotice(orderId: string) {
-  const next = [...new Set([...readDismissedIds(), orderId])];
-  persistDismissedIds(next);
-}
-
 type Props = {
   orders: Order[];
-  cartItemCount: number;
-  refreshTick: number;
-  onDismiss: () => void;
+  tableToken: string;
+  onDismissed: () => void;
 };
 
-export function OutOfStockNotice({ orders, cartItemCount, refreshTick, onDismiss }: Props) {
-  const fullyOutOfStockOrders = useMemo(
-    () => orders.filter((order) => isOrderFullyOutOfStock(order.items)),
+export function OutOfStockNotice({ orders, tableToken, onDismissed }: Props) {
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
+
+  const visibleOrders = useMemo(
+    () =>
+      orders.filter(
+        (order) => isOrderFullyOutOfStock(order.items) && !order.oosNoticeDismissedAt,
+      ),
     [orders],
   );
 
-  const visibleOrders = useMemo(() => {
-    void refreshTick;
-    const dismissed = new Set(readDismissedIds());
-    return fullyOutOfStockOrders.filter((order) => !dismissed.has(order.id));
-  }, [fullyOutOfStockOrders, refreshTick]);
-
-  useEffect(() => {
-    if (cartItemCount <= 0 || fullyOutOfStockOrders.length === 0) return;
-    const dismissed = new Set(readDismissedIds());
-    let changed = false;
-    for (const order of fullyOutOfStockOrders) {
-      if (!dismissed.has(order.id)) {
-        dismissed.add(order.id);
-        changed = true;
+  const dismissNotice = async (orderId: string) => {
+    setDismissingId(orderId);
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dismiss-oos-notice", tableToken }),
+      });
+      if (res.ok) {
+        onDismissed();
       }
+    } finally {
+      setDismissingId(null);
     }
-    if (changed) {
-      persistDismissedIds([...dismissed]);
-      onDismiss();
-    }
-  }, [cartItemCount, fullyOutOfStockOrders, onDismiss]);
+  };
 
   if (visibleOrders.length === 0) return null;
 
@@ -92,8 +70,7 @@ export function OutOfStockNotice({ orders, cartItemCount, refreshTick, onDismiss
                 </p>
                 <p className="mt-1 text-sm text-amber-200/80">
                   Everything in order #{order.orderNumber} is out of stock. Please choose other
-                  items from the menu. This notice stays until you refresh it or add something new
-                  to your cart.
+                  items from the menu.
                 </p>
                 <ul className="mt-2 space-y-1 text-sm text-amber-100">
                   {unavailable.map((item, index) => (
@@ -104,13 +81,11 @@ export function OutOfStockNotice({ orders, cartItemCount, refreshTick, onDismiss
                 </ul>
                 <button
                   type="button"
-                  onClick={() => {
-                    dismissOutOfStockNotice(order.id);
-                    onDismiss();
-                  }}
-                  className="mt-3 text-sm font-medium text-amber-300 underline underline-offset-2 hover:text-amber-200"
+                  disabled={dismissingId === order.id}
+                  onClick={() => void dismissNotice(order.id)}
+                  className="mt-3 text-sm font-medium text-amber-300 underline underline-offset-2 hover:text-amber-200 disabled:opacity-50"
                 >
-                  Refresh to dismiss
+                  {dismissingId === order.id ? "Dismissing..." : "Dismiss"}
                 </button>
               </div>
             </div>

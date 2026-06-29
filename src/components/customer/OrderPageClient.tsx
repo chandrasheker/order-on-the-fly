@@ -69,7 +69,6 @@ export function OrderPageClient({ slug, token }: Props) {
   const [orderError, setOrderError] = useState("");
   const [paymentBlocked, setPaymentBlocked] = useState(false);
   const [showThankYou, setShowThankYou] = useState(false);
-  const [oosRefreshTick, setOosRefreshTick] = useState(0);
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { customerName, setCustomerName, items, clearCart } = useCartStore();
@@ -84,10 +83,6 @@ export function OrderPageClient({ slug, token }: Props) {
     }
     setLoading(false);
   }, [slug, token]);
-
-  const handleOosDismiss = useCallback(() => {
-    setOosRefreshTick((tick) => tick + 1);
-  }, []);
 
   const fetchOrders = useCallback(async () => {
     const res = await fetch(`/api/orders?tableToken=${token}`);
@@ -339,9 +334,8 @@ export function OrderPageClient({ slug, token }: Props) {
         {!showThankYou && (
           <OutOfStockNotice
             orders={orders}
-            cartItemCount={items.length}
-            refreshTick={oosRefreshTick}
-            onDismiss={handleOosDismiss}
+            tableToken={token}
+            onDismissed={fetchOrders}
           />
         )}
 

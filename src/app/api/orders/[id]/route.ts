@@ -53,6 +53,25 @@ export async function PATCH(
     return NextResponse.json({ success: true });
   }
 
+  if (action === "dismiss-oos-notice") {
+    if (!tableToken || order.table.qrToken !== tableToken) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    await prisma.order.update({
+      where: { id },
+      data: { oosNoticeDismissedAt: new Date() },
+    });
+
+    logInfo("api:orders/[id]", "Out-of-stock notice dismissed", {
+      orderId: id,
+      orderNumber: order.orderNumber,
+      tableNumber: order.table.number,
+    });
+
+    return NextResponse.json({ success: true });
+  }
+
   if (action === "request-payment" || action === "pay") {
     if (!tableToken) {
       return NextResponse.json({ error: "Table token required" }, { status: 400 });

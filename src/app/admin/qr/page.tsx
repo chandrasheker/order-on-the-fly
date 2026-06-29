@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button, Card, Spinner, Input } from "@/components/ui";
-import { ArrowLeft, Download, Printer, QrCode, Users, CircleDollarSign, Save } from "lucide-react";
+import { ArrowLeft, Download, Printer, QrCode, Users, CircleDollarSign } from "lucide-react";
 import Link from "next/link";
 
 interface QRData {
@@ -32,7 +32,9 @@ export default function QRPage() {
   const [loading, setLoading] = useState(true);
   const [savingDefault, setSavingDefault] = useState(false);
   const [paymentQrUrl, setPaymentQrUrl] = useState("");
-  const [savingPaymentQr, setSavingPaymentQr] = useState(false);
+  const [uploadingPaymentQr, setUploadingPaymentQr] = useState(false);
+  const [removingPaymentQr, setRemovingPaymentQr] = useState(false);
+  const [paymentQrMessage, setPaymentQrMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const loadAll = () => {
     Promise.all([
@@ -83,14 +85,57 @@ export default function QRPage() {
     loadAll();
   };
 
-  const savePaymentQr = async () => {
-    setSavingPaymentQr(true);
-    await fetch("/api/payment/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentQrUrl: paymentQrUrl.trim() || null }),
-    });
-    setSavingPaymentQr(false);
+  const uploadPaymentQr = async (file: File) => {
+    setUploadingPaymentQr(true);
+    setPaymentQrMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/payment/settings/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setPaymentQrMessage({ type: "err", text: json.error || "Upload failed." });
+        return;
+      }
+      setPaymentQrUrl(json.settings.paymentQrUrl ?? "");
+      setPaymentQrMessage({ type: "ok", text: json.message || "PhonePe QR uploaded." });
+    } catch {
+      setPaymentQrMessage({ type: "err", text: "Upload failed. Please try again." });
+    } finally {
+      setUploadingPaymentQr(false);
+    }
+  };
+
+  const removePaymentQr = async () => {
+    setRemovingPaymentQr(true);
+    setPaymentQrMessage(null);
+    try {
+      const res = await fetch("/api/payment/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentQrUrl: null }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setPaymentQrMessage({ type: "err", text: json.error || "Could not remove QR." });
+        return;
+      }
+      setPaymentQrUrl("");
+      setPaymentQrMessage({ type: "ok", text: "PhonePe QR removed." });
+    } catch {
+      setPaymentQrMessage({ type: "err", text: "Could not remove QR. Please try again." });
+    } finally {
+      setRemovingPaymentQr(false);
+    }
+  };
+
+  const handlePaymentQrFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) void uploadPaymentQr(file);
   };
 
   const printAll = () => {
@@ -159,34 +204,55 @@ export default function QRPage() {
             <h2 className="text-lg font-bold">PhonePe payment QR</h2>
           </div>
           <p className="text-sm text-zinc-400 mb-4">
-            Upload your PhonePe static QR image to the server (e.g.{" "}
-            <code className="text-orange-300">/public/payments/phonepe-qr.png</code>) and paste the
-            URL here. Customers will scan this when they tap Pay. Leave empty to use offline
-            collection — staff gets alerted and must mark paid manually.
+            Choose your PhonePe static QR image from this computer. Customers will scan it when
+            they tap Pay. Leave empty to use offline collection — staff gets alerted and must mark
+            paid manually.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 mb-4">
-            <Input
-              placeholder="/payments/phonepe-qr.png"
-              value={paymentQrUrl}
-              onChange={(e) => setPaymentQrUrl(e.target.value)}
-              className="flex-1"
-            />
-            <Button onClick={savePaymentQr} disabled={savingPaymentQr} className="shrink-0">
-              {savingPaymentQr ? "Saving..." : (
-                <>
-                  <Save className="w-4 h-4" /> Save QR
-                </>
-              )}
-            </Button>
+
+          {paymentQrMessage && (
+            <p
+              className={`text-sm mb-4 ${
+                paymentQrMessage.type === "ok" ? "text-emerald-400" : "text-red-400"
+              }`}
+            >
+              {paymentQrMessage.text}
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <label className="inline-flex">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                disabled={uploadingPaymentQr || removingPaymentQr}
+                onChange={handlePaymentQrFileChange}
+              />
+              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium cursor-pointer disabled:opacity-50">
+                {uploadingPaymentQr ? "Uploading..." : "Choose QR image"}
+              </span>
+            </label>
+            {paymentQrUrl.trim() && (
+              <Button
+                variant="secondary"
+                onClick={removePaymentQr}
+                disabled={uploadingPaymentQr || removingPaymentQr}
+              >
+                {removingPaymentQr ? "Removing..." : "Remove QR"}
+              </Button>
+            )}
           </div>
-          {paymentQrUrl.trim() && (
+
+          {paymentQrUrl.trim() ? (
             <div className="inline-block p-3 rounded-xl bg-white">
               <img
                 src={paymentQrUrl}
                 alt="Payment QR preview"
-                className="w-32 h-32 object-contain"
+                className="w-40 h-40 object-contain"
               />
             </div>
+          ) : (
+            <p className="text-sm text-zinc-500">No payment QR uploaded yet.</p>
           )}
         </Card>
 

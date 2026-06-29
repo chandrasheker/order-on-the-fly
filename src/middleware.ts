@@ -31,6 +31,7 @@ async function getPlatformAdminSession(request: NextRequest) {
 }
 
 function isPublicApi(pathname: string, request: NextRequest) {
+  if (/^\/api\/payment\/qr\/[^/]+$/.test(pathname)) return true;
   if (pathname === "/api/auth/login") return true;
   if (pathname === "/api/auth/me") return true;
   if (/^\/api\/menu\/[^/]+\/[^/]+$/.test(pathname)) return true;
