@@ -1,37 +1,39 @@
-# TableTap — Visual Owner Presentation
+# TableTap — Owner Presentation Decks
 
-## Download
+## Download the two PPTX files
 
-**Recommended visual deck:** [`TableTap-Restaurant-Owner-Visual-Deck.pptx`](./TableTap-Restaurant-Owner-Visual-Deck.pptx)
+1. **Visual pitch deck (recommended for presenting):**
+   [`TableTap-Restaurant-Owner-Visual-Deck.pptx`](./TableTap-Restaurant-Owner-Visual-Deck.pptx)
 
-A compatibility copy is also saved as [`TableTap-Restaurant-Owner-Deck.pptx`](./TableTap-Restaurant-Owner-Deck.pptx).
+2. **Detailed owner deck (more complete backup):**
+   [`TableTap-Restaurant-Owner-Detailed-Deck.pptx`](./TableTap-Restaurant-Owner-Detailed-Deck.pptx)
+
+A compatibility copy is also available as:
+[`TableTap-Restaurant-Owner-Deck.pptx`](./TableTap-Restaurant-Owner-Deck.pptx)
 
 Screenshots are in [`screenshots/`](./screenshots/).
 
-## Style
+## Which one should you use?
 
-This deck is designed for restaurant owners:
+### Visual pitch deck — 12 slides
+Use this for restaurant-owner meetings. It has:
 
-- Large screenshots
-- Short punchy messages
-- Minimal text per slide
-- Dark premium theme with orange/green highlights
-- Focused on speed, security, payments, and owner control
+- Big screenshots
+- Very short text
+- Eye-catching dark theme
+- Faster, less boring flow
 
-## What's inside (12 visual slides)
+### Detailed owner deck — 15 slides
+Use this as backup if someone asks for more explanation. It includes more context around:
 
-1. Hero — TableTap pitch
-2. Owner pain points
-3. Customer mobile menu
-4. Staff dashboard
-5. Anti-misuse ordering security
-6. Table open/close control
-7. PhonePe and payment tracking
-8. Owner admin tools
-9. Reports
-10. Role permissions
-11. Owner benefits
-12. Live demo close
+- Problem statement
+- Customer journey
+- Staff dashboard
+- Payments
+- QR setup
+- Reports
+- Roles
+- Getting started
 
 ## Regenerate after UI changes
 
