@@ -5,6 +5,12 @@ import {
   heartbeatTableSession,
   leaveTableSession,
 } from "@/lib/table-session-service";
+import {
+  createDiningToken,
+  diningCookieOptions,
+  DINING_COOKIE,
+  readDiningTokenFromRequest,
+} from "@/lib/dining-access";
 import { logApiError, logApiRequest } from "@/lib/logger";
 
 async function resolveTable(tableToken: string) {
@@ -52,6 +58,24 @@ export async function PATCH(req: NextRequest) {
     }
 
     const alive = await heartbeatTableSession(table.id, sessionKey);
+    if (alive) {
+      const dining = await readDiningTokenFromRequest(req);
+      if (
+        dining &&
+        dining.tableToken === tableToken &&
+        dining.sessionKey === sessionKey &&
+        dining.tableId === table.id
+      ) {
+        const token = await createDiningToken({
+          tableId: table.id,
+          tableToken,
+          sessionKey,
+        });
+        const response = NextResponse.json({ active: true });
+        response.cookies.set(DINING_COOKIE, token, diningCookieOptions());
+        return response;
+      }
+    }
     return NextResponse.json({ active: alive });
   } catch (error) {
     logApiError("tables/session", "PATCH", error);

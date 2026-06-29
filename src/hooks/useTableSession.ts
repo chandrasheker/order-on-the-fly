@@ -20,43 +20,61 @@ function getOrCreateSessionKey(tableToken: string) {
 export interface TableSessionState {
   loading: boolean;
   active: boolean;
+  canOrder: boolean;
+  orderingEnabled: boolean;
+  diningVerified: boolean;
   maxSessions: number;
   activeCount: number;
   sessionKey: string;
+  gateMessage: string | null;
   retry: () => void;
+  checkInPath: string;
 }
 
-export function useTableSession(tableToken: string): TableSessionState {
+export function useTableSession(tableToken: string, slug: string): TableSessionState {
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState(false);
+  const [canOrder, setCanOrder] = useState(false);
+  const [orderingEnabled, setOrderingEnabled] = useState(false);
+  const [diningVerified, setDiningVerified] = useState(false);
   const [maxSessions, setMaxSessions] = useState(2);
   const [activeCount, setActiveCount] = useState(0);
+  const [gateMessage, setGateMessage] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState("");
   const joinedRef = useRef(false);
 
-  const join = useCallback(async () => {
+  const checkInPath = `/order/${slug}/${tableToken}/check-in`;
+
+  const refresh = useCallback(async () => {
     const key = getOrCreateSessionKey(tableToken);
     setSessionKey(key);
     setLoading(true);
 
     try {
-      const res = await fetch("/api/tables/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tableToken, sessionKey: key }),
-      });
+      const res = await fetch(
+        `/api/tables/dining-status?tableToken=${encodeURIComponent(tableToken)}&sessionKey=${encodeURIComponent(key)}`,
+        { credentials: "include" },
+      );
       if (res.ok) {
         const data = await res.json();
-        setActive(data.active);
-        setMaxSessions(data.maxSessions);
-        setActiveCount(data.activeCount);
-        joinedRef.current = data.active;
+        setOrderingEnabled(Boolean(data.orderingEnabled));
+        setDiningVerified(Boolean(data.diningVerified));
+        setActive(Boolean(data.sessionActive));
+        setCanOrder(Boolean(data.canOrder));
+        setMaxSessions(data.maxSessions ?? 2);
+        setGateMessage(data.message ?? null);
+        joinedRef.current = Boolean(data.sessionActive);
       } else {
+        const data = await res.json().catch(() => ({}));
+        setCanOrder(false);
         setActive(false);
+        setGateMessage(data.message || data.error || "Scan the QR code at your table to order.");
         joinedRef.current = false;
       }
     } catch {
+      setCanOrder(false);
       setActive(false);
+      setGateMessage("Could not verify table access. Scan the QR code at your table.");
       joinedRef.current = false;
     } finally {
       setLoading(false);
@@ -64,17 +82,18 @@ export function useTableSession(tableToken: string): TableSessionState {
   }, [tableToken]);
 
   useEffect(() => {
-    join();
-  }, [join]);
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
-    if (!sessionKey || !active) return;
+    if (!sessionKey || !diningVerified || !active) return;
 
     const heartbeat = setInterval(async () => {
       try {
         await fetch("/api/tables/session", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ tableToken, sessionKey }),
         });
       } catch {
@@ -97,14 +116,19 @@ export function useTableSession(tableToken: string): TableSessionState {
       clearInterval(heartbeat);
       window.removeEventListener("pagehide", leave);
     };
-  }, [tableToken, sessionKey, active]);
+  }, [tableToken, sessionKey, diningVerified, active]);
 
   return {
     loading,
     active,
+    canOrder,
+    orderingEnabled,
+    diningVerified,
     maxSessions,
     activeCount,
     sessionKey,
-    retry: join,
+    gateMessage,
+    retry: refresh,
+    checkInPath,
   };
 }

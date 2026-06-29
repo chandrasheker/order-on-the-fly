@@ -9,6 +9,8 @@ import {
 } from "@/lib/order-service";
 import { clearPaymentAlerts, requestOrderPayment } from "@/lib/payment-service";
 import { isOrderItemOpen } from "@/lib/utils";
+import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
+import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
 
 export async function PATCH(
@@ -58,6 +60,11 @@ export async function PATCH(
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
+    const dining = await assertCustomerDiningAccess(req, tableToken);
+    if (!dining.ok) {
+      return NextResponse.json({ error: dining.error, code: dining.code }, { status: dining.status });
+    }
+
     await prisma.order.update({
       where: { id },
       data: { oosNoticeDismissedAt: new Date() },
@@ -75,6 +82,11 @@ export async function PATCH(
   if (action === "request-payment" || action === "pay") {
     if (!tableToken) {
       return NextResponse.json({ error: "Table token required" }, { status: 400 });
+    }
+
+    const dining = await assertCustomerDiningAccess(req, String(tableToken));
+    if (!dining.ok) {
+      return NextResponse.json({ error: dining.error, code: dining.code }, { status: dining.status });
     }
 
     const result = await requestOrderPayment(id, String(tableToken));
@@ -139,6 +151,8 @@ export async function PATCH(
     });
 
     await clearPaymentAlerts(id);
+
+    await maybeAutoCloseTableAfterPayment(order.tableId);
 
     logInfo("api:orders/[id]", "Order marked paid", { orderId: id });
     return NextResponse.json({ success: true });

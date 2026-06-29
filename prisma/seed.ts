@@ -186,7 +186,7 @@ async function main() {
   console.log("🏪 Restaurant: Varanasi (slug: varanasi)");
   console.log("🔑 Staff owner account ready");
   console.log("🪑 10 tables with QR codes ready");
-  console.log(`📱 Table 1 order URL: /order/${restaurant.slug}/${restaurant.slug}-table-1`);
+  console.log(`📱 Table 1 check-in URL: /order/${restaurant.slug}/${restaurant.slug}-table-1/check-in`);
   console.log(`📱 Quick demo URL: /order/${restaurant.slug}/demo`);
 
   const adminPasswordHash = await bcrypt.hash("admin@varanasi", 10);

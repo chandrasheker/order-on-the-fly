@@ -30,6 +30,8 @@ import type { Role } from "@/generated/prisma/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
+import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
+import { canManageTableOrdering } from "@/lib/staff-permissions";
 
 interface OrderItem {
   id: string;
@@ -360,6 +362,7 @@ export function StaffDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
+        {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
             {showTab("active") && (

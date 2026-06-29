@@ -21,6 +21,7 @@ interface TableSetting {
   maxSessions: number;
   activeSessions: number;
   isActive: boolean;
+  orderingEnabled: boolean;
 }
 
 export default function QRPage() {
@@ -73,6 +74,15 @@ export default function QRPage() {
       body: JSON.stringify({ defaultMaxSessions }),
     });
     setSavingDefault(false);
+    loadAll();
+  };
+
+  const saveTableOrdering = async (tableId: string, orderingEnabled: boolean) => {
+    await fetch("/api/tables/manage", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tableId, orderingEnabled }),
+    });
     loadAll();
   };
 
@@ -291,9 +301,18 @@ export default function QRPage() {
                   <p className="font-medium">Table {t.number}</p>
                   <p className="text-xs text-zinc-500">
                     {t.activeSessions} active now · max {t.maxSessions}
+                    {t.orderingEnabled ? " · ordering open" : " · ordering closed"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col items-end gap-2">
+                  <Button
+                    size="sm"
+                    variant={t.orderingEnabled ? "secondary" : "primary"}
+                    onClick={() => saveTableOrdering(t.id, !t.orderingEnabled)}
+                  >
+                    {t.orderingEnabled ? "Close ordering" : "Open ordering"}
+                  </Button>
+                  <div className="flex items-center gap-2">
                   <Input
                     type="number"
                     min={1}
@@ -316,6 +335,7 @@ export default function QRPage() {
                   >
                     Save
                   </Button>
+                  </div>
                 </div>
               </div>
             ))}

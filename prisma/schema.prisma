@@ -85,6 +85,8 @@ model Table {
   number       Int
   qrToken      String         @unique @default(cuid())
   isActive     Boolean        @default(true)
+  orderingEnabled Boolean     @default(false)
+  orderingOpenedAt DateTime?
   maxSessions  Int            @default(2)
   restaurantId String
   restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)

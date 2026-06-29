@@ -61,6 +61,10 @@ export function canAccessAdminMenu(role: Role) {
   return role === "OWNER" || role === "MANAGER";
 }
 
+export function canManageTableOrdering(role: Role) {
+  return role === "OWNER" || role === "MANAGER" || role === "SERVER";
+}
+
 export function canAccessReports(role: Role) {
   return role === "OWNER" || role === "MANAGER";
 }
