@@ -10,6 +10,7 @@ interface StaffCartStore {
   addItem: (item: Omit<CartItem, "quantity">) => void;
   removeItem: (menuItemId: string) => void;
   updateQuantity: (menuItemId: string, quantity: number) => void;
+  updateNotes: (menuItemId: string, notes: string) => void;
   clearCart: () => void;
   total: () => number;
   maxPrepTime: () => number;
@@ -50,6 +51,12 @@ export const useStaffCartStore = create<StaffCartStore>((set, get) => ({
       ),
     });
   },
+  updateNotes: (menuItemId, notes) =>
+    set({
+      items: get().items.map((i) =>
+        i.menuItemId === menuItemId ? { ...i, notes: notes || undefined } : i,
+      ),
+    }),
   clearCart: () => set({ items: [], customerName: "" }),
   total: () => get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),
   maxPrepTime: () => get().items.reduce((max, i) => Math.max(max, i.prepTimeMinutes), 0),
