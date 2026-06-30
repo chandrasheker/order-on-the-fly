@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tabletap-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tabletap}
+      POSTGRES_USER: ${POSTGRES_USER:-tabletap}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tabletap_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tabletap} -d ${POSTGRES_DB:-tabletap}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tabletap-app:latest
+    container_name: tabletap-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tabletap}:${POSTGRES_PASSWORD:-tabletap_password}@postgres:5432/${POSTGRES_DB:-tabletap}
+      PRISMA_SCHEMA: prisma/schema.postgres.prisma
+      PRISMA_MIGRATIONS: prisma/migrations-postgres
+      SEED_IF_EMPTY: "true"
+      JWT_SECRET: ${JWT_SECRET:-change-this-jwt-secret-before-production}
+      TABLE_ACCESS_SECRET: ${TABLE_ACCESS_SECRET:-change-this-table-access-secret-before-production}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    command: >
+      sh -c "npx prisma migrate deploy &&
+             npx tsx scripts/ensure-platform-admin.ts &&
+             npx tsx prisma/seed.ts"
+
+  app:
+    image: tabletap-app:latest
+    container_name: tabletap-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tabletap}:${POSTGRES_PASSWORD:-tabletap_password}@postgres:5432/${POSTGRES_DB:-tabletap}
+      PRISMA_SCHEMA: prisma/schema.postgres.prisma
+      PRISMA_MIGRATIONS: prisma/migrations-postgres
+      JWT_SECRET: ${JWT_SECRET:-change-this-jwt-secret-before-production}
+      TABLE_ACCESS_SECRET: ${TABLE_ACCESS_SECRET:-change-this-table-access-secret-before-production}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      # Binds to all interfaces so phones on the same Wi-Fi/LAN can open:
+      # http://<your-computer-lan-ip>:3000
+      - "3000:3000"
+    volumes:
+      - payment_uploads:/app/data/payments
+    command: ["npx", "next", "start", "-H", "0.0.0.0", "-p", "3000"]
+
+volumes:
+  postgres_data:
+  payment_uploads:

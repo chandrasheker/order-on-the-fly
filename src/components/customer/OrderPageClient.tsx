@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MenuView } from "@/components/customer/MenuView";
 import { OrderTracker } from "@/components/customer/OrderTracker";
 import { OutOfStockNotice } from "@/components/customer/OutOfStockNotice";
+import { TableSwitchRequest } from "@/components/customer/TableSwitchRequest";
 import { WaitingGames } from "@/components/customer/WaitingGames";
 import { FeedbackButton } from "@/components/customer/FeedbackButton";
 import { Input, Button, Spinner } from "@/components/ui";
@@ -392,6 +393,16 @@ export function OrderPageClient({ slug, token }: Props) {
             paymentQrUrl={data.restaurant.paymentQrUrl}
             onRefresh={fetchOrders}
             onPaymentRequested={() => setPaymentBlocked(true)}
+          />
+        )}
+
+        {hasVisibleOrders && !showThankYou && (
+          <TableSwitchRequest
+            slug={slug}
+            tableToken={token}
+            sessionKey={tableSession.sessionKey}
+            customerName={customerName}
+            enabled={tableSession.diningVerified}
           />
         )}
 

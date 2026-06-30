@@ -22,6 +22,7 @@ import {
   Volume2,
   Wallet,
   CircleDollarSign,
+  ArrowRightLeft,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
@@ -101,6 +102,16 @@ interface MissedSummary {
   avgMinutesLate: number;
 }
 
+interface TableSwitchRequest {
+  id: string;
+  status: string;
+  customerName: string | null;
+  note: string | null;
+  sourceTableNumber: number;
+  targetTableNumber: number;
+  requestedAt: string;
+}
+
 type ViewMode = StaffTab;
 type ItemFilter = "all" | "overdue" | "alarm";
 
@@ -114,6 +125,8 @@ export function StaffDashboard() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [missedTimeline, setMissedTimeline] = useState<MissedTimelineItem[]>([]);
   const [missedSummary, setMissedSummary] = useState<MissedSummary[]>([]);
+  const [tableSwitchRequests, setTableSwitchRequests] = useState<TableSwitchRequest[]>([]);
+  const [handlingSwitchId, setHandlingSwitchId] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
@@ -155,6 +168,7 @@ export function StaffDashboard() {
         setAlerts(data.alerts);
         setMissedTimeline(data.missedTimeline ?? []);
         setMissedSummary(data.missedSummary ?? []);
+        setTableSwitchRequests(data.tableSwitchRequests ?? []);
         setStats(data.stats);
       }
     } catch (error) {
@@ -177,6 +191,24 @@ export function StaffDashboard() {
       body: JSON.stringify({ action, itemId: itemId || undefined }),
     });
     fetchData();
+  };
+
+  const handleTableSwitch = async (requestId: string, action: "approve" | "reject") => {
+    setHandlingSwitchId(requestId);
+    try {
+      const res = await fetch(`/api/table-switch/${requestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        alert(json.error || "Could not update table switch request");
+      }
+      await fetchData();
+    } finally {
+      setHandlingSwitchId(null);
+    }
   };
 
   const markOrderPaid = async (orderId: string) => {
@@ -363,6 +395,60 @@ export function StaffDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
+
+        {tableSwitchRequests.length > 0 && (
+          <div className="mb-6 p-4 rounded-2xl border border-sky-500/30 bg-sky-500/10">
+            <div className="flex items-center gap-2 mb-3">
+              <ArrowRightLeft className="w-5 h-5 text-sky-300" />
+              <div>
+                <p className="font-semibold text-sky-200">Table switch requests</p>
+                <p className="text-xs text-zinc-400">
+                  Approving moves the active order/payment from the old table to the new table.
+                </p>
+              </div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-3">
+              {tableSwitchRequests.map((request) => (
+                <div
+                  key={request.id}
+                  className="p-3 rounded-xl bg-black/20 border border-white/10 flex items-center justify-between gap-3"
+                >
+                  <div>
+                    <p className="font-medium text-white">
+                      Table {request.sourceTableNumber} → Table {request.targetTableNumber}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      {request.customerName ? `${request.customerName} · ` : ""}
+                      Requested {new Date(request.requestedAt).toLocaleTimeString()}
+                    </p>
+                    {request.note && (
+                      <p className="text-xs text-sky-200/80 mt-1">{request.note}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={handlingSwitchId === request.id}
+                      onClick={() => void handleTableSwitch(request.id, "reject")}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="success"
+                      disabled={handlingSwitchId === request.id}
+                      onClick={() => void handleTableSwitch(request.id, "approve")}
+                    >
+                      Approve
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
             {showTab("active") && (

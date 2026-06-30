@@ -2,13 +2,18 @@ import "dotenv/config";
 import { createRequire } from "node:module";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { getDatabaseUrl } from "../src/lib/db-url";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
+import { getDatabaseUrl, isPostgresUrl } from "../src/lib/db-url";
 import bcrypt from "bcryptjs";
 
 const require = createRequire(import.meta.url);
 const { loadRestaurantConfig } = require("../scripts/restaurant-config.js");
 
-const adapter = new PrismaBetterSqlite3({ url: getDatabaseUrl() });
+const databaseUrl = getDatabaseUrl();
+const adapter = isPostgresUrl(databaseUrl)
+  ? new PrismaPg(new Pool({ connectionString: databaseUrl }))
+  : new PrismaBetterSqlite3({ url: databaseUrl });
 const prisma = new PrismaClient({ adapter });
 
 type StaffMember = {
@@ -40,9 +45,18 @@ type MenuCategory = {
 async function main() {
   const config = loadRestaurantConfig();
 
+  if (process.env.SEED_IF_EMPTY === "true") {
+    const existingRestaurants = await prisma.restaurant.count();
+    if (existingRestaurants > 0) {
+      console.log("Seed skipped; database already has restaurant data.");
+      return;
+    }
+  }
+
   console.log(`🌱 Seeding from config: ${config.configPath}`);
 
   await prisma.alert.deleteMany();
+  await prisma.tableSwitchRequest.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.menuItem.deleteMany();
