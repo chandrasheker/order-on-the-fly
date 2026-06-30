@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { logApiRequest, logInfo } from "@/lib/logger";
 import { getOrderPaymentSummary } from "@/lib/payment-allocation-service";
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
+import { ensureServiceTables } from "@/lib/service-tables";
 
 export async function GET() {
   logApiRequest("staff/dashboard", "GET");
@@ -21,6 +22,7 @@ export async function GET() {
   }
 
   const today = todayDateString();
+  await ensureServiceTables(session.restaurantId, session.restaurantSlug);
   const features = await getRestaurantFeatureFlags(session.restaurantId);
 
   const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests, todayPaymentSum] =

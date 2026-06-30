@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { createPrismaClient } from "../src/lib/create-prisma-client";
 import bcrypt from "bcryptjs";
 import { FEATURE_CATALOG } from "../src/lib/feature-catalog";
+import { ensureServiceTables } from "../src/lib/service-tables";
 
 const require = createRequire(import.meta.url);
 const { loadRestaurantConfig } = require("../scripts/restaurant-config.js");
@@ -110,6 +111,8 @@ async function main() {
       },
     });
   }
+
+  await ensureServiceTables(restaurant.id, restaurant.slug);
 
   const menu: MenuCategory[] = config.menu;
   for (const cat of menu) {

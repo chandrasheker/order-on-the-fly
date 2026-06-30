@@ -1,21 +1,60 @@
 const PRINTER_WIDTH = 384;
 
-function absoluteImageUrl(url: string) {
+function absoluteImageUrl(url: string, origin?: string) {
   if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
-    return url;
-  }
-  if (typeof window !== "undefined") {
-    return new URL(url, window.location.origin).toString();
+  if (url.startsWith("data:")) return url;
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  if (url.startsWith("/")) {
+    if (origin) return new URL(url, origin).toString();
+    if (typeof window !== "undefined") {
+      return new URL(url, window.location.origin).toString();
+    }
   }
   return url;
 }
 
-export async function logoToEscPosRaster(logoUrl: string | null, maxWidth = PRINTER_WIDTH) {
-  if (!logoUrl || typeof document === "undefined") return null;
+function proxyLogoUrl(absoluteUrl: string) {
+  if (typeof window === "undefined") return absoluteUrl;
+  if (absoluteUrl.startsWith(window.location.origin)) {
+    return absoluteUrl;
+  }
+  return `/api/receipt/logo?url=${encodeURIComponent(absoluteUrl)}`;
+}
 
-  const src = absoluteImageUrl(logoUrl);
-  const image = await loadImage(src);
+export async function logoToEscPosRaster(
+  logoUrl: string | null,
+  maxWidth = PRINTER_WIDTH,
+  origin?: string
+) {
+  if (!logoUrl) return null;
+
+  const candidates = [
+    logoUrl,
+    absoluteImageUrl(logoUrl, origin),
+  ].filter(Boolean);
+
+  const unique = [...new Set(candidates)];
+
+  for (const candidate of unique) {
+    const sources = [
+      candidate.startsWith("data:") ? candidate : proxyLogoUrl(candidate),
+      candidate,
+    ];
+
+    for (const src of [...new Set(sources)]) {
+      try {
+        const image = await loadImage(src);
+        return rasterizeImage(image, maxWidth);
+      } catch {
+        // try next source
+      }
+    }
+  }
+
+  return null;
+}
+
+function rasterizeImage(image: HTMLImageElement, maxWidth: number) {
   const scale = Math.min(1, maxWidth / image.width);
   const width = Math.max(1, Math.floor(image.width * scale));
   const height = Math.max(1, Math.floor(image.height * scale));
@@ -37,6 +76,8 @@ export async function logoToEscPosRaster(logoUrl: string | null, maxWidth = PRIN
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = (y * width + x) * 4;
+      const alpha = data[idx + 3];
+      if (alpha < 32) continue;
       const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
       if (luminance < 180) {
         const byteIndex = y * widthBytes + Math.floor(x / 8);

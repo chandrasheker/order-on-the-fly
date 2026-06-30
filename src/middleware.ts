@@ -51,6 +51,7 @@ function isPublicApi(pathname: string, request: NextRequest) {
     return true;
   }
   if (pathname === "/api/platform/auth/login" && request.method === "POST") return true;
+  if (/^\/api\/webhooks\/orders\/[^/]+$/.test(pathname) && request.method === "POST") return true;
   if (/^\/api\/orders\/[^/]+$/.test(pathname) && request.method === "PATCH") {
     return true;
   }

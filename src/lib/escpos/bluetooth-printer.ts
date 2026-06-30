@@ -1,6 +1,7 @@
 const STORAGE_DEVICE_ID = "tabletap-printer-device-id";
 const STORAGE_DEVICE_NAME = "tabletap-printer-device-name";
 const STORAGE_AUTO_PRINT = "tabletap-auto-print-receipt";
+const STORAGE_KITCHEN_CHIT = "tabletap-auto-print-kitchen-chit";
 
 const COMMON_SERVICES = [
   "000018f0-0000-1000-8000-00805f9b34fb",
@@ -23,6 +24,15 @@ export function getAutoPrintEnabled() {
 
 export function setAutoPrintEnabled(enabled: boolean) {
   localStorage.setItem(STORAGE_AUTO_PRINT, enabled ? "true" : "false");
+}
+
+export function getKitchenChitEnabled() {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(STORAGE_KITCHEN_CHIT) === "true";
+}
+
+export function setKitchenChitEnabled(enabled: boolean) {
+  localStorage.setItem(STORAGE_KITCHEN_CHIT, enabled ? "true" : "false");
 }
 
 export function getSavedPrinterName() {

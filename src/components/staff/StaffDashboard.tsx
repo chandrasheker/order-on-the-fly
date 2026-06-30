@@ -35,7 +35,8 @@ import { useRouter } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
 import { SplitPaymentPanel } from "@/components/staff/SplitPaymentPanel";
-import { OfflineOrderPanel } from "@/components/staff/OfflineOrderPanel";
+import { RemoteOrdersPanel } from "@/components/staff/RemoteOrdersPanel";
+import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { ThermalPrinterButton } from "@/components/staff/ThermalPrinterButton";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
 import {
@@ -159,6 +160,7 @@ type RestaurantFeatures = {
   floor_plan?: boolean;
   split_bill?: boolean;
   phone_orders?: boolean;
+  aggregator_inbox?: boolean;
   thermal_receipts?: boolean;
   staff_performance?: boolean;
   gst_receipts?: boolean;
@@ -185,7 +187,7 @@ export function StaffDashboard() {
 
   const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
     useStaffNotifications(alerts);
-  const { printReceipt, autoPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint } = useThermalPrinter();
+  const { printReceipt, autoPrint, kitchenChitPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint, toggleKitchenChitPrint, reprintOrderReceipt, printKitchenChit } = useThermalPrinter();
   const [printMessage, setPrintMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -287,6 +289,31 @@ export function StaffDashboard() {
       }
       window.setTimeout(() => setPrintMessage(null), 5000);
     }
+  };
+
+  const handleRemoteOrderPlaced = async (result?: { kitchenChit?: KitchenChitPayload | null }) => {
+    fetchData();
+    if (printerSupported && kitchenChitPrint && result?.kitchenChit) {
+      try {
+        await printKitchenChit(result.kitchenChit);
+        setPrintMessage("Kitchen chit sent to printer.");
+      } catch (error) {
+        setPrintMessage(
+          error instanceof Error ? error.message : "Order saved, but kitchen chit print failed.",
+        );
+      }
+      window.setTimeout(() => setPrintMessage(null), 5000);
+    }
+  };
+
+  const handleReprintReceipt = async (orderId: string) => {
+    try {
+      await reprintOrderReceipt(orderId);
+      setPrintMessage("Receipt reprinted.");
+    } catch (error) {
+      setPrintMessage(error instanceof Error ? error.message : "Reprint failed.");
+    }
+    window.setTimeout(() => setPrintMessage(null), 5000);
   };
 
   const dismissAlert = async (alertId: string) => {
@@ -457,10 +484,10 @@ export function StaffDashboard() {
                     ? "bg-violet-500/20 border-violet-500/40 text-violet-200"
                     : "bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20",
                 )}
-                title="Phone / offline orders"
+                title="Takeaway, delivery, phone & aggregator orders"
               >
                 <Phone className="w-4 h-4" />
-                <span className="hidden sm:inline">Phone orders</span>
+                <span className="hidden sm:inline">Remote orders</span>
               </button>
             )}
             {isManager && (
@@ -486,11 +513,13 @@ export function StaffDashboard() {
                 status={status}
                 deviceName={deviceName}
                 autoPrint={autoPrint}
+                kitchenChitPrint={kitchenChitPrint}
                 lastError={lastError}
                 printing={printing}
                 supported={printerSupported}
                 onConnect={connect}
                 onToggleAutoPrint={toggleAutoPrint}
+                onToggleKitchenChitPrint={toggleKitchenChitPrint}
               />
             )}
             <button onClick={logout} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
@@ -783,7 +812,12 @@ export function StaffDashboard() {
                 <Card className="p-8 text-center text-zinc-400">No paid orders yet today</Card>
               ) : (
                 completedOrders.map((order) => (
-                  <CompletedOrderRow key={order.id} order={order} />
+                  <CompletedOrderRow
+                    key={order.id}
+                    order={order}
+                    canReprint={Boolean(features.thermal_receipts)}
+                    onReprint={handleReprintReceipt}
+                  />
                 ))
               )}
             </div>
@@ -829,7 +863,12 @@ export function StaffDashboard() {
             ) : (
               <div className="space-y-3">
                 {completedOrders.map((order) => (
-                  <CompletedOrderRow key={order.id} order={order} />
+                  <CompletedOrderRow
+                    key={order.id}
+                    order={order}
+                    canReprint={Boolean(features.thermal_receipts)}
+                    onReprint={handleReprintReceipt}
+                  />
                 ))}
               </div>
             )}
@@ -943,7 +982,10 @@ export function StaffDashboard() {
         )}
 
         {viewMode === "offline" && (
-          <OfflineOrderPanel onOrderPlaced={fetchData} />
+          <RemoteOrdersPanel
+            aggregatorEnabled={Boolean(features.aggregator_inbox)}
+            onOrderPlaced={handleRemoteOrderPlaced}
+          />
         )}
 
         {viewMode === "alerts" && (
@@ -1278,7 +1320,15 @@ function PendingPaymentCard({
   );
 }
 
-function CompletedOrderRow({ order }: { order: Order }) {
+function CompletedOrderRow({
+  order,
+  canReprint,
+  onReprint,
+}: {
+  order: Order;
+  canReprint?: boolean;
+  onReprint?: (orderId: string) => void;
+}) {
   const total =
     order.total ??
     sumOrderRevenue(
@@ -1356,9 +1406,19 @@ function CompletedOrderRow({ order }: { order: Order }) {
             })}
           </div>
         </div>
-        <div className="text-right sm:pl-4 sm:border-l sm:border-white/10">
+        <div className="text-right sm:pl-4 sm:border-l sm:border-white/10 space-y-2">
           <p className="text-xs text-zinc-500">Bill total</p>
           <p className="text-xl font-bold text-emerald-400">{formatCurrency(total)}</p>
+          {canReprint && order.paidAt && onReprint && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="w-full sm:w-auto"
+              onClick={() => void onReprint(order.id)}
+            >
+              Reprint receipt
+            </Button>
+          )}
         </div>
       </div>
     </Card>

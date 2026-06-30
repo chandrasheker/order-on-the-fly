@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bluetooth, Printer, Loader2 } from "lucide-react";
+import { Bluetooth, Printer, Loader2, ChefHat } from "lucide-react";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
@@ -9,22 +9,26 @@ type ThermalPrinterButtonProps = {
   status: "unsupported" | "disconnected" | "connected";
   deviceName: string;
   autoPrint: boolean;
+  kitchenChitPrint: boolean;
   lastError: string;
   printing: boolean;
   supported: boolean;
   onConnect: () => Promise<void>;
   onToggleAutoPrint: (enabled: boolean) => void;
+  onToggleKitchenChitPrint: (enabled: boolean) => void;
 };
 
 export function ThermalPrinterButton({
   status,
   deviceName,
   autoPrint,
+  kitchenChitPrint,
   lastError,
   printing,
   supported,
   onConnect,
   onToggleAutoPrint,
+  onToggleKitchenChitPrint,
 }: ThermalPrinterButtonProps) {
   const [open, setOpen] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -57,14 +61,14 @@ export function ThermalPrinterButton({
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-white/10 bg-[#12121c] shadow-2xl p-4 z-50">
+        <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-white/10 bg-[#12121c] shadow-2xl p-4 z-50">
           <div className="flex items-center gap-2 mb-3">
             <Bluetooth className="w-4 h-4 text-sky-400" />
             <p className="font-semibold text-white text-sm">Thermal printer</p>
           </div>
 
           <p className="text-xs text-zinc-400 mb-3">
-            Pair once over Bluetooth. Bills print automatically when you mark an order paid.
+            Pair once over Bluetooth. Choose what to auto-print when orders are placed or paid.
           </p>
 
           {deviceName ? (
@@ -75,14 +79,25 @@ export function ThermalPrinterButton({
             <p className="text-sm text-zinc-500 mb-3">No printer paired yet.</p>
           )}
 
-          <label className="flex items-center gap-2 text-sm text-zinc-300 mb-3">
+          <label className="flex items-center gap-2 text-sm text-zinc-300 mb-2">
             <input
               type="checkbox"
               checked={autoPrint}
               onChange={(event) => onToggleAutoPrint(event.target.checked)}
               className="rounded border-white/20"
             />
-            Auto-print when bill is marked paid
+            Auto-print customer receipt when bill is fully paid
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-zinc-300 mb-3">
+            <ChefHat className="w-4 h-4 text-orange-300" />
+            <input
+              type="checkbox"
+              checked={kitchenChitPrint}
+              onChange={(event) => onToggleKitchenChitPrint(event.target.checked)}
+              className="rounded border-white/20"
+            />
+            Auto-print kitchen chit when a new order is sent
           </label>
 
           <Button

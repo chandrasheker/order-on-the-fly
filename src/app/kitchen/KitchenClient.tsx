@@ -31,6 +31,8 @@ type KitchenTicket = {
   id: string;
   orderNumber: number;
   tableNumber: number;
+  locationLabel?: string;
+  orderChannel?: string;
   customerName: string | null;
   alarmTriggered: boolean;
   items: KitchenItem[];
@@ -208,7 +210,9 @@ export default function KitchenClient() {
                       >
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div>
-                            <span className="text-2xl font-black">T{ticket.tableNumber}</span>
+                            <span className="text-2xl font-black">
+                              {ticket.locationLabel ?? `T${ticket.tableNumber}`}
+                            </span>
                             <span className="text-zinc-500 text-sm ml-2">#{ticket.orderNumber}</span>
                           </div>
                           <span

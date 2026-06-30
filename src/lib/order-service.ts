@@ -3,6 +3,8 @@ import { isOrderItemOpen, todayDateString, sumOrderRevenue } from "@/lib/utils";
 import { clearPaymentAlerts } from "@/lib/payment-service";
 import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
+import { channelForTableKind, isServiceTable } from "@/lib/order-channel";
+import type { OrderChannel } from "@/generated/prisma/client";
 
 export async function clearAlertsForOrderItem(orderItemId: string) {
   await prisma.alert.updateMany({
@@ -112,11 +114,26 @@ export async function createOrderForTable(params: {
   tableId: string;
   restaurantId: string;
   customerName?: string | null;
+  customerPhone?: string | null;
+  orderChannel?: OrderChannel;
+  externalOrderId?: string | null;
+  orderNotes?: string | null;
   items: CreateOrderItemInput[];
   placedByUserId?: string | null;
   placedByName?: string | null;
 }) {
-  const { tableId, restaurantId, customerName, items, placedByUserId, placedByName } = params;
+  const {
+    tableId,
+    restaurantId,
+    customerName,
+    customerPhone,
+    orderChannel,
+    externalOrderId,
+    orderNotes,
+    items,
+    placedByUserId,
+    placedByName,
+  } = params;
 
   if (!items.length) {
     throw new OrderCreationError("Order must include at least one item");
@@ -132,13 +149,21 @@ export async function createOrderForTable(params: {
   }
 
   const { isTablePaymentBlocked } = await import("@/lib/payment-service");
-  if (await isTablePaymentBlocked(table.id)) {
+  if (!isServiceTable(table.kind) && (await isTablePaymentBlocked(table.id))) {
     throw new OrderCreationError(
       "This table has an unpaid bill. Collect payment before placing a new order.",
       403,
       "TABLE_PAYMENT_BLOCKED",
     );
   }
+
+  const resolvedChannel =
+    orderChannel ??
+    (placedByUserId
+      ? table.kind === "DINE_IN"
+        ? "WALK_IN"
+        : channelForTableKind(table.kind, table.serviceLabel)
+      : channelForTableKind(table.kind, table.serviceLabel));
 
   const menuItems = await prisma.menuItem.findMany({
     where: {
@@ -173,6 +198,10 @@ export async function createOrderForTable(params: {
     data: {
       orderNumber,
       customerName: customerName?.trim() || null,
+      customerPhone: customerPhone?.trim() || null,
+      orderChannel: resolvedChannel,
+      externalOrderId: externalOrderId?.trim() || null,
+      orderNotes: orderNotes?.trim() || null,
       tableId: table.id,
       restaurantId: table.restaurantId,
       date: todayDateString(),

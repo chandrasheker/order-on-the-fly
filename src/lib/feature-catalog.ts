@@ -199,10 +199,9 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
   {
     key: "aggregator_inbox",
     name: "Swiggy / Zomato inbox",
-    problem: "All delivery orders on the same kitchen board as dine-in.",
-    tier: "roadmap",
+    problem: "Delivery aggregator orders on the same kitchen board as dine-in.",
+    tier: "premium",
     defaultEnabled: false,
-    roadmap: true,
   },
   {
     key: "tip_pooling",
