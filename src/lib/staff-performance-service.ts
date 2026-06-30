@@ -46,6 +46,13 @@ export async function getStaffPerformanceReport(restaurantId: string, date = tod
       include: {
         table: { select: { number: true } },
         items: true,
+        payments: {
+          select: {
+            amount: true,
+            collectedByUserId: true,
+            collectedByName: true,
+          },
+        },
       },
     }),
     prisma.user.findMany({
@@ -75,7 +82,19 @@ export async function getStaffPerformanceReport(restaurantId: string, date = tod
       row.ordersPlaced += 1;
     }
 
-    if (order.paidByUserId && order.paidByName) {
+    if (order.payments.length > 0) {
+      for (const payment of order.payments) {
+        if (!payment.collectedByUserId || !payment.collectedByName) continue;
+        const row = bumpStaff(
+          byStaff,
+          payment.collectedByUserId,
+          payment.collectedByName,
+          roleFor(payment.collectedByUserId),
+        );
+        row.paymentsCollected += 1;
+        row.revenueCollected += payment.amount;
+      }
+    } else if (order.paidAt && order.paidByUserId && order.paidByName) {
       const row = bumpStaff(
         byStaff,
         order.paidByUserId,

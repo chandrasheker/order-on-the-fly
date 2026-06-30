@@ -81,11 +81,15 @@ export default function FloorPlanPage() {
   }, [load]);
 
   const patchTable = async (tableId: string, body: Record<string, unknown>) => {
-    await fetch("/api/floor", {
+    const res = await fetch("/api/floor", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tableId, ...body }),
     });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      alert(json.error || "Could not update table");
+    }
     load();
   };
 
@@ -222,7 +226,6 @@ export default function FloorPlanPage() {
                 onChange={(e) =>
                   patchTable(selected.id, {
                     assignedServerId: e.target.value || null,
-                    seated: true,
                   })
                 }
               >
@@ -246,12 +249,16 @@ export default function FloorPlanPage() {
                 className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm"
                 value={selected.guestCount ?? ""}
                 placeholder="Guest count"
-                onChange={(e) =>
-                  patchTable(selected.id, {
-                    guestCount: e.target.value ? parseInt(e.target.value, 10) : null,
-                    seated: true,
-                  })
-                }
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (!raw) {
+                    patchTable(selected.id, { guestCount: null });
+                    return;
+                  }
+                  const count = parseInt(raw, 10);
+                  if (Number.isNaN(count)) return;
+                  patchTable(selected.id, { guestCount: count });
+                }}
               />
             </div>
 

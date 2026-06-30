@@ -21,7 +21,7 @@ export async function GET() {
 
   const today = todayDateString();
 
-  const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests] =
+  const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests, todayPaymentSum] =
     await Promise.all([
       getActiveOrders(session.restaurantId),
       getPendingPaymentOrders(session.restaurantId),
@@ -40,12 +40,16 @@ export async function GET() {
         orderBy: { requestedAt: "asc" },
         take: 20,
       }),
+      prisma.payment.aggregate({
+        where: {
+          restaurantId: session.restaurantId,
+          createdAt: { gte: new Date(`${today}T00:00:00.000`) },
+        },
+        _sum: { amount: true },
+      }),
     ]);
 
-  const todayRevenue = completedOrders.reduce(
-    (sum, o) => sum + sumPaidOrderRevenue(o, o.items),
-    0
-  );
+  const todayRevenue = todayPaymentSum._sum.amount ?? 0;
 
   const overdueCount = orders.reduce(
     (sum, o) =>
@@ -77,7 +81,7 @@ export async function GET() {
   logInfo("api:staff/dashboard", "Dashboard loaded", {
     restaurantId: session.restaurantId,
     activeOrders: orders.length,
-    pendingPayments: pendingOrders.length,
+    pendingPayments: pendingWithPayments.length,
     completedOrders: completedOrders.length,
     unreadAlerts: alerts.length,
   });
@@ -110,7 +114,7 @@ export async function GET() {
     tableSwitchRequests,
     stats: {
       activeOrders: orders.length,
-      pendingPayments: pendingOrders.length,
+      pendingPayments: pendingWithPayments.length,
       completedOrders: completedOrders.length,
       todayOrders: orderCount,
       revenue: todayRevenue,

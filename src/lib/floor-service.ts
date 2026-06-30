@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { todayDateString, sumOrderRevenue, isOrderItemOpen } from "@/lib/utils";
-import { openTableOrdering, closeTableOrdering } from "@/lib/table-ordering-service";
+import { openTableOrdering, closeTableOrdering, hasOpenTableWork } from "@/lib/table-ordering-service";
 import { getOrderPaymentSummary } from "@/lib/payment-allocation-service";
 
 export type TableFloorState =
@@ -14,18 +14,20 @@ export type TableFloorState =
 
 function deriveTableState(input: {
   orderingEnabled: boolean;
-  seatedAt: Date | null;
+  effectiveSeatedAt: Date | null;
   activeItems: number;
   overdueItems: number;
   awaitingPayment: boolean;
   openOrders: number;
 }): TableFloorState {
   if (input.overdueItems > 0) return "overdue";
-  if (input.awaitingPayment) return "payment";
   if (input.activeItems > 0) return "kitchen";
+  if (input.awaitingPayment) return "payment";
   if (input.openOrders > 0 && input.orderingEnabled) return "ordering";
-  if (input.seatedAt || input.orderingEnabled) return "eating";
-  if (input.seatedAt) return "seated";
+  if (input.effectiveSeatedAt && !input.orderingEnabled && input.openOrders === 0 && input.activeItems === 0) {
+    return "seated";
+  }
+  if (input.effectiveSeatedAt || input.orderingEnabled) return "eating";
   return "available";
 }
 
@@ -87,9 +89,9 @@ export async function getFloorSnapshot(restaurantId: string) {
         if (summary.remaining > 0) awaitingPayment = true;
       }
 
-      const seatedAt = table.seatedAt ?? table.orderingOpenedAt;
-      const elapsedMinutes = seatedAt
-        ? Math.floor((Date.now() - seatedAt.getTime()) / 60000)
+      const effectiveSeatedAt = table.seatedAt ?? table.orderingOpenedAt;
+      const elapsedMinutes = effectiveSeatedAt
+        ? Math.floor((Date.now() - effectiveSeatedAt.getTime()) / 60000)
         : null;
 
       const cols = 4;
@@ -106,12 +108,12 @@ export async function getFloorSnapshot(restaurantId: string) {
         width: table.width ?? 96,
         height: table.height ?? 96,
         guestCount: table.guestCount,
-        seatedAt: seatedAt?.toISOString() ?? null,
+        seatedAt: effectiveSeatedAt?.toISOString() ?? null,
         elapsedMinutes,
         assignedServer: table.assignedServer,
         state: deriveTableState({
           orderingEnabled: table.orderingEnabled,
-          seatedAt: table.seatedAt,
+          effectiveSeatedAt,
           activeItems,
           overdueItems,
           awaitingPayment,
@@ -150,11 +152,14 @@ export async function updateTableFloor(
   const table = await prisma.table.findFirst({
     where: { id: tableId, restaurantId },
   });
-  if (!table) return null;
+  if (!table) return { error: "Table not found" as const };
 
   if (data.clear) {
+    if (await hasOpenTableWork(tableId)) {
+      return { error: "Table has open orders or an unpaid bill" as const };
+    }
     await closeTableOrdering(tableId);
-    return prisma.table.update({
+    const updated = await prisma.table.update({
       where: { id: tableId },
       data: {
         seatedAt: null,
@@ -162,13 +167,40 @@ export async function updateTableFloor(
         assignedServerId: null,
       },
     });
+    return { table: updated };
+  }
+
+  if (data.assignedServerId) {
+    const server = await prisma.user.findFirst({
+      where: {
+        id: data.assignedServerId,
+        restaurantId,
+        role: "SERVER",
+      },
+    });
+    if (!server) {
+      return { error: "Invalid server for this restaurant" as const };
+    }
+  }
+
+  if (data.guestCount != null) {
+    if (!Number.isInteger(data.guestCount) || data.guestCount < 1 || data.guestCount > 20) {
+      return { error: "Guest count must be between 1 and 20" as const };
+    }
   }
 
   if (data.seated) {
     await openTableOrdering(tableId);
   }
 
-  return prisma.table.update({
+  const seatedAt =
+    data.seated === true && !table.seatedAt && !table.orderingOpenedAt
+      ? new Date()
+      : data.seated === false
+        ? null
+        : undefined;
+
+  const updated = await prisma.table.update({
     where: { id: tableId },
     data: {
       positionX: data.positionX,
@@ -178,7 +210,8 @@ export async function updateTableFloor(
       section: data.section,
       assignedServerId: data.assignedServerId,
       guestCount: data.guestCount,
-      seatedAt: data.seated === true ? new Date() : data.seated === false ? null : undefined,
+      seatedAt,
     },
   });
+  return { table: updated };
 }

@@ -59,7 +59,7 @@ export default function KitchenPage() {
     ]);
     if (meRes.ok) {
       const me = await meRes.json();
-      setRole(me.role ?? "COOK");
+      setRole(me.user?.role ?? "COOK");
     }
     if (dataRes.ok) {
       const data = await dataRes.json();

@@ -21,7 +21,7 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json();
   const { tableId } = body;
-  if (!tableId) {
+  if (!tableId || typeof tableId !== "string") {
     return NextResponse.json({ error: "tableId required" }, { status: 400 });
   }
 
@@ -35,7 +35,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Only managers can edit layout" }, { status: 403 });
   }
 
-  const updated = await updateTableFloor(session.restaurantId, tableId, {
+  const result = await updateTableFloor(session.restaurantId, tableId, {
     positionX: body.positionX,
     positionY: body.positionY,
     width: body.width,
@@ -47,9 +47,10 @@ export async function PATCH(req: NextRequest) {
     clear: body.clear,
   });
 
-  if (!updated) {
-    return NextResponse.json({ error: "Table not found" }, { status: 404 });
+  if ("error" in result && result.error) {
+    const status = result.error.includes("unpaid") ? 409 : 400;
+    return NextResponse.json({ error: result.error }, { status });
   }
 
-  return NextResponse.json({ table: updated });
+  return NextResponse.json({ table: result.table });
 }

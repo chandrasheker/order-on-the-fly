@@ -5,6 +5,7 @@ import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { isTablePaymentBlocked } from "@/lib/payment-service";
 import { todayDateString } from "@/lib/utils";
+import { requireSession } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   logApiRequest("orders", "POST");
@@ -127,6 +128,14 @@ export async function GET(req: NextRequest) {
   }
 
   if (restaurantId) {
+    const session = await requireSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (restaurantId !== session.restaurantId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
     const orders = await prisma.order.findMany({
       where: {
         restaurantId,

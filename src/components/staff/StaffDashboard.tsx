@@ -731,12 +731,14 @@ export function StaffDashboard() {
                     Take an offline order →
                   </button>
                 )}
+                {showTab("pending") && (
                 <button
                   onClick={() => setViewMode("pending")}
                   className="text-sm text-yellow-400 hover:text-yellow-300"
                 >
                   View pending payments →
                 </button>
+                )}
               </Card>
             ) : (
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -776,7 +778,7 @@ export function StaffDashboard() {
           </>
         )}
 
-        {viewMode === "pending" && (
+        {viewMode === "pending" && showTab("pending") && (
           <>
             <p className="text-sm text-zinc-400 mb-4">
               Served orders awaiting payment — pay full or split by item / share
@@ -1230,7 +1232,7 @@ function PendingPaymentCard({
         <span className="text-lg font-bold text-yellow-400">{formatCurrency(total)}</span>
       </div>
 
-      {canPay && (
+      {canPay && summary && (
         <SplitPaymentPanel
           orderId={order.id}
           orderNumber={order.orderNumber}
@@ -1238,6 +1240,24 @@ function PendingPaymentCard({
           summary={summary}
           onPaymentComplete={onPaymentComplete}
         />
+      )}
+      {canPay && !summary && (
+        <Button
+          variant="success"
+          size="sm"
+          className="w-full bg-emerald-600 hover:bg-emerald-500"
+          onClick={async () => {
+            const res = await fetch(`/api/orders/${order.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "mark-paid", method: "UPI" }),
+            });
+            const json = await res.json().catch(() => ({}));
+            await onPaymentComplete(res, json);
+          }}
+        >
+          <CircleDollarSign className="w-4 h-4" /> Pay full {formatCurrency(total)}
+        </Button>
       )}
     </motion.div>
   );

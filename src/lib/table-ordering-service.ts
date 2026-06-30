@@ -48,9 +48,11 @@ export async function openTableOrdering(tableId: string) {
 }
 
 export async function maybeAutoCloseTableAfterPayment(tableId: string) {
+  const today = todayDateString();
   const openOrders = await prisma.order.count({
     where: {
       tableId,
+      date: today,
       status: { notIn: ["SERVED", "CANCELLED"] },
     },
   });
@@ -59,6 +61,7 @@ export async function maybeAutoCloseTableAfterPayment(tableId: string) {
   const unpaidServed = await prisma.order.count({
     where: {
       tableId,
+      date: today,
       status: "SERVED",
       paidAt: null,
       items: { some: { status: "SERVED" } },

@@ -8,7 +8,7 @@ import {
   syncOrderStatus,
 } from "@/lib/order-service";
 import { requestOrderPayment } from "@/lib/payment-service";
-import { recordFullOrderPayment, recordOrderPayment } from "@/lib/payment-allocation-service";
+import { recordFullOrderPayment, recordOrderPayment, orderItemHasPayment, finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
 import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
@@ -32,6 +32,15 @@ export async function PATCH(
   }
 
   if (action === "alarm") {
+    if (!tableToken || order.table.qrToken !== tableToken) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    const dining = await assertCustomerDiningAccess(req, String(tableToken));
+    if (!dining.ok) {
+      return NextResponse.json({ error: dining.error, code: dining.code }, { status: dining.status });
+    }
+
     await prisma.order.update({
       where: { id },
       data: { alarmTriggered: true },
@@ -236,6 +245,13 @@ export async function PATCH(
   }
 
   if (action === "reject-item" && itemId) {
+    if (await orderItemHasPayment(itemId)) {
+      return NextResponse.json(
+        { error: "Cannot reject an item that has payment applied" },
+        { status: 400 },
+      );
+    }
+
     await prisma.orderItem.update({
       where: { id: itemId },
       data: {
@@ -246,6 +262,7 @@ export async function PATCH(
 
     await clearAlertsForOrderItem(itemId);
     await syncOrderStatus(id);
+    await finalizeOrderIfSettled(id);
 
     logInfo("api:orders/[id]", "Item marked unavailable", { orderId: id, itemId });
     return NextResponse.json({ success: true });
