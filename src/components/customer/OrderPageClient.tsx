@@ -30,25 +30,7 @@ interface RestaurantData {
   paymentQrUrl?: string | null;
 }
 
-function OrderPageBackground({ imageUrl }: { imageUrl?: string | null }) {
-  if (!imageUrl) {
-    return <div className="fixed inset-0 -z-20 bg-[#0f0f1a]" aria-hidden />;
-  }
-
-  return (
-    <>
-      <div
-        className="fixed inset-0 -z-20 bg-cover bg-center bg-no-repeat scale-105"
-        style={{ backgroundImage: `url(${imageUrl})` }}
-        aria-hidden
-      />
-      <div
-        className="fixed inset-0 -z-10 bg-gradient-to-b from-[#0f0f1a]/75 via-[#0f0f1a]/88 to-[#0f0f1a]/95 backdrop-blur-[1px]"
-        aria-hidden
-      />
-    </>
-  );
-}
+import { CustomerPageBackground } from "@/components/customer/CustomerPageBackground";
 
 interface LastOrder {
   id: string;
@@ -202,7 +184,7 @@ export function OrderPageClient({ slug, token }: Props) {
 
   if (loading || tableSession.loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] relative">
+      <div className="min-h-screen flex items-center justify-center bg-customer-shell relative">
         <Spinner className="w-8 h-8 relative z-10" />
       </div>
     );
@@ -210,7 +192,7 @@ export function OrderPageClient({ slug, token }: Props) {
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] text-white p-6 relative">
+      <div className="min-h-screen flex items-center justify-center bg-customer-shell text-foreground p-6 relative">
         <div className="text-center max-w-sm space-y-3 relative z-10">
           <p className="font-medium">Could not load this table&apos;s menu.</p>
           <p className="text-sm text-zinc-400">
@@ -239,7 +221,7 @@ export function OrderPageClient({ slug, token }: Props) {
 
   return (
     <div className="min-h-screen text-white relative">
-      <OrderPageBackground imageUrl={data.restaurant.backgroundImageUrl} />
+      <CustomerPageBackground imageUrl={data.restaurant.backgroundImageUrl} />
 
       <AnimatePresence>
         {showThankYou && (
@@ -247,7 +229,7 @@ export function OrderPageClient({ slug, token }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#0f0f1a]/95 backdrop-blur-md"
+            className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-customer-shell/95 backdrop-blur-md"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }}

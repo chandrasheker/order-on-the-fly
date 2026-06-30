@@ -54,26 +54,40 @@ export default function FloorPlanPage() {
   const [tables, setTables] = useState<FloorTable[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selected, setSelected] = useState<FloorTable | null>(null);
-  const [role, setRole] = useState("SERVER");
 
   const loadFloor = useCallback(async () => {
-    const floorRes = await fetch("/api/floor");
-    if (floorRes.ok) {
+    try {
+      const floorRes = await fetch("/api/floor");
+      if (!floorRes.ok) {
+        const json = await floorRes.json().catch(() => ({}));
+        const message =
+          json.code === "FEATURE_DISABLED"
+            ? "Floor plan is not enabled for this restaurant."
+            : json.error || `Could not load floor plan (${floorRes.status}).`;
+        setError(message);
+        setTables([]);
+        setServers([]);
+        return;
+      }
       const data = await floorRes.json();
-      setTables(data.tables ?? []);
-      setServers(data.servers ?? []);
+      setTables(Array.isArray(data.tables) ? data.tables : []);
+      setServers(Array.isArray(data.servers) ? data.servers : []);
+      setError("");
+    } catch {
+      setError("Network error while loading the floor plan. Please try again.");
+      setTables([]);
+      setServers([]);
     }
   }, []);
 
   const load = useCallback(async () => {
-    const meRes = await fetch("/api/auth/me");
-    if (meRes.ok) {
-      const me = await meRes.json();
-      setRole(me.user?.role ?? "SERVER");
+    try {
+      await loadFloor();
+    } finally {
+      setLoading(false);
     }
-    await loadFloor();
-    setLoading(false);
   }, [loadFloor]);
 
   useEffect(() => {
@@ -107,23 +121,52 @@ export default function FloorPlanPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+      <div className="min-h-screen bg-app-shell flex items-center justify-center">
         <Spinner />
       </div>
     );
   }
 
-  const canvasWidth = Math.max(
+  if (error) {
+    return (
+      <div className="min-h-screen bg-app-shell text-foreground flex items-center justify-center p-6">
+        <div className="max-w-md w-full text-center space-y-4 rounded-2xl border border-[color:var(--surface-border)] bg-[color:var(--surface)] p-8">
+          <LayoutGrid className="w-10 h-10 text-red-400 mx-auto" />
+          <h1 className="text-xl font-bold">Could not load floor plan</h1>
+          <p className="text-sm text-[color:var(--muted)]">{error}</p>
+          <p className="text-xs text-[color:var(--muted)]">
+            If this is a fresh install, run <code className="text-orange-300">npm run db:setup</code>{" "}
+            and ensure <code className="text-orange-300">floor_plan</code> is enabled in platform
+            admin.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button variant="secondary" onClick={() => void load()}>
+              <RefreshCw className="w-4 h-4" /> Retry
+            </Button>
+            <Link href="/staff/dashboard">
+              <Button variant="ghost">
+                <ArrowLeft className="w-4 h-4" /> Dashboard
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const canvasWidth = tables.reduce(
+    (max, table) =>
+      Math.max(max, (Number(table.positionX) || 0) + (Number(table.width) || 96) + 32),
     640,
-    ...tables.map((t) => t.positionX + t.width + 32),
   );
-  const canvasHeight = Math.max(
+  const canvasHeight = tables.reduce(
+    (max, table) =>
+      Math.max(max, (Number(table.positionY) || 0) + (Number(table.height) || 96) + 32),
     480,
-    ...tables.map((t) => t.positionY + t.height + 32),
   );
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white">
+    <div className="min-h-screen bg-app-shell text-foreground">
       <header className="border-b border-white/10 px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">

@@ -113,15 +113,15 @@ export default function KitchenClient() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+      <div className="min-h-screen bg-app-shell flex items-center justify-center">
         <Spinner />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white">
-      <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0a0a0f]/95 backdrop-blur-xl px-4 py-3">
+    <div className="min-h-screen bg-app-shell text-foreground">
+      <header className="sticky top-0 z-20 border-b border-white/10 bg-app-shell/95 backdrop-blur-xl px-4 py-3">
         <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <ChefHat className="w-6 h-6 text-orange-400" />
@@ -138,7 +138,7 @@ export default function KitchenClient() {
                 className={cn(
                   "px-3 py-1.5 rounded-lg text-sm border transition-colors",
                   activeStation === "all"
-                    ? "bg-white/10 border-white/20 text-white"
+                    ? "bg-white/10 border-white/20 text-foreground"
                     : "border-white/5 text-zinc-400 hover:text-white",
                 )}
               >

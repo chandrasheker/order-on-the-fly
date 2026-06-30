@@ -26,7 +26,8 @@ export type FeatureKey =
   | "aggregator_inbox"
   | "tip_pooling"
   | "guest_crm"
-  | "audit_log";
+  | "audit_log"
+  | "custom_background";
 
 export interface FeatureDefinition {
   key: FeatureKey;
@@ -169,6 +170,13 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     key: "gst_receipts",
     name: "GST receipt fields",
     problem: "GSTIN, tax rate, and compliant receipt footer on print.",
+    tier: "premium",
+    defaultEnabled: false,
+  },
+  {
+    key: "custom_background",
+    name: "Custom guest page background",
+    problem: "Upload a branded photo shown behind the customer ordering screen.",
     tier: "premium",
     defaultEnabled: false,
   },

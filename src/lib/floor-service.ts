@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { todayDateString, sumOrderRevenue, isOrderItemOpen } from "@/lib/utils";
 import { openTableOrdering, closeTableOrdering, hasOpenTableWork } from "@/lib/table-ordering-service";
-import { getOrderPaymentSummary } from "@/lib/payment-allocation-service";
+import { getOrderPaymentSummaries } from "@/lib/payment-allocation-service";
 
 export type TableFloorState =
   | "available"
@@ -59,8 +59,10 @@ export async function getFloorSnapshot(restaurantId: string) {
     ordersByTable.set(order.tableId, list);
   }
 
-  const tableSnapshots = await Promise.all(
-    tables.map(async (table, index) => {
+  const servedOrderIds = orders.filter((o) => o.status === "SERVED").map((o) => o.id);
+  const paymentSummaries = await getOrderPaymentSummaries(servedOrderIds);
+
+  const tableSnapshots = tables.map((table, index) => {
       const tableOrders = ordersByTable.get(table.id) ?? [];
       const activeItems = tableOrders.reduce(
         (sum, order) =>
@@ -82,7 +84,7 @@ export async function getFloorSnapshot(restaurantId: string) {
       let awaitingPayment = false;
       for (const order of tableOrders) {
         if (order.status !== "SERVED") continue;
-        const summary = await getOrderPaymentSummary(order.id);
+        const summary = paymentSummaries.get(order.id);
         if (!summary) continue;
         billTotal += summary.total;
         paidTotal += summary.paid;
@@ -128,8 +130,7 @@ export async function getFloorSnapshot(restaurantId: string) {
           remaining: Math.max(0, billTotal - paidTotal),
         },
       };
-    }),
-  );
+    });
 
   return { tables: tableSnapshots, servers };
 }

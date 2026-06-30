@@ -253,7 +253,7 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
 
   return (
     <div className="space-y-5 pb-28">
-      <div className="sticky top-[4.5rem] z-20 -mx-1 px-1 py-3 bg-[#0a0a12]/95 backdrop-blur-md border-b border-white/5 space-y-3">
+      <div className="sticky top-[4.5rem] z-20 -mx-1 px-1 py-3 bg-app-shell/95 backdrop-blur-md border-b border-[color:var(--surface-border)] space-y-3">
         <ModePicker modes={modes} mode={mode} onChange={resetMode} compact />
 
         <div className="flex flex-wrap items-center gap-3 justify-between">

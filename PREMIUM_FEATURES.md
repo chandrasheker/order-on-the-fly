@@ -68,6 +68,7 @@ These are **off by default**. Enable when the customer pays for the add-on.
 | `thermal_receipts` | Bluetooth ESC/POS receipts + kitchen chits + reprint | Staff dashboard printer menu |
 | `phone_orders` | Walk-in, **takeaway**, and **delivery** orders | Staff dashboard → **Remote orders** |
 | `gst_receipts` | GSTIN, tax rate, compliant receipt footer | Admin → QR codes → receipt settings |
+| `custom_background` | Branded photo behind the customer ordering screen | Admin → QR codes → Guest page background |
 | `aggregator_inbox` | **Swiggy / Zomato automatic sync** (credentials + webhook) | Admin → **Integrations** |
 
 See **[AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md)** for what owners need from Swiggy/Zomato partner teams.

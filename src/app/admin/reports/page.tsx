@@ -88,7 +88,7 @@ export default function ReportsPage() {
 
   if (loading && !report) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a12]">
+      <div className="min-h-screen flex items-center justify-center bg-app-shell">
         <Spinner className="w-8 h-8" />
       </div>
     );
@@ -101,7 +101,7 @@ export default function ReportsPage() {
     : [];
 
   return (
-    <div className="min-h-screen bg-[#0a0a12] text-white">
+    <div className="min-h-screen bg-app-shell text-foreground">
       <header className="border-b border-white/5 px-4 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -120,7 +120,7 @@ export default function ReportsPage() {
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="bg-transparent text-sm text-white outline-none"
+                className="bg-transparent text-sm text-foreground outline-none"
               />
             </div>
             {canDownload && (
@@ -193,7 +193,7 @@ export default function ReportsPage() {
                     <tbody>
                       {report.staffPerformance.map((row) => (
                         <tr key={row.userId} className="border-b border-white/5 last:border-0">
-                          <td className="py-3 pr-4 font-medium text-white">{row.name}</td>
+                          <td className="py-3 pr-4 font-medium text-foreground">{row.name}</td>
                           <td className="py-3 pr-4 capitalize text-zinc-400">{row.role.toLowerCase()}</td>
                           <td className="py-3 pr-4">{row.itemsServed}</td>
                           <td className="py-3 pr-4">{row.ordersServed}</td>
@@ -223,7 +223,7 @@ export default function ReportsPage() {
                       className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-white/5 last:border-0 text-sm"
                     >
                       <div>
-                        <span className="font-medium text-white">
+                        <span className="font-medium text-foreground">
                           #{entry.orderNumber} · Table {entry.tableNumber}
                         </span>
                         {entry.customerName && (

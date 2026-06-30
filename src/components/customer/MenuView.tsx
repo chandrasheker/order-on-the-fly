@@ -256,7 +256,7 @@ export function MenuView({
   return (
     <div className="pb-32">
       {/* Sticky category jump nav */}
-      <div className="sticky top-0 z-20 -mx-4 px-2 py-2 bg-[#0f0f1a]/95 backdrop-blur-xl border-b border-white/5 space-y-2">
+      <div className="sticky top-0 z-20 -mx-4 px-2 py-2 bg-customer-shell/95 backdrop-blur-xl border-b border-[color:var(--surface-border)] space-y-2">
         <div className="relative px-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
           <Input
@@ -285,7 +285,7 @@ export function MenuView({
             <button
               type="button"
               onClick={() => scrollTabs("left")}
-              className="absolute left-0 z-10 w-8 h-8 rounded-full bg-[#0f0f1a]/90 border border-white/10 flex items-center justify-center text-white shadow-lg"
+              className="absolute left-0 z-10 w-8 h-8 rounded-full bg-customer-shell/90 border border-[color:var(--surface-border)] flex items-center justify-center text-foreground shadow-lg"
               aria-label="Scroll categories left"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -325,7 +325,7 @@ export function MenuView({
             <button
               type="button"
               onClick={() => scrollTabs("right")}
-              className="absolute right-0 z-10 w-8 h-8 rounded-full bg-[#0f0f1a]/90 border border-white/10 flex items-center justify-center text-white shadow-lg"
+              className="absolute right-0 z-10 w-8 h-8 rounded-full bg-customer-shell/90 border border-[color:var(--surface-border)] flex items-center justify-center text-foreground shadow-lg"
               aria-label="Scroll categories right"
             >
               <ChevronRight className="w-4 h-4" />
@@ -381,7 +381,7 @@ export function MenuView({
             <button
               type="button"
               onClick={() => toggleCategory(cat.slug)}
-              className="w-full text-left text-lg font-bold text-white mb-3 flex items-center gap-2 sticky top-[4.5rem] z-10 py-2 bg-[#0f0f1a]/90 backdrop-blur-sm -mx-1 px-1 rounded-lg hover:bg-white/5 transition-colors"
+              className="w-full text-left text-lg font-bold text-foreground mb-3 flex items-center gap-2 sticky top-[4.5rem] z-10 py-2 bg-customer-shell/90 backdrop-blur-sm -mx-1 px-1 rounded-lg hover:bg-[color:var(--surface-hover)] transition-colors"
               aria-expanded={isExpanded}
             >
               <span className="text-xl">{cat.icon}</span>

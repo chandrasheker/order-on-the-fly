@@ -36,7 +36,7 @@ export function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a12] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-app-shell flex items-center justify-center p-4">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-rose-500/10 rounded-full blur-3xl" />
@@ -50,9 +50,9 @@ export function LoginForm() {
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
           <div className="text-center mb-8">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center mx-auto mb-4">
-              <ChefHat className="w-7 h-7 text-white" />
+              <ChefHat className="w-7 h-7 text-foreground" />
             </div>
-            <h1 className="text-2xl font-bold text-white">TableTap</h1>
+            <h1 className="text-2xl font-bold text-foreground">TableTap</h1>
             <p className="text-sm text-zinc-400 mt-1">Staff sign in (owner, manager, cook, server)</p>
           </div>
 
