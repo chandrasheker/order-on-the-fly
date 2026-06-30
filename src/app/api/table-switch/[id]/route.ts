@@ -88,6 +88,11 @@ export async function PATCH(
       data: { tableId: switchRequest.targetTableId },
     });
 
+    await tx.payment.updateMany({
+      where: { orderId: { in: orderIds } },
+      data: { tableId: switchRequest.targetTableId },
+    });
+
     await tx.alert.updateMany({
       where: {
         restaurantId: session.restaurantId,

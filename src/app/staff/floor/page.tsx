@@ -64,7 +64,7 @@ export default function FloorPlanPage() {
     ]);
     if (meRes.ok) {
       const me = await meRes.json();
-      setRole(me.role ?? "SERVER");
+      setRole(me.user?.role ?? "SERVER");
     }
     if (floorRes.ok) {
       const data = await floorRes.json();

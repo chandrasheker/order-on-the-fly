@@ -40,13 +40,36 @@ domain / LAN IP so QR codes point to the correct URL.
 - **Platform admin** — login at `/platform/login` to manage staff names, emails, passwords, and roles
 - **Customers** — scan table QR code to order (no login needed)
 
-## Full-service features
+## Full feature set (this branch)
+
+This branch (`cursor/kds-floor-split-bill-6747`) includes **everything on `main`** plus KDS, floor plan, and split bill.
+
+| Area | What you get |
+|------|----------------|
+| **Deploy** | `npm run setup`, `restaurant.config.json`, Postgres/SQLite |
+| **Guest ordering** | QR + rotating check-in codes, session limits, table open/close |
+| **Staff dashboard** | Live orders, prep timers, overdue alerts, payment pending |
+| **Phone / offline orders** | Staff places orders for walk-ins without guest QR scan |
+| **Kitchen (KDS)** | `/kitchen` — station-routed tickets (Hot Kitchen, Grill, Bar, Cold) |
+| **Floor plan** | `/staff/floor` — table map, timers, server assignment, live bill |
+| **Split bill** | Pay by item, split evenly, partial payments before full settle |
+| **Payments** | PhonePe QR upload, mark paid, payment block until settled |
+| **Receipts** | ESC/POS Bluetooth thermal print on full payment (GST optional) |
+| **Staff tracking** | Who placed, prepped, served, collected — Team performance reports |
+| **Table switch** | Guest requests move; staff approve; orders + payments migrate |
+| **Loyalty** | Reward spins, feedback |
+| **Admin** | Menu, QR print, receipt settings, daily reports CSV |
+
+## Full-service routes
 
 | Feature | Route / location |
 |---------|------------------|
 | Kitchen Display (KDS) | `/kitchen` — Hot Kitchen, Grill, Bar, Cold stations |
 | Floor plan & table timers | `/staff/floor` — seat tables, assign servers, live bill |
 | Split bill / partial pay | Staff dashboard → **Pending** tab — pay by item or split evenly |
+| Phone / offline orders | Staff dashboard → **Phone orders** button |
+| Team performance | Admin → **Daily Reports** |
+| Receipt & QR settings | Admin → **QR codes** |
 
 ## Owner Features
 
