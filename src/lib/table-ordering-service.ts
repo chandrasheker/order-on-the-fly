@@ -25,21 +25,34 @@ export async function closeTableOrdering(tableId: string) {
   await prisma.tableSession.deleteMany({ where: { tableId } });
   await prisma.table.update({
     where: { id: tableId },
-    data: { orderingEnabled: false, orderingOpenedAt: null },
+    data: {
+      orderingEnabled: false,
+      orderingOpenedAt: null,
+      seatedAt: null,
+      guestCount: null,
+      assignedServerId: null,
+    },
   });
 }
 
 export async function openTableOrdering(tableId: string) {
+  const table = await prisma.table.findUnique({ where: { id: tableId } });
   await prisma.table.update({
     where: { id: tableId },
-    data: { orderingEnabled: true, orderingOpenedAt: new Date() },
+    data: {
+      orderingEnabled: true,
+      orderingOpenedAt: new Date(),
+      seatedAt: table?.seatedAt ?? new Date(),
+    },
   });
 }
 
 export async function maybeAutoCloseTableAfterPayment(tableId: string) {
+  const today = todayDateString();
   const openOrders = await prisma.order.count({
     where: {
       tableId,
+      date: today,
       status: { notIn: ["SERVED", "CANCELLED"] },
     },
   });
@@ -48,6 +61,7 @@ export async function maybeAutoCloseTableAfterPayment(tableId: string) {
   const unpaidServed = await prisma.order.count({
     where: {
       tableId,
+      date: today,
       status: "SERVED",
       paidAt: null,
       items: { some: { status: "SERVED" } },

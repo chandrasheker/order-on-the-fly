@@ -23,6 +23,7 @@ import {
   Wallet,
   CircleDollarSign,
   ArrowRightLeft,
+  LayoutGrid,
   Phone,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
@@ -33,10 +34,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
+import { SplitPaymentPanel } from "@/components/staff/SplitPaymentPanel";
 import { OfflineOrderPanel } from "@/components/staff/OfflineOrderPanel";
 import { ThermalPrinterButton } from "@/components/staff/ThermalPrinterButton";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
-import { canManageTableOrdering, canPlaceOfflineOrder } from "@/lib/staff-permissions";
+import {
+  canManageTableOrdering,
+  canAccessKitchen,
+  canAccessFloorPlan,
+  canPlaceOfflineOrder,
+} from "@/lib/staff-permissions";
 import type { ReceiptPayload } from "@/lib/receipt-service";
 
 interface OrderItem {
@@ -67,6 +74,28 @@ interface Order {
   createdAt: string;
   total?: number;
   paidTotal?: number;
+  paymentSummary?: {
+    total: number;
+    paid: number;
+    remaining: number;
+    fullyPaid: boolean;
+    items: Array<{
+      id: string;
+      itemName: string;
+      quantity: number;
+      status: string;
+      lineTotal: number;
+      paid: number;
+      remaining: number;
+    }>;
+    payments: Array<{
+      id: string;
+      amount: number;
+      method: string;
+      collectedByName: string | null;
+      createdAt: string;
+    }>;
+  } | null;
   placedByName?: string | null;
   paidByName?: string | null;
 }
@@ -223,16 +252,12 @@ export function StaffDashboard() {
     }
   };
 
-  const markOrderPaid = async (orderId: string) => {
-    const res = await fetch(`/api/orders/${orderId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "mark-paid" }),
-    });
-    const json = await res.json().catch(() => ({}));
-
+  const handlePaymentComplete = async (
+    res: Response,
+    json: { error?: string; receipt?: ReceiptPayload },
+  ) => {
     if (!res.ok) {
-      alert(json.error || "Could not mark order paid");
+      alert(json.error || "Could not record payment");
       fetchData();
       return;
     }
@@ -241,7 +266,7 @@ export function StaffDashboard() {
 
     if (printerSupported && autoPrint && json.receipt) {
       try {
-        await printReceipt(json.receipt as ReceiptPayload);
+        await printReceipt(json.receipt);
         setPrintMessage("Receipt sent to printer.");
       } catch (error) {
         setPrintMessage(
@@ -400,6 +425,16 @@ export function StaffDashboard() {
             <button onClick={fetchData} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
               <RefreshCw className="w-4 h-4" />
             </button>
+            {user && canAccessKitchen(user.role) && (
+              <Link href="/kitchen" className="p-2 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-300" title="Kitchen display">
+                <ChefHat className="w-4 h-4" />
+              </Link>
+            )}
+            {user && canAccessFloorPlan(user.role) && (
+              <Link href="/staff/floor" className="p-2 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 text-violet-300" title="Floor plan">
+                <LayoutGrid className="w-4 h-4" />
+              </Link>
+            )}
             {user && canPlaceOfflineOrder(user.role) && (
               <button
                 type="button"
@@ -696,12 +731,14 @@ export function StaffDashboard() {
                     Take an offline order →
                   </button>
                 )}
+                {showTab("pending") && (
                 <button
                   onClick={() => setViewMode("pending")}
                   className="text-sm text-yellow-400 hover:text-yellow-300"
                 >
                   View pending payments →
                 </button>
+                )}
               </Card>
             ) : (
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -741,10 +778,10 @@ export function StaffDashboard() {
           </>
         )}
 
-        {viewMode === "pending" && (
+        {viewMode === "pending" && showTab("pending") && (
           <>
             <p className="text-sm text-zinc-400 mb-4">
-              Served orders awaiting payment — mark paid once the customer settles the bill
+              Served orders awaiting payment — pay full or split by item / share
             </p>
             {pendingOrders.length === 0 ? (
               <Card className="p-12 text-center">
@@ -758,7 +795,7 @@ export function StaffDashboard() {
                     key={order.id}
                     order={order}
                     role={role!}
-                    onMarkPaid={markOrderPaid}
+                    onPaymentComplete={handlePaymentComplete}
                   />
                 ))}
               </div>
@@ -1136,22 +1173,15 @@ function ActiveOrderCard({
 function PendingPaymentCard({
   order,
   role,
-  onMarkPaid,
+  onPaymentComplete,
 }: {
   order: Order;
   role: Role;
-  onMarkPaid: (orderId: string) => void;
+  onPaymentComplete: (res: Response, json: { error?: string; receipt?: ReceiptPayload }) => Promise<void>;
 }) {
-  const total =
-    order.total ??
-    sumOrderRevenue(
-      order.items.map((i) => ({
-        unitPrice: i.unitPrice ?? 0,
-        quantity: i.quantity,
-        status: i.status,
-      }))
-    );
-  const canMarkPaid = canPerformOrderAction(role, "mark-paid");
+  const summary = order.paymentSummary;
+  const total = summary?.remaining ?? order.total ?? 0;
+  const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
 
   return (
     <motion.div
@@ -1175,36 +1205,58 @@ function PendingPaymentCard({
       </div>
 
       <div className="space-y-1 mb-4">
-        {order.items.map((item) => (
+        {(summary?.items ?? order.items.map((i) => ({
+          id: i.id,
+          itemName: i.itemName,
+          quantity: i.quantity,
+          status: i.status,
+          remaining: i.status === "UNAVAILABLE" ? 0 : (i.unitPrice ?? 0) * i.quantity,
+        }))).map((item) => {
+          const servedByName = order.items.find((i) => i.id === item.id)?.servedByName;
+          return (
           <div key={item.id} className="flex justify-between text-sm">
             <span className={item.status === "UNAVAILABLE" ? "text-zinc-500" : "text-zinc-300"}>
               {item.quantity}x {item.itemName}
-              {item.servedByName && (
-                <span className="text-zinc-500 ml-2">· {item.servedByName}</span>
+              {servedByName && (
+                <span className="text-zinc-500 ml-2">· {servedByName}</span>
               )}
             </span>
-            <span className="text-zinc-400">
-              {item.status === "UNAVAILABLE"
-                ? formatCurrency(0)
-                : formatCurrency((item.unitPrice ?? 0) * item.quantity)}
-            </span>
+            <span className="text-zinc-400">{formatCurrency(item.remaining)}</span>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
-        <span className="text-sm text-zinc-400">Bill total</span>
+        <span className="text-sm text-zinc-400">Due now</span>
         <span className="text-lg font-bold text-yellow-400">{formatCurrency(total)}</span>
       </div>
 
-      {canMarkPaid && (
+      {canPay && summary && (
+        <SplitPaymentPanel
+          orderId={order.id}
+          orderNumber={order.orderNumber}
+          tableNumber={order.table.number}
+          summary={summary}
+          onPaymentComplete={onPaymentComplete}
+        />
+      )}
+      {canPay && !summary && (
         <Button
           variant="success"
           size="sm"
           className="w-full bg-emerald-600 hover:bg-emerald-500"
-          onClick={() => onMarkPaid(order.id)}
+          onClick={async () => {
+            const res = await fetch(`/api/orders/${order.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "mark-paid", method: "UPI" }),
+            });
+            const json = await res.json().catch(() => ({}));
+            await onPaymentComplete(res, json);
+          }}
         >
-          <CircleDollarSign className="w-4 h-4" /> Mark Paid
+          <CircleDollarSign className="w-4 h-4" /> Pay full {formatCurrency(total)}
         </Button>
       )}
     </motion.div>

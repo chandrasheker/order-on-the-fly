@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { isOrderItemOpen, todayDateString, sumOrderRevenue } from "@/lib/utils";
+import { clearPaymentAlerts } from "@/lib/payment-service";
+import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
+import { finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
 
 export async function clearAlertsForOrderItem(orderItemId: string) {
   await prisma.alert.updateMany({
@@ -21,6 +24,12 @@ export async function autoCompleteZeroBillOrder(orderId: string) {
       where: { id: orderId },
       data: { paidAt: new Date() },
     });
+    await clearPaymentAlerts(orderId);
+    const orderRow = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { tableId: true },
+    });
+    if (orderRow) await maybeAutoCloseTableAfterPayment(orderRow.tableId);
   }
 }
 
@@ -34,6 +43,7 @@ export async function syncOrderStatus(orderId: string) {
       data: { status: "SERVED" },
     });
     await autoCompleteZeroBillOrder(orderId);
+    await finalizeOrderIfSettled(orderId);
     return;
   }
 

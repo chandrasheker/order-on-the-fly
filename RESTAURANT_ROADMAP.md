@@ -15,7 +15,10 @@ This document compares TableTap with leading restaurant software (Toast, TouchBi
 | Payment collection | PhonePe QR, mark-paid flow, payment block until settled |
 | Staff accountability (new) | **Who served, prepared, ready, placed, and collected payment** — per item and per order |
 | Owner visibility (new) | **Team performance** in Daily Reports (items served, tables, revenue collected) |
-| Thermal receipts (new) | ESC/POS Bluetooth auto-print on mark paid, GST optional |
+| Thermal receipts | ESC/POS Bluetooth auto-print on mark paid, GST optional |
+| Kitchen Display (KDS) | Full-screen `/kitchen` with station routing (Hot Kitchen, Grill, Bar, Cold) |
+| Floor plan & table timers | `/staff/floor` — visual map, server assignment, live bill, seat/clear |
+| Split bill / partial pay | Pay by item or split evenly; multiple `Payment` records per order |
 | Table changes | Customer request + staff approval with order migration |
 | Loyalty | Reward spins, feedback |
 | Multi-restaurant deploy | Config-driven setup (`npm run setup`) |
@@ -32,7 +35,7 @@ Every staff action is now logged:
 | Cook starts item | `OrderItem.preparedByUserId` / `preparedByName` |
 | Cook marks ready | `OrderItem.readyByUserId` / `readyByName` |
 | Server serves item | `OrderItem.servedByUserId` / `servedByName` |
-| Payment collected | `Order.paidByUserId` / `paidByName` |
+| Payment collected | `Payment` record per collection (split-aware) + `Order.paidByUserId` when fully settled |
 
 **Owner view:** Admin → **Daily Reports** → **Team performance** + **Table service log** (which server served which table/order).
 
@@ -44,47 +47,32 @@ Every staff action is now logged:
 
 These appear in almost every modern full-service POS and solve daily pain points TableTap does not fully cover yet.
 
-### 1. Kitchen Display System (KDS) — dedicated cook screen
-**Problem:** Cooks squint at a general dashboard mixed with payment alerts.  
-**Solution:** Full-screen `/kitchen` view: station routing (grill / cold / bar), bump bar, course firing, item-level notes highlighted.  
-**Why:** TouchBistro, Toast, and Table Needs all treat KDS as core — it cuts ticket-to-table time.
-
-### 2. Floor plan & table timers
-**Problem:** Owner cannot see which tables are seated long, high-spend, or neglected.  
-**Solution:** Visual floor map with time-seated, current bill, assigned server, color by state (ordering / eating / awaiting payment).  
-**Why:** Standard in TouchBistro “table management” — improves turnover and service fairness.
-
-### 3. Split bill & partial payment
-**Problem:** Groups want to pay separately; today one order = one payment.  
-**Solution:** Split by item or amount, multiple payment records per table session.  
-**Why:** Table Needs and Toast highlight split checks as essential for full-service.
-
-### 4. Inventory & 86 (out of stock) workflow
+### 1. Inventory & 86 (out of stock) workflow
 **Problem:** Item runs out mid-service; staff forget to mark unavailable.  
 **Solution:** Ingredient-level or item-level stock counts, auto-86 when zero, “86 alert” to menu instantly.  
 **Why:** Lightspeed’s strength; reduces wasted prep and angry guests.
 
-### 5. Shift / labor clock-in
+### 2. Shift / labor clock-in
 **Problem:** Owner cannot tie performance to shifts or calculate labor cost %.  
 **Solution:** PIN clock-in/out, shift report linking sales to hours worked (SPLH — sales per labor hour).  
 **Why:** Boss It / industry KPI guides cite SPLH as the #1 labor metric.
 
-### 6. Reservations & waitlist
+### 3. Reservations & waitlist
 **Problem:** Phone calls for tables, no queue visibility.  
 **Solution:** Waitlist with SMS when table ready, optional reservation slots.  
 **Why:** Reduces walkaways during peak hours.
 
-### 7. Online ordering & delivery aggregator hooks
+### 4. Online ordering & delivery aggregator hooks
 **Problem:** Swiggy/Zomato orders live outside the kitchen board.  
 **Solution:** Unified order inbox (dine-in + takeaway + aggregator) with same KDS pipeline.  
 **Why:** Single source of truth for kitchen — standard in 2025–2026 POS suites.
 
-### 8. Tip pooling & payout reports
+### 5. Tip pooling & payout reports
 **Problem:** Servers dispute tip splits; cash vs UPI tips untracked.  
 **Solution:** Configurable tip pool rules, per-server tip ledger, export for payroll.  
 **Why:** Toast/SpotOn market this heavily for US; India equivalents growing for service charge.
 
-### 9. Customer CRM & repeat guest recognition
+### 6. Customer CRM & repeat guest recognition
 **Problem:** Regulars are anonymous phone numbers on orders.  
 **Solution:** Optional phone on check-in, visit count, favorite items, targeted rewards.  
 **Why:** Increases repeat revenue; complements existing reward spin.
@@ -130,10 +118,10 @@ TableTap can surface these in reports as you build out tracking:
 
 ## Suggested build order (technical)
 
-1. ✅ Staff attribution + performance reports *(done)*  
-2. Table → server assignment on floor open  
-3. Dedicated KDS route for cooks  
-4. Split payments  
+1. ✅ Staff attribution + performance reports  
+2. ✅ Table → server assignment on floor open  
+3. ✅ Dedicated KDS route for cooks  
+4. ✅ Split payments  
 5. Inventory + auto-86  
 6. Shift clock-in + SPLH  
 7. Reservations / waitlist  

@@ -27,6 +27,18 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: "asc" },
   });
 
+  const dayStart = new Date(`${date}T00:00:00.000`);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  const paymentsToday = await prisma.payment.findMany({
+    where: {
+      restaurantId: session.restaurantId,
+      createdAt: { gte: dayStart, lt: dayEnd },
+    },
+    select: { amount: true, orderId: true },
+  });
+  const collectedToday = paymentsToday.reduce((sum, p) => sum + p.amount, 0);
+  const recognizedRevenue = orders.reduce((sum, o) => sum + sumPaidOrderRevenue(o, o.items), 0);
+
   const performance = isManager
     ? await getStaffPerformanceReport(session.restaurantId, date)
     : null;
@@ -38,7 +50,9 @@ export async function GET(req: NextRequest) {
     date,
     restaurant: session.restaurantName,
     totalOrders: orders.length,
-    totalRevenue: orders.reduce((sum, o) => sum + sumPaidOrderRevenue(o, o.items), 0),
+    totalRevenue: collectedToday,
+    recognizedRevenue,
+    collectedToday,
     itemBreakdown: {} as Record<string, { quantity: number; revenue: number }>,
     tableBreakdown: {} as Record<number, { orders: number; revenue: number }>,
     staffPerformance: performance?.staff ?? [],

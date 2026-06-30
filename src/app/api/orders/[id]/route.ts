@@ -7,23 +7,19 @@ import {
   serveTimelineUpdate,
   syncOrderStatus,
 } from "@/lib/order-service";
-import { clearPaymentAlerts, requestOrderPayment } from "@/lib/payment-service";
+import { requestOrderPayment } from "@/lib/payment-service";
+import { recordFullOrderPayment, recordOrderPayment, orderItemHasPayment, finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
+import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
-import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
-import {
-  buildReceiptPayload,
-  RECEIPT_ORDER_INCLUDE,
-  RECEIPT_RESTAURANT_SELECT,
-} from "@/lib/receipt-service";
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { action, itemId, tableToken } = await req.json();
+  const { action, itemId, tableToken, amount, method, itemIds, note } = await req.json();
   logApiRequest("orders/[id]", "PATCH", { orderId: id, action, itemId });
 
   const order = await prisma.order.findUnique({
@@ -36,6 +32,15 @@ export async function PATCH(
   }
 
   if (action === "alarm") {
+    if (!tableToken || order.table.qrToken !== tableToken) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    const dining = await assertCustomerDiningAccess(req, String(tableToken));
+    if (!dining.ok) {
+      return NextResponse.json({ error: dining.error, code: dining.code }, { status: dining.status });
+    }
+
     await prisma.order.update({
       where: { id },
       data: { alarmTriggered: true },
@@ -131,6 +136,7 @@ export async function PATCH(
     "ready-item",
     "serve-all",
     "mark-paid",
+    "record-payment",
   ] as const;
 
   if (staffActions.includes(action as (typeof staffActions)[number])) {
@@ -146,41 +152,71 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    if (order.paidAt) {
-      return NextResponse.json({ error: "Order already marked paid" }, { status: 400 });
+
+    const result = await recordFullOrderPayment({
+      orderId: id,
+      method: method ?? "UPI",
+      collectedByUserId: session.id,
+      collectedByName: session.name,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    const paidAt = new Date();
-    await prisma.order.update({
-      where: { id },
-      data: {
-        paidAt,
-        paidByUserId: session.id,
-        paidByName: session.name,
-      },
+    const receipt = result.fullyPaid
+      ? await buildReceiptForPaidOrder(id, session.restaurantId)
+      : null;
+
+    logInfo("api:orders/[id]", "Order marked paid", { orderId: id, fullyPaid: result.fullyPaid });
+    return NextResponse.json({
+      success: true,
+      summary: result.summary,
+      fullyPaid: result.fullyPaid,
+      receipt,
     });
+  }
 
-    await clearPaymentAlerts(id);
+  if (action === "record-payment") {
+    if (order.status !== "SERVED") {
+      return NextResponse.json(
+        { error: "Order must be fully served before recording payment" },
+        { status: 400 }
+      );
+    }
 
-    await maybeAutoCloseTableAfterPayment(order.tableId);
+    const payAmount = typeof amount === "number" ? amount : parseFloat(String(amount));
+    if (!payAmount || payAmount <= 0) {
+      return NextResponse.json({ error: "Valid payment amount required" }, { status: 400 });
+    }
 
-    const restaurant = await prisma.restaurant.findUnique({
-      where: { id: session.restaurantId },
-      select: RECEIPT_RESTAURANT_SELECT,
+    const result = await recordOrderPayment({
+      orderId: id,
+      amount: payAmount,
+      method: method ?? "UPI",
+      note,
+      itemIds: Array.isArray(itemIds) ? itemIds : undefined,
+      collectedByUserId: session.id,
+      collectedByName: session.name,
     });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
 
-    const paidOrder = await prisma.order.findUnique({
-      where: { id },
-      include: RECEIPT_ORDER_INCLUDE,
+    const receipt = result.fullyPaid
+      ? await buildReceiptForPaidOrder(id, session.restaurantId)
+      : null;
+
+    logInfo("api:orders/[id]", "Partial payment recorded", {
+      orderId: id,
+      amount: payAmount,
+      fullyPaid: result.fullyPaid,
     });
-
-    const receipt =
-      restaurant && paidOrder
-        ? buildReceiptPayload(restaurant, { ...paidOrder, paidAt })
-        : null;
-
-    logInfo("api:orders/[id]", "Order marked paid", { orderId: id });
-    return NextResponse.json({ success: true, receipt });
+    return NextResponse.json({
+      success: true,
+      summary: result.summary,
+      fullyPaid: result.fullyPaid,
+      receipt,
+    });
   }
 
   if (action === "serve-item" && itemId) {
@@ -209,6 +245,13 @@ export async function PATCH(
   }
 
   if (action === "reject-item" && itemId) {
+    if (await orderItemHasPayment(itemId)) {
+      return NextResponse.json(
+        { error: "Cannot reject an item that has payment applied" },
+        { status: 400 },
+      );
+    }
+
     await prisma.orderItem.update({
       where: { id: itemId },
       data: {
@@ -219,6 +262,7 @@ export async function PATCH(
 
     await clearAlertsForOrderItem(itemId);
     await syncOrderStatus(id);
+    await finalizeOrderIfSettled(id);
 
     logInfo("api:orders/[id]", "Item marked unavailable", { orderId: id, itemId });
     return NextResponse.json({ success: true });

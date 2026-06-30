@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import { todayDateString, sumOrderRevenue, formatCurrency } from "@/lib/utils";
+import { todayDateString, formatCurrency } from "@/lib/utils";
 import { paymentQrExists } from "@/lib/payment-qr-storage";
+import { getOrderPaymentSummary } from "@/lib/payment-allocation-service";
 
 export async function isTablePaymentBlocked(tableId: string) {
-  const pending = await prisma.order.findFirst({
+  const orders = await prisma.order.findMany({
     where: {
       tableId,
       date: todayDateString(),
@@ -12,7 +13,11 @@ export async function isTablePaymentBlocked(tableId: string) {
     },
     select: { id: true },
   });
-  return Boolean(pending);
+  for (const order of orders) {
+    const summary = await getOrderPaymentSummary(order.id);
+    if (summary && summary.remaining > 0) return true;
+  }
+  return false;
 }
 
 export async function clearPaymentAlerts(orderId: string) {
@@ -44,7 +49,7 @@ export async function requestOrderPayment(orderId: string, tableToken: string) {
     return { ok: false as const, error: "Order already paid", status: 400 };
   }
 
-  const billTotal = sumOrderRevenue(order.items);
+  const billTotal = (await getOrderPaymentSummary(orderId))?.remaining ?? 0;
   if (billTotal <= 0) {
     return { ok: false as const, error: "Nothing to pay for this order", status: 400 };
   }

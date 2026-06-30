@@ -10,6 +10,7 @@ import { todayDateString, sumOrderRevenue, sumPaidOrderRevenue } from "@/lib/uti
 import { getTabsForRole } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { logApiRequest, logInfo } from "@/lib/logger";
+import { getOrderPaymentSummary } from "@/lib/payment-allocation-service";
 
 export async function GET() {
   logApiRequest("staff/dashboard", "GET");
@@ -20,7 +21,7 @@ export async function GET() {
 
   const today = todayDateString();
 
-  const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests] =
+  const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests, todayPaymentSum] =
     await Promise.all([
       getActiveOrders(session.restaurantId),
       getPendingPaymentOrders(session.restaurantId),
@@ -39,12 +40,16 @@ export async function GET() {
         orderBy: { requestedAt: "asc" },
         take: 20,
       }),
+      prisma.payment.aggregate({
+        where: {
+          restaurantId: session.restaurantId,
+          createdAt: { gte: new Date(`${today}T00:00:00.000`) },
+        },
+        _sum: { amount: true },
+      }),
     ]);
 
-  const todayRevenue = completedOrders.reduce(
-    (sum, o) => sum + sumPaidOrderRevenue(o, o.items),
-    0
-  );
+  const todayRevenue = todayPaymentSum._sum.amount ?? 0;
 
   const overdueCount = orders.reduce(
     (sum, o) =>
@@ -55,7 +60,7 @@ export async function GET() {
     0
   );
 
-  const withTotal = <T extends { items: Array<{ unitPrice: number; quantity: number; status: string }>; paidAt?: Date | null }>(
+  const withTotal = <T extends { id: string; items: Array<{ unitPrice: number; quantity: number; status: string }>; paidAt?: Date | null }>(
     list: T[]
   ) =>
     list.map((o) => ({
@@ -64,17 +69,26 @@ export async function GET() {
       paidTotal: sumPaidOrderRevenue(o, o.items),
     }));
 
+  const pendingWithPayments = (
+    await Promise.all(
+      withTotal(pendingOrders).map(async (order) => ({
+        ...order,
+        paymentSummary: await getOrderPaymentSummary(order.id),
+      })),
+    )
+  ).filter((order) => (order.paymentSummary?.remaining ?? order.total ?? 0) > 0);
+
   logInfo("api:staff/dashboard", "Dashboard loaded", {
     restaurantId: session.restaurantId,
     activeOrders: orders.length,
-    pendingPayments: pendingOrders.length,
+    pendingPayments: pendingWithPayments.length,
     completedOrders: completedOrders.length,
     unreadAlerts: alerts.length,
   });
 
   return NextResponse.json({
     orders,
-    pendingOrders: withTotal(pendingOrders),
+    pendingOrders: pendingWithPayments,
     completedOrders: withTotal(completedOrders),
     alerts,
     permissions: {
@@ -100,7 +114,7 @@ export async function GET() {
     tableSwitchRequests,
     stats: {
       activeOrders: orders.length,
-      pendingPayments: pendingOrders.length,
+      pendingPayments: pendingWithPayments.length,
       completedOrders: completedOrders.length,
       todayOrders: orderCount,
       revenue: todayRevenue,
