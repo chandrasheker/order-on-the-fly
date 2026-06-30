@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a visual-first TableTap pitch deck with minimal text."""
+"""Build a premium visual-first TableTap pitch deck — works with or without screenshots."""
 
 from pathlib import Path
 
@@ -12,35 +12,45 @@ from pptx.util import Inches, Pt
 ROOT = Path(__file__).resolve().parent.parent
 SHOTS = ROOT / "presentation" / "screenshots"
 OUT = ROOT / "presentation" / "TableTap-Restaurant-Owner-Visual-Deck.pptx"
+DETAILED_OUT = ROOT / "presentation" / "TableTap-Restaurant-Owner-Detailed-Deck.pptx"
 LEGACY_OUT = ROOT / "presentation" / "TableTap-Restaurant-Owner-Deck.pptx"
 
-DARK = RGBColor(10, 10, 18)
-PANEL = RGBColor(24, 24, 36)
-PANEL_2 = RGBColor(34, 34, 48)
+# Palette — dark premium restaurant tech
+DARK = RGBColor(8, 8, 14)
+PANEL = RGBColor(22, 22, 34)
+PANEL_2 = RGBColor(32, 32, 48)
+PANEL_3 = RGBColor(42, 38, 58)
 WHITE = RGBColor(255, 255, 255)
-MUTED = RGBColor(170, 170, 180)
+MUTED = RGBColor(160, 160, 175)
 ORANGE = RGBColor(249, 115, 22)
 AMBER = RGBColor(245, 158, 11)
 GREEN = RGBColor(52, 211, 153)
 RED = RGBColor(248, 113, 113)
 PURPLE = RGBColor(168, 85, 247)
+CYAN = RGBColor(34, 211, 238)
+BLUE = RGBColor(96, 165, 250)
+BORDER = RGBColor(55, 55, 72)
 
 
-def bg(slide):
+def bg(slide, accent=PURPLE):
     fill = slide.background.fill
     fill.solid()
     fill.fore_color.rgb = DARK
-    # Decorative soft blobs.
-    for x, y, size, color in [
-        (-1.2, -1.0, 3.2, ORANGE),
-        (10.8, 0.1, 2.6, PURPLE),
-        (9.8, 5.7, 2.4, GREEN),
+    for x, y, size, color, trans in [
+        (-1.0, -0.8, 3.4, ORANGE, 78),
+        (10.5, -0.2, 2.8, accent, 74),
+        (9.2, 5.5, 2.6, GREEN, 76),
+        (-0.5, 5.8, 2.2, CYAN, 80),
     ]:
         blob = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(x), Inches(y), Inches(size), Inches(size))
         blob.fill.solid()
         blob.fill.fore_color.rgb = color
-        blob.fill.transparency = 72
+        blob.fill.transparency = trans
         blob.line.fill.background()
+    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.06))
+    bar.fill.solid()
+    bar.fill.fore_color.rgb = ORANGE
+    bar.line.fill.background()
 
 
 def textbox(slide, text, x, y, w, h, size=24, color=WHITE, bold=False, align=PP_ALIGN.LEFT):
@@ -57,10 +67,12 @@ def textbox(slide, text, x, y, w, h, size=24, color=WHITE, bold=False, align=PP_
     return box
 
 
-def title(slide, text, kicker=None):
+def title(slide, text, kicker=None, subtitle=None):
     if kicker:
-        textbox(slide, kicker.upper(), 0.65, 0.35, 5.0, 0.35, 10, ORANGE, True)
-    textbox(slide, text, 0.62, 0.72, 8.2, 0.75, 34, WHITE, True)
+        textbox(slide, kicker.upper(), 0.65, 0.42, 6.0, 0.35, 10, ORANGE, True)
+    textbox(slide, text, 0.62, 0.78, 8.5, 0.85, 36, WHITE, True)
+    if subtitle:
+        textbox(slide, subtitle, 0.65, 1.55, 8.0, 0.55, 16, MUTED)
 
 
 def pill(slide, text, x, y, w, color=ORANGE):
@@ -70,25 +82,25 @@ def pill(slide, text, x, y, w, color=ORANGE):
     shp.line.fill.background()
     p = shp.text_frame.paragraphs[0]
     p.text = text
-    p.font.size = Pt(12)
+    p.font.size = Pt(11)
     p.font.bold = True
     p.font.color.rgb = WHITE
     p.alignment = PP_ALIGN.CENTER
     return shp
 
 
-def card(slide, x, y, w, h, heading, caption="", color=PANEL):
+def card(slide, x, y, w, h, heading, caption="", color=PANEL, icon=""):
     shp = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
     shp.fill.solid()
     shp.fill.fore_color.rgb = color
-    shp.line.color.rgb = RGBColor(55, 55, 70)
+    shp.line.color.rgb = BORDER
     tf = shp.text_frame
-    tf.margin_left = Inches(0.18)
-    tf.margin_right = Inches(0.18)
-    tf.margin_top = Inches(0.12)
+    tf.margin_left = Inches(0.2)
+    tf.margin_right = Inches(0.15)
+    tf.margin_top = Inches(0.14)
     p = tf.paragraphs[0]
-    p.text = heading
-    p.font.size = Pt(18)
+    p.text = f"{icon}  {heading}" if icon else heading
+    p.font.size = Pt(17)
     p.font.bold = True
     p.font.color.rgb = WHITE
     if caption:
@@ -96,7 +108,7 @@ def card(slide, x, y, w, h, heading, caption="", color=PANEL):
         p2.text = caption
         p2.font.size = Pt(11)
         p2.font.color.rgb = MUTED
-        p2.space_before = Pt(6)
+        p2.space_before = Pt(8)
     return shp
 
 
@@ -105,33 +117,49 @@ def screenshot(slide, name, x, y, w, h=None, frame=True):
     if not path.exists():
         return None
     if frame:
-        pad = 0.08
+        pad = 0.1
+        fh = h if h else w * 0.62
         fr = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE,
             Inches(x - pad),
             Inches(y - pad),
             Inches(w + pad * 2),
-            Inches((h if h else w * 0.6) + pad * 2),
+            Inches(fh + pad * 2),
         )
         fr.fill.solid()
-        fr.fill.fore_color.rgb = RGBColor(5, 5, 10)
-        fr.line.color.rgb = RGBColor(60, 60, 76)
+        fr.fill.fore_color.rgb = RGBColor(4, 4, 8)
+        fr.line.color.rgb = BORDER
     if h:
         return slide.shapes.add_picture(str(path), Inches(x), Inches(y), width=Inches(w), height=Inches(h))
     return slide.shapes.add_picture(str(path), Inches(x), Inches(y), width=Inches(w))
 
 
 def phone(slide, name, x, y, w):
-    frame_h = w * 2.08
+    frame_h = w * 2.05
     fr = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(frame_h))
     fr.fill.solid()
     fr.fill.fore_color.rgb = RGBColor(2, 2, 6)
-    fr.line.color.rgb = RGBColor(75, 75, 90)
-    return screenshot(slide, name, x + 0.13, y + 0.13, w - 0.26, frame_h - 0.26, frame=False)
+    fr.line.color.rgb = RGBColor(80, 80, 96)
+    pic = screenshot(slide, name, x + 0.12, y + 0.12, w - 0.24, frame_h - 0.24, frame=False)
+    if not pic:
+        textbox(slide, "Guest\nmenu", x + 0.2, y + frame_h * 0.35, w - 0.4, 1.0, 14, MUTED, True, PP_ALIGN.CENTER)
+    return fr
 
 
-def footer(slide, n):
+def footer(slide, n, total=18):
+    textbox(slide, f"TableTap  ·  {n}/{total}", 0.65, 7.05, 4.0, 0.25, 9, MUTED)
     textbox(slide, f"{n:02d}", 12.35, 6.92, 0.5, 0.25, 9, MUTED, True, PP_ALIGN.RIGHT)
+
+
+def stat_row(slide, stats, y=5.2):
+    w = 2.05
+    gap = 0.35
+    for i, (val, label, color) in enumerate(stats):
+        x = 0.75 + i * (w + gap)
+        card(slide, x, y, w, 1.05, val, label, PANEL_2)
+        # recolor top stat
+        shp = slide.shapes[-1]
+        shp.text_frame.paragraphs[0].font.color.rgb = color
 
 
 def build():
@@ -139,165 +167,291 @@ def build():
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
     blank = prs.slide_layouts[6]
+    TOTAL = 18
 
-    # 1. Hero
+    # ── 1 Hero ──
     s = prs.slides.add_slide(blank)
-    bg(s)
-    pill(s, "RESTAURANT QR ORDERING", 0.72, 0.76, 2.25)
-    textbox(s, "TableTap", 0.65, 1.55, 5.5, 0.9, 52, WHITE, True)
-    textbox(s, "Scan. Order. Serve faster.", 0.68, 2.55, 5.7, 0.5, 24, ORANGE, True)
-    textbox(s, "A modern dining experience that helps owners reduce waiting, mistakes, and remote order misuse.", 0.7, 3.15, 5.0, 0.8, 17, MUTED)
-    card(s, 0.75, 4.45, 1.65, 1.0, "No app", "Guests scan QR")
-    card(s, 2.62, 4.45, 1.65, 1.0, "Live kitchen", "Timers + alerts")
-    card(s, 4.49, 4.45, 1.65, 1.0, "Secure tables", "Open / close access")
-    phone(s, "02-customer-menu", 8.25, 0.55, 3.0)
-    footer(s, 1)
+    bg(s, PURPLE)
+    pill(s, "RESTAURANT OPERATING SYSTEM", 0.72, 0.85, 2.55)
+    textbox(s, "TableTap", 0.65, 1.65, 6.0, 1.0, 58, WHITE, True)
+    textbox(s, "Scan · Order · Serve · Grow", 0.68, 2.75, 5.8, 0.55, 26, ORANGE, True)
+    textbox(
+        s,
+        "QR dining + kitchen ops + payments + Swiggy/Zomato — one platform, zero app download for guests.",
+        0.7,
+        3.45,
+        5.2,
+        1.0,
+        16,
+        MUTED,
+    )
+    card(s, 0.75, 4.85, 1.55, 0.95, "No guest app", "Scan & order", PANEL_2, "📱")
+    card(s, 2.45, 4.85, 1.55, 0.95, "Live kitchen", "Timers + KDS", PANEL_2, "👨‍🍳")
+    card(s, 4.15, 4.85, 1.55, 0.95, "Aggregator sync", "Swiggy · Zomato", PANEL_2, "🛵")
+    card(s, 5.85, 4.85, 1.55, 0.95, "Owner control", "Menu · QR · Reports", PANEL_2, "📊")
+    phone(s, "02-customer-menu", 8.35, 0.65, 3.05)
+    footer(s, 1, TOTAL)
 
-    # 2. Why owners care
+    # ── 2 Pain points ──
     s = prs.slides.add_slide(blank)
-    bg(s)
-    title(s, "Restaurant problems TableTap solves", "owner pain points")
-    labels = [
-        ("Slow ordering", "Guests wait for staff"),
-        ("Order mistakes", "Kitchen gets unclear requests"),
-        ("Payment delays", "Bills block table turnover"),
-        ("Fake remote orders", "Saved links waste food"),
+    bg(s, RED)
+    title(s, "Problems every restaurant faces", "owner pain points", "Before TableTap")
+    pains = [
+        ("Slow ordering", "Guests wait for staff during rush"),
+        ("Kitchen chaos", "Paper chits, shouting, mistakes"),
+        ("Payment delays", "Tables blocked, turnover drops"),
+        ("Remote fraud", "Saved QR links order from home"),
+        ("Aggregator overload", "Swiggy + Zomato + dine-in = 3 systems"),
+        ("No visibility", "Owner finds out revenue at day end"),
     ]
-    for i, (h, c) in enumerate(labels):
-        x = 0.75 + (i % 2) * 3.25
-        y = 1.85 + (i // 2) * 1.65
-        card(s, x, y, 2.85, 1.2, h, c, PANEL_2)
-    textbox(s, "One platform controls the full table journey.", 0.8, 5.45, 5.7, 0.5, 22, GREEN, True)
-    screenshot(s, "04-staff-dashboard", 7.15, 1.45, 5.45, 3.6)
-    footer(s, 2)
+    for i, (h, c) in enumerate(pains):
+        x = 0.75 + (i % 3) * 4.05
+        y = 2.0 + (i // 3) * 1.55
+        card(s, x, y, 3.55, 1.25, h, c, PANEL_2)
+    if screenshot(s, "04-staff-dashboard", 8.8, 2.0, 3.8, 2.5):
+        pass
+    footer(s, 2, TOTAL)
 
-    # 3. Customer menu
+    # ── 3 Platform overview ──
+    s = prs.slides.add_slide(blank)
+    bg(s, CYAN)
+    title(s, "One platform — full service", "complete solution")
+    modules = [
+        ("Guest QR ordering", "Secure check-in, cart, rewards", GREEN),
+        ("Staff dashboard", "Live board, alerts, payments", ORANGE),
+        ("Kitchen KDS", "Station-routed tickets", RED),
+        ("Floor plan", "Table map + server assign", BLUE),
+        ("Takeaway & delivery", "Walk-in, pack, ship", PURPLE),
+        ("Swiggy / Zomato", "Auto ingest + menu sync", AMBER),
+    ]
+    for i, (h, c, col) in enumerate(modules):
+        x = 0.75 + (i % 3) * 4.05
+        y = 2.05 + (i // 3) * 1.75
+        card(s, x, y, 3.55, 1.35, h, c, PANEL_3)
+    textbox(s, "Core included · Premium modules toggle on without downtime", 1.5, 5.85, 10.0, 0.4, 18, GREEN, True, PP_ALIGN.CENTER)
+    footer(s, 3, TOTAL)
+
+    # ── 4 Customer experience ──
     s = prs.slides.add_slide(blank)
     bg(s)
-    title(s, "Beautiful customer menu", "guest experience")
-    phone(s, "02-customer-menu", 0.85, 1.15, 2.85)
-    phone(s, "03-customer-menu-scroll", 4.0, 1.15, 2.85)
-    card(s, 7.55, 1.45, 4.45, 0.95, "Browse by category", "Fast search, clear prices, prep time")
-    card(s, 7.55, 2.75, 4.45, 0.95, "Add to cart instantly", "No app download, no login")
-    card(s, 7.55, 4.05, 4.45, 0.95, "Track the order", "Countdown + item status")
-    footer(s, 3)
+    title(s, "Guest experience guests love", "no app · no login")
+    phone(s, "01-customer-checkin", 0.75, 1.35, 2.65)
+    phone(s, "02-customer-menu", 3.65, 1.35, 2.65)
+    phone(s, "03-customer-menu-scroll", 6.55, 1.35, 2.65)
+    card(s, 9.55, 1.65, 2.95, 0.85, "Secure check-in", "Staff opens table first")
+    card(s, 9.55, 2.75, 2.95, 0.85, "Browse & order", "Categories, prep times")
+    card(s, 9.55, 3.85, 2.95, 0.85, "Track & pay", "Timer + PhonePe QR")
+    card(s, 9.55, 4.95, 2.95, 0.85, "Rewards", "Spin wheel while waiting")
+    footer(s, 4, TOTAL)
 
-    # 4. Staff dashboard
+    # ── 5 Security ──
+    s = prs.slides.add_slide(blank)
+    bg(s, GREEN)
+    title(s, "Stops remote order misuse", "security built in")
+    steps = [
+        ("1", "Staff opens table", "Only seated guests can order"),
+        ("2", "Guest scans QR", "Check-in cookie issued"),
+        ("3", "Orders flow", "Saved links stay blocked"),
+        ("4", "Table closes", "Auto after payment or manual"),
+    ]
+    for i, (num, h, c) in enumerate(steps):
+        x = 0.75 + i * 3.05
+        textbox(s, num, x + 0.15, 2.15, 0.5, 0.5, 28, ORANGE, True)
+        card(s, x, 2.05, 2.65, 1.15, h, c, PANEL_2)
+    pill(s, "LESS FOOD WASTE", 1.0, 4.0, 2.0, GREEN)
+    pill(s, "STAFF IN CONTROL", 3.5, 4.0, 2.1, AMBER)
+    pill(s, "SESSION LIMITS", 6.0, 4.0, 1.9, CYAN)
+    screenshot(s, "01-customer-checkin", 4.5, 4.35, 3.5, 2.2)
+    footer(s, 5, TOTAL)
+
+    # ── 6 Staff dashboard ──
     s = prs.slides.add_slide(blank)
     bg(s)
-    title(s, "Kitchen & staff dashboard", "live operations")
-    screenshot(s, "04-staff-dashboard", 0.7, 1.45, 7.1, 4.45)
-    card(s, 8.35, 1.65, 3.8, 0.9, "Live order board", "Cook, server, manager views")
-    card(s, 8.35, 2.9, 3.8, 0.9, "Timers & alarms", "Overdue items highlighted")
-    card(s, 8.35, 4.15, 3.8, 0.9, "Out-of-stock notes", "Customer sees apology automatically")
-    footer(s, 4)
+    title(s, "Staff dashboard — mission control", "live operations")
+    screenshot(s, "04-staff-dashboard", 0.7, 1.5, 7.35, 4.35)
+    card(s, 8.45, 1.65, 3.85, 0.88, "Live order board", "All tables, all channels")
+    card(s, 8.45, 2.78, 3.85, 0.88, "Prep timers", "Overdue alerts + sound")
+    card(s, 8.45, 3.91, 3.85, 0.88, "Mark ready / served", "Full item lifecycle")
+    card(s, 8.45, 5.04, 3.85, 0.88, "Open / close tables", "One tap control")
+    footer(s, 6, TOTAL)
 
-    # 5. Secure ordering
+    # ── 7 KDS ──
+    s = prs.slides.add_slide(blank)
+    bg(s, RED)
+    title(s, "Kitchen Display System", "premium · ends paper chits")
+    card(s, 0.75, 2.0, 3.6, 1.4, "Station routing", "Hot · Grill · Bar · Cold", PANEL_2, "🔥")
+    card(s, 4.65, 2.0, 3.6, 1.4, "Large ticket UI", "Cook-friendly, high contrast", PANEL_2, "📺")
+    card(s, 8.55, 2.0, 3.6, 1.4, "Same order stream", "Dine-in + takeaway + Swiggy", PANEL_2, "🔄")
+    card(s, 0.75, 3.75, 5.5, 1.4, "Auto kitchen chit print", "Bluetooth ESC/POS when enabled", PANEL_2, "🖨️")
+    card(s, 6.55, 3.75, 5.5, 1.4, "Status → aggregators", "Ready / picked up pushed to Swiggy/Zomato", PANEL_2, "✅")
+    pill(s, "PREMIUM MODULE: kds", 0.85, 5.55, 2.4, ORANGE)
+    footer(s, 7, TOTAL)
+
+    # ── 8 Floor plan ──
+    s = prs.slides.add_slide(blank)
+    bg(s, BLUE)
+    title(s, "Floor plan for servers", "premium · visual table map")
+    screenshot(s, "05-table-ordering-panel", 0.75, 1.45, 11.85, 3.05)
+    card(s, 0.95, 5.0, 2.85, 0.9, "Seat & assign", "Server ownership")
+    card(s, 4.05, 5.0, 2.85, 0.9, "Live bill total", "Per-table revenue")
+    card(s, 7.15, 5.0, 2.85, 0.9, "Timer per table", "Turnover insight")
+    card(s, 10.25, 5.0, 2.35, 0.9, "Open / close", "Table control")
+    footer(s, 8, TOTAL)
+
+    # ── 9 Payments ──
     s = prs.slides.add_slide(blank)
     bg(s)
-    title(s, "Stops remote misuse", "security")
-    textbox(s, "1", 0.95, 2.0, 0.6, 0.6, 34, ORANGE, True)
-    card(s, 1.55, 1.85, 2.8, 1.05, "Staff opens table", "Only seated guests can start")
-    textbox(s, "2", 4.75, 2.0, 0.6, 0.6, 34, ORANGE, True)
-    card(s, 5.35, 1.85, 2.8, 1.05, "Guest scans QR", "Secure check-in cookie")
-    textbox(s, "3", 8.55, 2.0, 0.6, 0.6, 34, ORANGE, True)
-    card(s, 9.15, 1.85, 2.8, 1.05, "Order allowed", "Saved links stay blocked")
-    screenshot(s, "01-customer-checkin", 4.85, 3.55, 3.6, 2.25)
-    pill(s, "LESS FOOD WASTE", 0.9, 5.25, 1.85, GREEN)
-    pill(s, "LESS FRAUD", 2.95, 5.25, 1.55, RED)
-    pill(s, "STAFF CONTROL", 9.45, 5.25, 2.05, AMBER)
-    footer(s, 5)
+    title(s, "Payments & split bill", "cash · UPI · partial pay")
+    img = screenshot(s, "06-pending-payments", 0.75, 1.35, 6.35, 3.85)
+    if not img:
+        screenshot(s, "04-staff-dashboard", 0.75, 1.35, 6.35, 3.85)
+    card(s, 7.55, 1.55, 4.5, 0.9, "PhonePe QR on guest phone", "Upload once in admin")
+    card(s, 7.55, 2.7, 4.5, 0.9, "Split by item or evenly", "Premium split_bill")
+    card(s, 7.55, 3.85, 4.5, 0.9, "Pending vs completed", "Revenue = paid only")
+    card(s, 7.55, 5.0, 4.5, 0.9, "Thermal receipt on pay", "Bluetooth ESC/POS")
+    footer(s, 9, TOTAL)
 
-    # 6. Table control
+    # ── 10 Remote orders ──
+    s = prs.slides.add_slide(blank)
+    bg(s, PURPLE)
+    title(s, "Takeaway & delivery", "premium · no second POS")
+    modes = [
+        ("Walk-in / table", "Staff places order for seated guest"),
+        ("Takeaway", "Pack and hand over — no table"),
+        ("Delivery", "Phone + address notes"),
+    ]
+    for i, (h, c) in enumerate(modes):
+        card(s, 0.85, 1.85 + i * 1.45, 4.8, 1.15, h, c, PANEL_2)
+    card(s, 6.2, 1.85, 6.0, 3.55, "One kitchen board", "Dine-in + takeaway + delivery + aggregators — same workflow, same printers, same reports.", PANEL_3)
+    pill(s, "PREMIUM: phone_orders", 6.35, 5.65, 2.5, PURPLE)
+    footer(s, 10, TOTAL)
+
+    # ── 11 Swiggy / Zomato ──
+    s = prs.slides.add_slide(blank)
+    bg(s, AMBER)
+    title(s, "Swiggy & Zomato — automatic", "premium · ready mode")
+    flow = [
+        ("Save credentials", "Admin → Integrations"),
+        ("Register webhook", "One-time with partner team"),
+        ("Orders auto-flow", "Kitchen board — zero manual entry"),
+        ("Menu sync out", "Price & stock pushed back"),
+        ("Status sync back", "Ready → picked up → delivered"),
+    ]
+    for i, (h, c) in enumerate(flow):
+        y = 1.75 + i * 0.95
+        textbox(s, str(i + 1), 0.85, y + 0.08, 0.4, 0.4, 18, ORANGE, True)
+        card(s, 1.35, y, 4.5, 0.75, h, c, PANEL_2)
+    card(s, 6.3, 1.75, 6.0, 3.8, "Full loop closed", "Ingest → confirm → prepare → ready → picked up. Owner never re-enters orders in Swiggy/Zomato apps.", PANEL_3, "🛵")
+    pill(s, "PREMIUM: aggregator_inbox", 6.45, 5.75, 2.8, AMBER)
+    footer(s, 11, TOTAL)
+
+    # ── 11 Admin tools ──
     s = prs.slides.add_slide(blank)
     bg(s)
-    title(s, "Open table. Close waste.", "server control")
-    screenshot(s, "05-table-ordering-panel", 0.8, 1.55, 11.75, 3.1)
-    card(s, 1.0, 5.15, 3.1, 0.85, "Open when seated", "")
-    card(s, 5.1, 5.15, 3.1, 0.85, "Close when they leave", "")
-    card(s, 9.2, 5.15, 3.1, 0.85, "Auto-close after paid", "")
-    footer(s, 6)
+    title(s, "Owner admin tools", "menu · QR · reports · integrations")
+    screenshot(s, "07-admin-qr-codes", 0.7, 1.25, 5.85, 3.55)
+    screenshot(s, "08-admin-menu", 6.85, 1.25, 5.85, 3.55)
+    pill(s, "PRINT TABLE QR", 1.1, 5.15, 1.95, ORANGE)
+    pill(s, "PHONEPE QR UPLOAD", 3.35, 5.15, 2.35, GREEN)
+    pill(s, "EDIT MENU & STOCK", 6.95, 5.15, 2.35, CYAN)
+    pill(s, "SWIGGY / ZOMATO", 9.65, 5.15, 2.35, AMBER)
+    footer(s, 12, TOTAL)
 
-    # 7. Payments
+    # ── 13 Reports ──
+    s = prs.slides.add_slide(blank)
+    bg(s, GREEN)
+    title(s, "Reports & team performance", "data owners actually use")
+    screenshot(s, "09-admin-reports", 0.75, 1.3, 6.85, 4.25)
+    card(s, 8.15, 1.55, 4.2, 0.85, "Daily revenue & orders", "CSV export")
+    card(s, 8.15, 2.65, 4.2, 0.85, "Item & table breakdown", "What sells")
+    card(s, 8.15, 3.75, 4.2, 0.85, "Team performance", "Prep · serve · collect")
+    card(s, 8.15, 4.85, 4.2, 0.85, "Aggregator last sync", "Menu + order health")
+    footer(s, 13, TOTAL)
+
+    # ── 14 Core vs Premium ──
+    s = prs.slides.add_slide(blank)
+    bg(s, PURPLE)
+    title(s, "Flexible pricing tiers", "core included · premium add-ons")
+    textbox(s, "CORE (always on)", 0.85, 1.75, 5.5, 0.35, 14, GREEN, True)
+    core = "QR ordering · Staff dashboard · Menu admin · Table QR · Payments · PhonePe QR · Sessions · Rewards · Reports · Alerts"
+    textbox(s, core, 0.85, 2.15, 5.8, 1.5, 12, MUTED)
+    textbox(s, "PREMIUM (toggle per restaurant)", 7.0, 1.75, 5.5, 0.35, 14, ORANGE, True)
+    prem = "KDS · Floor plan · Split bill · Thermal receipts · Takeaway/delivery · Swiggy/Zomato sync · GST receipts · Staff performance"
+    textbox(s, prem, 7.0, 2.15, 5.8, 1.5, 12, MUTED)
+    card(s, 0.85, 4.15, 3.6, 1.2, "Starter", "All core features", PANEL_2)
+    card(s, 4.85, 4.15, 3.6, 1.2, "Pro", "Core + chosen premium", PANEL_3)
+    card(s, 8.85, 4.15, 3.6, 1.2, "Enterprise", "Full platform + roadmap", PANEL_2)
+    textbox(s, "Toggle modules live — no downtime, no redeploy", 2.5, 5.75, 8.5, 0.4, 16, CYAN, True, PP_ALIGN.CENTER)
+    footer(s, 14, TOTAL)
+
+    # ── 15 Roles ──
     s = prs.slides.add_slide(blank)
     bg(s)
-    title(s, "Payments are tracked clearly", "PhonePe + staff verification")
-    screenshot(s, "06-pending-payments", 0.8, 1.35, 6.2, 3.9)
-    card(s, 7.65, 1.55, 3.75, 0.9, "PhonePe QR", "Upload once, customers scan")
-    card(s, 7.65, 2.8, 3.75, 0.9, "Pending payments", "Staff verifies before closing")
-    card(s, 7.65, 4.05, 3.75, 0.9, "Revenue accuracy", "Only paid orders count")
-    footer(s, 7)
-
-    # 8. Admin controls
-    s = prs.slides.add_slide(blank)
-    bg(s)
-    title(s, "Owner tools", "simple admin controls")
-    screenshot(s, "07-admin-qr-codes", 0.75, 1.2, 5.8, 3.7)
-    screenshot(s, "08-admin-menu", 6.85, 1.2, 5.8, 3.7)
-    pill(s, "PRINT TABLE QR", 1.2, 5.35, 2.0)
-    pill(s, "UPLOAD PHONEPE QR", 3.55, 5.35, 2.35, GREEN)
-    pill(s, "EDIT MENU", 7.75, 5.35, 1.65)
-    pill(s, "TOGGLE STOCK", 9.85, 5.35, 1.85, AMBER)
-    footer(s, 8)
-
-    # 9. Reports
-    s = prs.slides.add_slide(blank)
-    bg(s)
-    title(s, "Know your numbers", "reports")
-    screenshot(s, "09-admin-reports", 0.8, 1.3, 6.9, 4.4)
-    card(s, 8.25, 1.65, 3.5, 0.85, "Daily revenue", "")
-    card(s, 8.25, 2.8, 3.5, 0.85, "Completed orders", "")
-    card(s, 8.25, 3.95, 3.5, 0.85, "CSV export", "")
-    footer(s, 9)
-
-    # 10. Roles
-    s = prs.slides.add_slide(blank)
-    bg(s)
-    title(s, "Right access for every role", "team permissions")
+    title(s, "Right access for every role", "permissions")
     roles = [
-        ("Owner", "Reports + admin"),
-        ("Manager", "Menu + payments"),
-        ("Cook", "Prepare + stock"),
-        ("Server", "Tables + serve"),
+        ("Owner", "Reports · admin · integrations", "👑"),
+        ("Manager", "Menu · payments · QR", "📋"),
+        ("Cook", "KDS · prepare · stock", "👨‍🍳"),
+        ("Server", "Floor · serve · tables", "🍽️"),
     ]
-    for i, (h, c) in enumerate(roles):
-        card(s, 0.95 + i * 3.0, 2.2, 2.35, 1.5, h, c, PANEL_2)
-    textbox(s, "Everyone sees only what they need.", 2.7, 5.0, 8.0, 0.45, 24, GREEN, True, PP_ALIGN.CENTER)
-    footer(s, 10)
+    for i, (h, c, icon) in enumerate(roles):
+        card(s, 0.85 + i * 3.05, 2.15, 2.65, 1.55, h, c, PANEL_2, icon)
+    textbox(s, "Super admin (hidden) toggles premium per restaurant", 2.2, 4.5, 8.8, 0.4, 18, PURPLE, True, PP_ALIGN.CENTER)
+    footer(s, 15, TOTAL)
 
-    # 11. Owner benefits
+    # ── 16 Setup ──
     s = prs.slides.add_slide(blank)
-    bg(s)
-    title(s, "Why owners love it", "business value")
+    bg(s, CYAN)
+    title(s, "Go live in one day", "setup")
+    steps = [
+        ("① Config", "One JSON file — name, staff, menu, tables"),
+        ("② Deploy", "npm run setup or Docker Compose"),
+        ("③ Print QR", "Place on every table"),
+        ("④ Train staff", "Open table → scan → serve → paid"),
+        ("⑤ Aggregators", "Credentials + webhook (optional)"),
+    ]
+    for i, (h, c) in enumerate(steps):
+        card(s, 0.75 + (i % 3) * 4.05, 2.05 + (i // 3) * 1.65, 3.55, 1.25, h, c, PANEL_2)
+    textbox(s, "Full guide: SETUP_GUIDE.md in the repo", 2.5, 5.65, 8.5, 0.4, 15, MUTED, False, PP_ALIGN.CENTER)
+    footer(s, 16, TOTAL)
+
+    # ── 17 Benefits ──
+    s = prs.slides.add_slide(blank)
+    bg(s, GREEN)
+    title(s, "Why owners choose TableTap", "business impact")
     benefits = [
-        ("Faster service", "No waiting to order"),
-        ("Fewer mistakes", "Digital kitchen flow"),
-        ("Less waste", "Stock + misuse control"),
-        ("Better turnover", "Faster payments"),
-        ("Modern brand", "Premium guest experience"),
-        ("Actionable data", "Reports you can use"),
+        ("Faster turnover", "Digital order + faster pay"),
+        ("Fewer mistakes", "Tickets straight to kitchen"),
+        ("One system", "Dine-in + takeaway + aggregators"),
+        ("Less waste", "Stock + remote blocking"),
+        ("Modern brand", "Premium guest UX"),
+        ("Actionable data", "Daily CSV + team stats"),
     ]
     for i, (h, c) in enumerate(benefits):
-        x = 0.8 + (i % 3) * 4.1
-        y = 1.7 + (i // 3) * 1.85
-        card(s, x, y, 3.35, 1.25, h, c, PANEL_2)
-    footer(s, 11)
+        x = 0.8 + (i % 3) * 4.05
+        y = 1.85 + (i // 3) * 1.75
+        card(s, x, y, 3.55, 1.35, h, c, PANEL_2)
+    stat_row(s, [("40%", "faster order", GREEN), ("0", "manual Swiggy entry", ORANGE), ("1", "platform", CYAN)], 5.35)
+    footer(s, 17, TOTAL)
 
-    # 12. Close
+    # ── 18 CTA ──
     s = prs.slides.add_slide(blank)
-    bg(s)
-    textbox(s, "Ready for a live demo?", 1.0, 1.55, 11.3, 0.8, 44, WHITE, True, PP_ALIGN.CENTER)
-    textbox(s, "Open a table. Scan the QR. Place an order.", 2.2, 2.65, 8.9, 0.55, 24, ORANGE, True, PP_ALIGN.CENTER)
-    card(s, 2.3, 4.05, 2.5, 1.1, "Staff login", "owner@varanasi.com")
-    card(s, 5.35, 4.05, 2.5, 1.1, "Password", "admin123")
-    card(s, 8.4, 4.05, 2.5, 1.1, "Customer", "Scan Table QR")
-    textbox(s, "TableTap - Scan. Order. Enjoy.", 3.25, 6.25, 6.8, 0.35, 18, MUTED, False, PP_ALIGN.CENTER)
-    footer(s, 12)
+    bg(s, ORANGE)
+    textbox(s, "Ready for a live demo?", 0.8, 1.45, 11.7, 0.85, 46, WHITE, True, PP_ALIGN.CENTER)
+    textbox(s, "Open a table · Scan the QR · Place an order · Watch the kitchen", 1.5, 2.45, 10.3, 0.55, 22, AMBER, True, PP_ALIGN.CENTER)
+    card(s, 1.8, 3.65, 2.9, 1.15, "Staff login", "owner@varanasi.com", PANEL_2)
+    card(s, 5.2, 3.65, 2.9, 1.15, "Password", "admin123", PANEL_2)
+    card(s, 8.6, 3.65, 2.9, 1.15, "Super admin", "/platform/login", PANEL_2)
+    card(s, 3.5, 5.15, 6.3, 1.0, "TableTap", "Scan · Order · Serve · Grow — the complete restaurant platform", PANEL_3)
+    textbox(s, "tabletap · SETUP_GUIDE.md · AGGREGATOR_SETUP.md", 2.0, 6.55, 9.3, 0.35, 12, MUTED, False, PP_ALIGN.CENTER)
+    footer(s, 18, TOTAL)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     prs.save(OUT)
+    prs.save(DETAILED_OUT)
     prs.save(LEGACY_OUT)
     print(f"Saved {OUT}")
+    print(f"Saved {DETAILED_OUT}")
     print(f"Updated {LEGACY_OUT}")
 
 

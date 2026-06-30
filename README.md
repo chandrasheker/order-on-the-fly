@@ -1,9 +1,18 @@
 # TableTap — Smart Restaurant Ordering SaaS
 
-QR-powered table ordering for restaurants. Customers scan, order, and play games while waiting. Staff manage orders with live timers and alerts.
+QR-powered table ordering for restaurants. Customers scan, order, and play games while waiting. Staff manage orders with live timers and alerts. **Full-service:** kitchen KDS, floor plan, takeaway, Swiggy/Zomato sync, thermal receipts, and premium feature toggles.
 
-TableTap is **fully generic** — launch it for any restaurant by editing one
-config file. Nothing is hard-coded to a specific brand.
+TableTap is **fully generic** — launch it for any restaurant by editing one config file.
+
+## Documentation (start here)
+
+| Guide | What's inside |
+|-------|-----------------|
+| **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** | **Complete setup** — dev, Docker, prod, env vars, every feature |
+| [RESTAURANT_SETUP.md](./RESTAURANT_SETUP.md) | Restaurant config wizard & `restaurant.config.json` |
+| [PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md) | Core vs premium modules & super admin |
+| [AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md) | Swiggy & Zomato automatic sync |
+| [presentation/README.md](./presentation/README.md) | Owner pitch decks (PPTX) |
 
 ## Quick Start (demo restaurant)
 
@@ -55,7 +64,11 @@ domain / LAN IP so QR codes point to the correct URL.
 | **Staff tracking** | Premium | Team performance in Daily Reports |
 | **GST receipts** | Premium | GSTIN and tax on printed receipts |
 
-Full core vs premium list: **[PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md)**
+| **Swiggy / Zomato sync** | Premium | Admin → **Integrations** — auto orders, menu sync, status callbacks |
+| **Takeaway & delivery** | Premium | Staff dashboard → **Remote orders** |
+| **Thermal receipts** | Premium | Bluetooth ESC/POS + kitchen chits + reprint |
+
+Full core vs premium list: **[PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md)** · Complete setup: **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**
 
 ## Full-service routes
 
@@ -64,7 +77,8 @@ Full core vs premium list: **[PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md)**
 | Kitchen Display (KDS) | `/kitchen` — Hot Kitchen, Grill, Bar, Cold stations |
 | Floor plan & table timers | `/staff/floor` — seat tables, assign servers, live bill |
 | Split bill / partial pay | Staff dashboard → **Pending** tab — pay by item or split evenly |
-| Phone / offline orders | Staff dashboard → **Phone orders** button |
+| Phone / offline orders | Staff dashboard → **Remote orders** (walk-in, takeaway, delivery) |
+| Swiggy / Zomato | Admin → **Integrations** — automatic webhook sync |
 | Team performance | Admin → **Daily Reports** |
 | Receipt & QR settings | Admin → **QR codes** |
 
@@ -174,3 +188,5 @@ docker compose up --build
 - Docker uses `prisma/schema.postgres.prisma` and `prisma/migrations-postgres`.
 - Seed data is idempotent in Docker via `SEED_IF_EMPTY=true`, so container restarts do not wipe production data.
 - The seeded restaurant/staff/menu come from `restaurant.config.json` (or the example). Mount or copy your config before building the image.
+
+**Full production checklist:** see **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** §10.

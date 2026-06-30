@@ -2,6 +2,8 @@
 
 TableTap is built as a **POS partner** — restaurants enter credentials once, register a webhook with Swiggy/Zomato, and orders flow **automatically** to the kitchen board. No manual order ID entry.
 
+> **Complete app setup:** **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** · **Premium enable:** **[PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md)**
+
 ---
 
 ## What the restaurant owner needs

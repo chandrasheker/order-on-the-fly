@@ -79,10 +79,20 @@ See **[AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md)** for what owners need from S
 | Walk-in / table | `phone_orders` | Pick table, send to kitchen |
 | Takeaway | `phone_orders` | No table — pack and hand over |
 | Delivery | `phone_orders` | Phone + address notes |
-| Swiggy | `aggregator_inbox` | Order ID + items; webhook supported |
-| Zomato | `aggregator_inbox` | Order ID + items; webhook supported |
+| Swiggy | `aggregator_inbox` | **Automatic** via webhook + credentials (Admin → Integrations) |
+| Zomato | `aggregator_inbox` | **Automatic** via webhook + credentials (Admin → Integrations) |
 
-**Webhook:** `POST /api/webhooks/orders/{slug}` with `Authorization: Bearer <secret>`. Managers get URL + secret from `GET /api/orders/aggregator`.
+See **[AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md)** for partner onboarding, menu sync, and status callbacks.
+
+**Webhook endpoints (per restaurant):**
+
+```
+POST /api/webhooks/swiggy/{restaurant-slug}
+POST /api/webhooks/zomato/{restaurant-slug}
+Authorization: Bearer <webhook-secret-from-admin-integrations>
+```
+
+Managers get URL + secret from **Admin → Integrations** (`GET /api/integrations/aggregators`).
 
 ### Printing (`thermal_receipts`)
 
