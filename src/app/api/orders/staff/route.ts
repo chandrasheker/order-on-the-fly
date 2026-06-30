@@ -4,6 +4,65 @@ import { createOrderForTable, OrderCreationError } from "@/lib/order-service";
 import { canPlaceOfflineOrder } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
+import { sumOrderRevenue, todayDateString } from "@/lib/utils";
+
+export async function GET(req: NextRequest) {
+  const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
+  if (!session || !canPlaceOfflineOrder(session.role)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const tableId = req.nextUrl.searchParams.get("tableId");
+  if (!tableId) {
+    return NextResponse.json({ error: "tableId is required" }, { status: 400 });
+  }
+
+  const table = await prisma.table.findFirst({
+    where: { id: tableId, restaurantId: session.restaurantId },
+    select: { id: true, number: true },
+  });
+
+  if (!table) {
+    return NextResponse.json({ error: "Table not found" }, { status: 404 });
+  }
+
+  const orders = await prisma.order.findMany({
+    where: {
+      tableId,
+      restaurantId: session.restaurantId,
+      date: todayDateString(),
+      status: { not: "CANCELLED" },
+    },
+    include: {
+      items: {
+        select: {
+          id: true,
+          itemName: true,
+          quantity: true,
+          unitPrice: true,
+          status: true,
+          notes: true,
+        },
+        orderBy: { expectedReadyAt: "asc" },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return NextResponse.json({
+    table,
+    orders: orders.map((order) => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      status: order.status,
+      paidAt: order.paidAt,
+      createdAt: order.createdAt,
+      total: sumOrderRevenue(order.items),
+      items: order.items,
+    })),
+  });
+}
 
 export async function POST(req: NextRequest) {
   logApiRequest("orders/staff", "POST");

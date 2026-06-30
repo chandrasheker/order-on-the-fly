@@ -36,7 +36,7 @@ import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
 import { OfflineOrderPanel } from "@/components/staff/OfflineOrderPanel";
 import { ThermalPrinterButton } from "@/components/staff/ThermalPrinterButton";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
-import { canManageTableOrdering } from "@/lib/staff-permissions";
+import { canManageTableOrdering, canPlaceOfflineOrder } from "@/lib/staff-permissions";
 import type { ReceiptPayload } from "@/lib/receipt-service";
 
 interface OrderItem {
@@ -395,6 +395,22 @@ export function StaffDashboard() {
             <button onClick={fetchData} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
               <RefreshCw className="w-4 h-4" />
             </button>
+            {user && canPlaceOfflineOrder(user.role) && (
+              <button
+                type="button"
+                onClick={() => setViewMode("offline")}
+                className={cn(
+                  "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors",
+                  viewMode === "offline"
+                    ? "bg-violet-500/20 border-violet-500/40 text-violet-200"
+                    : "bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20",
+                )}
+                title="Phone / offline orders"
+              >
+                <Phone className="w-4 h-4" />
+                <span className="hidden sm:inline">Phone orders</span>
+              </button>
+            )}
             {isManager && (
               <>
                 <Link href="/admin/qr" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
@@ -636,7 +652,7 @@ export function StaffDashboard() {
                   <Phone className="w-5 h-5 text-violet-400" />
                   <div>
                     <p className="text-xs text-zinc-500">Offline Order</p>
-                    <p className="text-sm font-semibold text-violet-200">Take order for guest</p>
+                    <p className="text-sm font-semibold text-violet-200">Phone / walk-in</p>
                   </div>
                 </div>
               </button>

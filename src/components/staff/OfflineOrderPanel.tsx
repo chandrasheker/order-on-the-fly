@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Phone, ShoppingBag, UserRound } from "lucide-react";
+import { ArrowLeft, Phone, UserRound } from "lucide-react";
 import { MenuView } from "@/components/customer/MenuView";
-import { Button, Input, Spinner } from "@/components/ui";
-import { cn, formatCurrency } from "@/lib/utils";
+import { StaffCartPanel } from "@/components/staff/StaffCartPanel";
+import { TableOrderHistory } from "@/components/staff/TableOrderHistory";
+import { Input, Spinner } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import { useStaffCartStore } from "@/store/staff-cart";
 
 type TableRow = {
@@ -43,6 +45,7 @@ export function OfflineOrderPanel({ onOrderPlaced }: OfflineOrderPanelProps) {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   const {
     tableId,
@@ -52,6 +55,7 @@ export function OfflineOrderPanel({ onOrderPlaced }: OfflineOrderPanelProps) {
     setCustomerName,
     addItem,
     updateQuantity,
+    updateNotes,
     clearCart,
     total,
     maxPrepTime,
@@ -126,7 +130,7 @@ export function OfflineOrderPanel({ onOrderPlaced }: OfflineOrderPanelProps) {
           items: items.map((item) => ({
             menuItemId: item.menuItemId,
             quantity: item.quantity,
-            notes: item.notes,
+            notes: item.notes?.trim() || undefined,
           })),
           openTable: true,
         }),
@@ -140,6 +144,7 @@ export function OfflineOrderPanel({ onOrderPlaced }: OfflineOrderPanelProps) {
       const tableLabel = selectedTable ? `Table ${selectedTable.number}` : "table";
       setSuccess(`Order #${json.order?.orderNumber ?? ""} sent to kitchen for ${tableLabel}.`);
       clearCart();
+      setHistoryRefreshKey((key) => key + 1);
       await loadTables();
       onOrderPlaced?.();
     } catch (err) {
@@ -166,10 +171,10 @@ export function OfflineOrderPanel({ onOrderPlaced }: OfflineOrderPanelProps) {
               <Phone className="w-5 h-5 text-violet-300" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-white">Take an offline order</h2>
+              <h2 className="text-lg font-semibold text-white">Phone / walk-in orders</h2>
               <p className="text-sm text-zinc-400 mt-1">
-                When a guest calls or asks in person, pick their table and add items from the menu.
-                The order goes straight to the kitchen like a QR order.
+                Pick a table, review today&apos;s orders for that table, add items with special
+                instructions, and send to the kitchen.
               </p>
             </div>
           </div>
@@ -221,7 +226,7 @@ export function OfflineOrderPanel({ onOrderPlaced }: OfflineOrderPanelProps) {
             </button>
             <div>
               <p className="font-semibold text-white">Table {selectedTable?.number ?? "?"}</p>
-              <p className="text-xs text-zinc-500">Offline order · sent to kitchen</p>
+              <p className="text-xs text-zinc-500">Phone / walk-in order</p>
             </div>
           </div>
 
@@ -236,6 +241,20 @@ export function OfflineOrderPanel({ onOrderPlaced }: OfflineOrderPanelProps) {
           </div>
         </div>
       </div>
+
+      <TableOrderHistory tableId={tableId} refreshKey={historyRefreshKey} />
+
+      {items.length > 0 && (
+        <StaffCartPanel
+          items={items}
+          total={total()}
+          maxPrepTime={maxPrepTime()}
+          placing={placing}
+          onUpdateQuantity={updateQuantity}
+          onUpdateNotes={updateNotes}
+          onPlaceOrder={() => void placeOrder()}
+        />
+      )}
 
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -273,26 +292,6 @@ export function OfflineOrderPanel({ onOrderPlaced }: OfflineOrderPanelProps) {
               : `Place order · ${items.reduce((sum, item) => sum + item.quantity, 0)} items`
           }
         />
-      )}
-
-      {items.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-40 hidden md:block">
-          <div className="rounded-2xl border border-violet-500/30 bg-[#12121c]/95 backdrop-blur px-4 py-3 shadow-2xl min-w-[220px]">
-            <div className="flex items-center gap-2 text-violet-300 text-sm font-medium mb-1">
-              <ShoppingBag className="w-4 h-4" />
-              Staff cart
-            </div>
-            <p className="text-white font-bold">{formatCurrency(total())}</p>
-            <p className="text-xs text-zinc-500">~{maxPrepTime()} min prep</p>
-            <Button
-              className="w-full mt-3"
-              disabled={placing}
-              onClick={() => void placeOrder()}
-            >
-              {placing ? <Spinner /> : "Send to kitchen"}
-            </Button>
-          </div>
-        </div>
       )}
     </div>
   );
