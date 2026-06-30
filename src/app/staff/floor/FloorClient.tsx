@@ -107,7 +107,7 @@ export default function FloorPlanPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+      <div className="min-h-screen bg-app-shell flex items-center justify-center">
         <Spinner />
       </div>
     );
@@ -123,7 +123,7 @@ export default function FloorPlanPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white">
+    <div className="min-h-screen bg-app-shell text-foreground">
       <header className="border-b border-white/10 px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">

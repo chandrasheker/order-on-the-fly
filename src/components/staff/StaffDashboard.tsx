@@ -367,7 +367,7 @@ export function StaffDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a12]">
+      <div className="min-h-screen flex items-center justify-center bg-app-shell">
         <Spinner className="w-8 h-8" />
       </div>
     );
@@ -392,7 +392,7 @@ export function StaffDashboard() {
   const showTab = (tab: StaffTab) => role && canAccessTab(role, tab) && allowedTabs.includes(tab);
 
   return (
-    <div className="min-h-screen bg-[#0a0a12] text-white">
+    <div className="min-h-screen bg-app-shell text-foreground">
       <AnimatePresence>
         {showEnableBanner && (
           <motion.div
@@ -463,7 +463,7 @@ export function StaffDashboard() {
         )}
       </AnimatePresence>
 
-      <header className="border-b border-white/5 bg-[#0a0a12]/80 backdrop-blur-xl sticky top-0 z-40">
+      <header className="border-b border-white/5 bg-app-shell/80 backdrop-blur-xl sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">{user?.restaurantName}</h1>
@@ -600,7 +600,7 @@ export function StaffDashboard() {
                   className="p-3 rounded-xl bg-black/20 border border-white/10 flex items-center justify-between gap-3"
                 >
                   <div>
-                    <p className="font-medium text-white">
+                    <p className="font-medium text-foreground">
                       Table {request.sourceTableNumber} → Table {request.targetTableNumber}
                     </p>
                     <p className="text-xs text-zinc-400">
@@ -1090,7 +1090,7 @@ export function StaffDashboard() {
                           </Badge>
                           <span className="text-sm text-zinc-500">Table {alert.tableNumber}</span>
                         </div>
-                        <p className="font-medium text-white">{alert.message}</p>
+                        <p className="font-medium text-foreground">{alert.message}</p>
                         <p className="text-xs text-zinc-500 mt-1">
                           {new Date(alert.createdAt).toLocaleTimeString([], {
                             hour: "2-digit",

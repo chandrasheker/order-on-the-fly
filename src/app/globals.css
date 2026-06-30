@@ -1,13 +1,56 @@
 @import "tailwindcss";
 
-:root {
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant light (&:where(.light, .light *));
+
+html.dark {
+  color-scheme: dark;
   --background: #08080f;
   --foreground: #ededed;
+  --muted: #a1a1aa;
+  --app-shell: #0a0a12;
+  --customer-shell: #0f0f1a;
+  --footer-bg: rgba(6, 6, 12, 0.95);
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.1);
+  --surface-border: rgba(255, 255, 255, 0.1);
+  --input-bg: rgba(255, 255, 255, 0.05);
+  --input-border: rgba(255, 255, 255, 0.1);
+  --btn-secondary-bg: rgba(255, 255, 255, 0.1);
+  --btn-secondary-text: #ffffff;
+  --btn-secondary-border: rgba(255, 255, 255, 0.2);
+  --customer-overlay-from: rgba(15, 15, 26, 0.75);
+  --customer-overlay-via: rgba(15, 15, 26, 0.88);
+  --customer-overlay-to: rgba(15, 15, 26, 0.95);
+}
+
+html.light {
+  color-scheme: light;
+  --background: #f4f4f8;
+  --foreground: #171717;
+  --muted: #71717a;
+  --app-shell: #eef0f6;
+  --customer-shell: #e8ebf3;
+  --footer-bg: rgba(244, 244, 248, 0.95);
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-hover: rgba(255, 255, 255, 0.95);
+  --surface-border: rgba(15, 23, 42, 0.1);
+  --input-bg: rgba(255, 255, 255, 0.95);
+  --input-border: rgba(15, 23, 42, 0.12);
+  --btn-secondary-bg: rgba(255, 255, 255, 0.9);
+  --btn-secondary-text: #171717;
+  --btn-secondary-border: rgba(15, 23, 42, 0.12);
+  --customer-overlay-from: rgba(232, 235, 243, 0.72);
+  --customer-overlay-via: rgba(232, 235, 243, 0.86);
+  --customer-overlay-to: rgba(232, 235, 243, 0.94);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-app-shell: var(--app-shell);
+  --color-customer-shell: var(--customer-shell);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -39,4 +82,31 @@ html {
 
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.light .text-zinc-400,
+.light .text-zinc-500 {
+  color: var(--muted);
+}
+
+.light .text-white {
+  color: var(--foreground);
+}
+
+.light .border-white\/5,
+.light .border-white\/10,
+.light .border-white\/20 {
+  border-color: var(--surface-border);
+}
+
+.light .bg-white\/5,
+.light .bg-white\/10,
+.light .bg-white\/15 {
+  background-color: var(--surface);
+}
+
+.light .hover\:bg-white\/5:hover,
+.light .hover\:bg-white\/10:hover,
+.light .hover\:bg-white\/15:hover {
+  background-color: var(--surface-hover);
 }

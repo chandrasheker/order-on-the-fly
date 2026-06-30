@@ -62,7 +62,7 @@ export function TableCheckInClient({
   }, [runCheckIn]);
 
   return (
-    <div className="min-h-screen bg-[#0f0f1a] text-white flex items-center justify-center p-6">
+    <div className="min-h-screen bg-customer-shell text-foreground flex items-center justify-center p-6">
       <div className="max-w-sm w-full text-center space-y-4">
         <UtensilsCrossed className="w-10 h-10 text-orange-400 mx-auto" />
         {!expired && <Spinner className="w-8 h-8 mx-auto" />}

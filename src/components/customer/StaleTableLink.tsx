@@ -9,7 +9,7 @@ export function StaleTableLink({
   token: string;
 }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] text-white p-6">
+    <div className="min-h-screen flex items-center justify-center bg-customer-shell text-foreground p-6">
       <div className="max-w-md text-center space-y-4">
         <div className="w-14 h-14 rounded-2xl bg-amber-500/20 flex items-center justify-center mx-auto">
           <QrCode className="w-7 h-7 text-amber-400" />
@@ -23,7 +23,7 @@ export function StaleTableLink({
         <div className="flex flex-col gap-2 pt-2">
           <Link
             href={`/order/${slug}/demo`}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-medium py-3 px-4 transition-colors"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-foreground font-medium py-3 px-4 transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
             Open Table 1 (demo)

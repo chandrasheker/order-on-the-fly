@@ -169,14 +169,14 @@ export default function PlatformUsersPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a12]">
+      <div className="min-h-screen flex items-center justify-center bg-app-shell">
         <Spinner className="w-8 h-8" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a12] text-white">
+    <div className="min-h-screen bg-app-shell text-foreground">
       <header className="border-b border-white/5 px-4 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">

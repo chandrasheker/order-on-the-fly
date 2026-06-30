@@ -14,8 +14,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       primary:
         "bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-[1.02] active:scale-[0.98]",
       secondary:
-        "bg-white/10 text-white border border-white/20 hover:bg-white/15 backdrop-blur-sm",
-      ghost: "text-zinc-400 hover:text-white hover:bg-white/5",
+        "bg-[color:var(--btn-secondary-bg)] text-[color:var(--btn-secondary-text)] border border-[color:var(--btn-secondary-border)] hover:bg-[color:var(--surface-hover)] backdrop-blur-sm",
+      ghost: "text-[color:var(--muted)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-hover)]",
       danger:
         "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30",
       success:
@@ -77,7 +77,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl",
+        "rounded-2xl border border-[color:var(--surface-border)] bg-[color:var(--surface)] backdrop-blur-xl",
         glow && "shadow-lg shadow-orange-500/10",
         className
       )}
@@ -94,7 +94,7 @@ export function Input({
   return (
     <input
       className={cn(
-        "w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all",
+        "w-full px-4 py-3 rounded-xl bg-[color:var(--input-bg)] border border-[color:var(--input-border)] text-[color:var(--foreground)] placeholder:text-[color:var(--muted)] focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all",
         className
       )}
       {...props}

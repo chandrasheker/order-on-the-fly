@@ -53,6 +53,7 @@ prisma/dev.db
 
 # runtime uploads
 /data/payments/
+/data/backgrounds/
 
 # runtime logs and crash dumps (kept locally for debugging)
 /logs/

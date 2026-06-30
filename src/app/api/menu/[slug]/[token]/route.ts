@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logApiError, logApiRequest, logWarn } from "@/lib/logger";
 import { isTablePaymentBlocked } from "@/lib/payment-service";
 import { getPaymentQrPublicUrl, paymentQrExists } from "@/lib/payment-qr-storage";
+import { getCustomerBackgroundImageUrl } from "@/lib/branding-service";
 
 export async function GET(
   _req: NextRequest,
@@ -55,6 +56,7 @@ export async function GET(
     const paymentBlocked = await isTablePaymentBlocked(table.id);
     const hasPaymentQr = await paymentQrExists(restaurant.id);
     const paymentQrUrl = hasPaymentQr ? getPaymentQrPublicUrl(restaurant.slug) : null;
+    const backgroundImageUrl = await getCustomerBackgroundImageUrl(restaurant);
 
     return NextResponse.json({
       restaurant: {
@@ -65,7 +67,7 @@ export async function GET(
         rewardThresholdBeverage: restaurant.rewardThresholdBeverage,
         rewardTeaLabel: restaurant.rewardTeaLabel,
         rewardBeverageLabel: restaurant.rewardBeverageLabel,
-        backgroundImageUrl: restaurant.backgroundImageUrl,
+        backgroundImageUrl,
         paymentQrUrl,
       },
       table: { id: table.id, number: table.number, qrToken: table.qrToken },

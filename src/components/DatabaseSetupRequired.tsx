@@ -3,7 +3,7 @@ import { Button } from "@/components/ui";
 
 export function DatabaseSetupRequired() {
   return (
-    <div className="min-h-screen bg-[#0f0f1a] text-white flex items-center justify-center p-6">
+    <div className="min-h-screen bg-customer-shell text-foreground flex items-center justify-center p-6">
       <div className="max-w-md text-center space-y-6">
         <div className="text-5xl">🛠️</div>
         <h1 className="text-2xl font-bold">Database not initialized</h1>
