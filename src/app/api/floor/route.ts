@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { canAccessFloorPlan, canManageFloorLayout } from "@/lib/staff-permissions";
 import { getFloorSnapshot, updateTableFloor } from "@/lib/floor-service";
+import { featureDisabledResponse } from "@/lib/feature-guard";
 
 export async function GET() {
   const session = await requireSession();
   if (!session || !canAccessFloorPlan(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await featureDisabledResponse(session.restaurantId, "floor_plan");
+  if (blocked) return blocked;
 
   const snapshot = await getFloorSnapshot(session.restaurantId);
   return NextResponse.json(snapshot);
@@ -18,6 +22,9 @@ export async function PATCH(req: NextRequest) {
   if (!session || !canAccessFloorPlan(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await featureDisabledResponse(session.restaurantId, "floor_plan");
+  if (blocked) return blocked;
 
   const body = await req.json();
   const { tableId } = body;

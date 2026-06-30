@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { todayDateString, sumPaidOrderRevenue, orderItemLineTotal, countsTowardRevenue } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import { getStaffPerformanceReport, getTableServiceLog } from "@/lib/staff-performance-service";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 export async function GET(req: NextRequest) {
   const session = await requireSession();
@@ -39,10 +40,14 @@ export async function GET(req: NextRequest) {
   const collectedToday = paymentsToday.reduce((sum, p) => sum + p.amount, 0);
   const recognizedRevenue = orders.reduce((sum, o) => sum + sumPaidOrderRevenue(o, o.items), 0);
 
-  const performance = isManager
+  const performanceEnabled = isManager
+    ? await isFeatureEnabled(session.restaurantId, "staff_performance")
+    : false;
+
+  const performance = performanceEnabled
     ? await getStaffPerformanceReport(session.restaurantId, date)
     : null;
-  const tableLog = isManager
+  const tableLog = performanceEnabled
     ? await getTableServiceLog(session.restaurantId, date)
     : null;
 

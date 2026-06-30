@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createRequire } from "node:module";
 import { createPrismaClient } from "../src/lib/create-prisma-client";
 import bcrypt from "bcryptjs";
+import { FEATURE_CATALOG } from "../src/lib/feature-catalog";
 
 const require = createRequire(import.meta.url);
 const { loadRestaurantConfig } = require("../scripts/restaurant-config.js");
@@ -57,6 +58,10 @@ async function main() {
   await prisma.platformAdmin.deleteMany();
   await prisma.restaurant.deleteMany();
 
+  const demoPremiumFlags = Object.fromEntries(
+    FEATURE_CATALOG.filter((f) => f.tier === "premium").map((f) => [f.key, true])
+  );
+
   const restaurant = await prisma.restaurant.create({
     data: {
       name: config.restaurant.name,
@@ -73,6 +78,7 @@ async function main() {
       cookSlots: config.counts.cook,
       serverSlots: config.counts.server,
       staffConfigured: true,
+      featureFlags: JSON.stringify(demoPremiumFlags),
     },
   });
 

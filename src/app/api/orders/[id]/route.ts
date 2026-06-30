@@ -13,6 +13,7 @@ import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
+import { featureDisabledResponse } from "@/lib/feature-guard";
 
 export async function PATCH(
   req: NextRequest,
@@ -177,6 +178,9 @@ export async function PATCH(
   }
 
   if (action === "record-payment") {
+    const blocked = await featureDisabledResponse(order.restaurantId, "split_bill");
+    if (blocked) return blocked;
+
     if (order.status !== "SERVED") {
       return NextResponse.json(
         { error: "Order must be fully served before recording payment" },

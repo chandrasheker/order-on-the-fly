@@ -3,9 +3,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Input, Spinner, Badge } from "@/components/ui";
-import { LogOut, Shield, Save, Download, Users } from "lucide-react";
+import { LogOut, Shield, Save, Download, Users, Crown } from "lucide-react";
 import type { Role } from "@/generated/prisma/client";
 import { DEFAULT_SLOT_COUNTS } from "@/lib/staff-permissions";
+import { PlatformFeaturesPanel } from "@/components/platform/PlatformFeaturesPanel";
+import { cn } from "@/lib/utils";
+
+type PlatformTab = "staff" | "features";
 
 interface SlotRow {
   slotKey: string;
@@ -64,6 +68,7 @@ function slotsForCounts(
 
 export default function PlatformUsersPage() {
   const router = useRouter();
+  const [tab, setTab] = useState<PlatformTab>("staff");
   const [admin, setAdmin] = useState<{ name: string; email: string } | null>(null);
   const [restaurants, setRestaurants] = useState<RestaurantConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -179,7 +184,7 @@ export default function PlatformUsersPage() {
               <Shield className="w-5 h-5 text-violet-400" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">Staff setup</h1>
+              <h1 className="text-xl font-bold">TableTap Super Admin</h1>
               <p className="text-sm text-zinc-400">
                 {admin?.name} · {admin?.email}
               </p>
@@ -189,9 +194,39 @@ export default function PlatformUsersPage() {
             <LogOut className="w-4 h-4" /> Logout
           </Button>
         </div>
+        <div className="max-w-4xl mx-auto px-4 mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setTab("staff")}
+            className={cn(
+              "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors",
+              tab === "staff"
+                ? "bg-violet-500/20 border-violet-500/40 text-violet-200"
+                : "bg-white/5 border-white/10 text-zinc-400 hover:text-white"
+            )}
+          >
+            <Users className="w-4 h-4" /> Staff setup
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("features")}
+            className={cn(
+              "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors",
+              tab === "features"
+                ? "bg-amber-500/20 border-amber-500/40 text-amber-200"
+                : "bg-white/5 border-white/10 text-zinc-400 hover:text-white"
+            )}
+          >
+            <Crown className="w-4 h-4" /> Premium features
+          </button>
+        </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+        {tab === "features" ? (
+          <PlatformFeaturesPanel />
+        ) : (
+          <>
         <p className="text-sm text-zinc-400">
           Configure how many owner, manager, cook, and server sessions each restaurant gets. Each
           slot is a unique login. Default: {DEFAULT_SLOT_COUNTS.owner} owner,{" "}
@@ -364,6 +399,8 @@ export default function PlatformUsersPage() {
             </Card>
           );
         })}
+          </>
+        )}
       </main>
     </div>
   );

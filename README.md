@@ -35,30 +35,27 @@ domain / LAN IP so QR codes point to the correct URL.
 ## Access
 
 - **Staff/Owner** — login at `/` to access dashboard, menu, QR codes, and reports
-- **Cooks** — auto-redirect to `/kitchen` (station-routed KDS)
-- **Servers** — dashboard + `/staff/floor` (table map, timers, server assignment)
-- **Platform admin** — login at `/platform/login` to manage staff names, emails, passwords, and roles
+- **Cooks** — redirect to `/kitchen` when KDS premium is enabled; otherwise staff dashboard
+- **Servers** — dashboard + `/staff/floor` when floor-plan premium is enabled
+- **Super admin (hidden)** — `/platform/login` — toggle premium features per restaurant (not linked from staff login). See **[PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md)**
 - **Customers** — scan table QR code to order (no login needed)
 
 ## Full feature set (this branch)
 
-This branch (`cursor/kds-floor-split-bill-6747`) includes **everything on `main`** plus KDS, floor plan, and split bill.
+| Area | Tier | What you get |
+|------|------|----------------|
+| **Deploy** | Core | `npm run setup`, `restaurant.config.json`, Postgres/SQLite |
+| **Guest ordering** | Core | QR + rotating check-in codes, session limits, table open/close |
+| **Staff dashboard** | Core | Live orders, prep timers, overdue alerts, payment pending |
+| **Kitchen (KDS)** | Premium | `/kitchen` — station-routed tickets |
+| **Floor plan** | Premium | `/staff/floor` — table map, timers, server assignment |
+| **Split bill** | Premium | Pay by item, split evenly, partial payments |
+| **Phone orders** | Premium | Staff places walk-in/delivery orders |
+| **Thermal receipts** | Premium | ESC/POS Bluetooth print on full payment |
+| **Staff tracking** | Premium | Team performance in Daily Reports |
+| **GST receipts** | Premium | GSTIN and tax on printed receipts |
 
-| Area | What you get |
-|------|----------------|
-| **Deploy** | `npm run setup`, `restaurant.config.json`, Postgres/SQLite |
-| **Guest ordering** | QR + rotating check-in codes, session limits, table open/close |
-| **Staff dashboard** | Live orders, prep timers, overdue alerts, payment pending |
-| **Phone / offline orders** | Staff places orders for walk-ins without guest QR scan |
-| **Kitchen (KDS)** | `/kitchen` — station-routed tickets (Hot Kitchen, Grill, Bar, Cold) |
-| **Floor plan** | `/staff/floor` — table map, timers, server assignment, live bill |
-| **Split bill** | Pay by item, split evenly, partial payments before full settle |
-| **Payments** | PhonePe QR upload, mark paid, payment block until settled |
-| **Receipts** | ESC/POS Bluetooth thermal print on full payment (GST optional) |
-| **Staff tracking** | Who placed, prepped, served, collected — Team performance reports |
-| **Table switch** | Guest requests move; staff approve; orders + payments migrate |
-| **Loyalty** | Reward spins, feedback |
-| **Admin** | Menu, QR print, receipt settings, daily reports CSV |
+Full core vs premium list: **[PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md)**
 
 ## Full-service routes
 

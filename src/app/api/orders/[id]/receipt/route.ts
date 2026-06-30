@@ -7,6 +7,7 @@ import {
   RECEIPT_RESTAURANT_SELECT,
 } from "@/lib/receipt-service";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
+import { featureDisabledResponse } from "@/lib/feature-guard";
 
 export async function GET(
   _req: Request,
@@ -17,6 +18,9 @@ export async function GET(
   if (!session || !canPerformOrderAction(session.role, "mark-paid")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await featureDisabledResponse(session.restaurantId, "thermal_receipts");
+  if (blocked) return blocked;
 
   const order = await prisma.order.findFirst({
     where: { id, restaurantId: session.restaurantId },

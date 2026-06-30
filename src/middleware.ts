@@ -90,10 +90,6 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === "/" && session) {
-    const role = session.role as string;
-    if (role === "COOK") {
-      return NextResponse.redirect(new URL("/kitchen", request.url));
-    }
     return NextResponse.redirect(new URL("/staff/dashboard", request.url));
   }
 

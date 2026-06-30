@@ -65,6 +65,7 @@ model Restaurant {
   receiptGstEnabled     Boolean        @default(false)
   receiptGstRate        Float          @default(5)
   receiptFooter         String?
+  featureFlags          String         @default("{}")
   createdAt             DateTime       @default(now())
   users                 User[]
   tables                Table[]

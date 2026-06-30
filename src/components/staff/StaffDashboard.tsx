@@ -154,6 +154,16 @@ interface TableSwitchRequest {
 type ViewMode = StaffTab;
 type ItemFilter = "all" | "overdue" | "alarm";
 
+type RestaurantFeatures = {
+  kds?: boolean;
+  floor_plan?: boolean;
+  split_bill?: boolean;
+  phone_orders?: boolean;
+  thermal_receipts?: boolean;
+  staff_performance?: boolean;
+  gst_receipts?: boolean;
+};
+
 export function StaffDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<{ name: string; role: Role; restaurantName: string } | null>(null);
@@ -171,6 +181,7 @@ export function StaffDashboard() {
   const [now, setNow] = useState(Date.now());
   const [viewMode, setViewMode] = useState<ViewMode>("active");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
+  const [features, setFeatures] = useState<RestaurantFeatures>({});
 
   const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
     useStaffNotifications(alerts);
@@ -211,6 +222,7 @@ export function StaffDashboard() {
         setMissedSummary(data.missedSummary ?? []);
         setTableSwitchRequests(data.tableSwitchRequests ?? []);
         setStats(data.stats);
+        setFeatures(data.features ?? {});
       }
     } catch (error) {
       console.error("Dashboard fetch failed:", error);
@@ -425,17 +437,17 @@ export function StaffDashboard() {
             <button onClick={fetchData} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
               <RefreshCw className="w-4 h-4" />
             </button>
-            {user && canAccessKitchen(user.role) && (
+            {user && canAccessKitchen(user.role) && features.kds && (
               <Link href="/kitchen" className="p-2 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-300" title="Kitchen display">
                 <ChefHat className="w-4 h-4" />
               </Link>
             )}
-            {user && canAccessFloorPlan(user.role) && (
+            {user && canAccessFloorPlan(user.role) && features.floor_plan && (
               <Link href="/staff/floor" className="p-2 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 text-violet-300" title="Floor plan">
                 <LayoutGrid className="w-4 h-4" />
               </Link>
             )}
-            {user && canPlaceOfflineOrder(user.role) && (
+            {user && canPlaceOfflineOrder(user.role) && features.phone_orders && (
               <button
                 type="button"
                 onClick={() => setViewMode("offline")}
@@ -469,7 +481,7 @@ export function StaffDashboard() {
                 <BarChart3 className="w-4 h-4" />
               </Link>
             )}
-            {user && canPerformOrderAction(user.role, "mark-paid") && (
+            {user && canPerformOrderAction(user.role, "mark-paid") && features.thermal_receipts && (
               <ThermalPrinterButton
                 status={status}
                 deviceName={deviceName}
@@ -795,6 +807,7 @@ export function StaffDashboard() {
                     key={order.id}
                     order={order}
                     role={role!}
+                    splitBillEnabled={Boolean(features.split_bill)}
                     onPaymentComplete={handlePaymentComplete}
                   />
                 ))}
@@ -1173,13 +1186,15 @@ function ActiveOrderCard({
 function PendingPaymentCard({
   order,
   role,
+  splitBillEnabled,
   onPaymentComplete,
 }: {
   order: Order;
   role: Role;
+  splitBillEnabled: boolean;
   onPaymentComplete: (res: Response, json: { error?: string; receipt?: ReceiptPayload }) => Promise<void>;
 }) {
-  const summary = order.paymentSummary;
+  const summary = splitBillEnabled ? order.paymentSummary : null;
   const total = summary?.remaining ?? order.total ?? 0;
   const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
 

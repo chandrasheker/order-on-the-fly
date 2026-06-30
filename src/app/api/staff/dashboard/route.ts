@@ -11,6 +11,7 @@ import { getTabsForRole } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { logApiRequest, logInfo } from "@/lib/logger";
 import { getOrderPaymentSummary } from "@/lib/payment-allocation-service";
+import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 
 export async function GET() {
   logApiRequest("staff/dashboard", "GET");
@@ -20,6 +21,7 @@ export async function GET() {
   }
 
   const today = todayDateString();
+  const features = await getRestaurantFeatureFlags(session.restaurantId);
 
   const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests, todayPaymentSum] =
     await Promise.all([
@@ -73,10 +75,22 @@ export async function GET() {
     await Promise.all(
       withTotal(pendingOrders).map(async (order) => ({
         ...order,
-        paymentSummary: await getOrderPaymentSummary(order.id),
+        paymentSummary: features.split_bill
+          ? await getOrderPaymentSummary(order.id)
+          : null,
       })),
     )
-  ).filter((order) => (order.paymentSummary?.remaining ?? order.total ?? 0) > 0);
+  ).filter((order) => {
+    if (features.split_bill) {
+      return (order.paymentSummary?.remaining ?? order.total ?? 0) > 0;
+    }
+    return !order.paidAt;
+  });
+
+  const roleTabs = getTabsForRole(session.role).filter((tab) => {
+    if (tab === "offline" && !features.phone_orders) return false;
+    return true;
+  });
 
   logInfo("api:staff/dashboard", "Dashboard loaded", {
     restaurantId: session.restaurantId,
@@ -92,9 +106,10 @@ export async function GET() {
     completedOrders: withTotal(completedOrders),
     alerts,
     permissions: {
-      tabs: getTabsForRole(session.role),
+      tabs: roleTabs,
       role: session.role,
     },
+    features,
     missedTimeline: missedData.items.map((item) => ({
       id: item.id,
       itemName: item.itemName,

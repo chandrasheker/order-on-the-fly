@@ -51,8 +51,8 @@ export function PlatformLoginForm() {
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center mx-auto mb-4">
               <Shield className="w-7 h-7 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-white">Platform Admin</h1>
-            <p className="text-sm text-zinc-400 mt-1">Manage restaurant staff accounts</p>
+            <h1 className="text-2xl font-bold text-white">Super Admin</h1>
+            <p className="text-sm text-zinc-400 mt-1">Platform operator — not visible to restaurant owners</p>
           </div>
 
           <form onSubmit={login} className="space-y-4">

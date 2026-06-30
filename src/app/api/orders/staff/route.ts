@@ -5,12 +5,16 @@ import { canPlaceOfflineOrder } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { sumOrderRevenue, todayDateString } from "@/lib/utils";
+import { featureDisabledResponse } from "@/lib/feature-guard";
 
 export async function GET(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
   if (!session || !canPlaceOfflineOrder(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await featureDisabledResponse(session.restaurantId, "phone_orders");
+  if (blocked) return blocked;
 
   const tableId = req.nextUrl.searchParams.get("tableId");
   if (!tableId) {
@@ -71,6 +75,9 @@ export async function POST(req: NextRequest) {
     if (!session || !canPlaceOfflineOrder(session.role)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const blocked = await featureDisabledResponse(session.restaurantId, "phone_orders");
+    if (blocked) return blocked;
 
     const { tableId, customerName, items, openTable } = await req.json();
 

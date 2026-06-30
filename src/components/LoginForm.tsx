@@ -1,13 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button, Input, Spinner } from "@/components/ui";
 import { ChefHat } from "lucide-react";
 import { getHomeForRole } from "@/lib/roles";
-import type { Role } from "@/generated/prisma/client";
 
 export function LoginForm() {
   const router = useRouter();
@@ -29,7 +27,7 @@ export function LoginForm() {
 
     if (res.ok) {
       const data = await res.json();
-      router.push(getHomeForRole(data.user.role as Role));
+      router.push(data.homePath ?? getHomeForRole(data.user.role));
     } else {
       const data = await res.json();
       setError(data.error || "Invalid email or password");
@@ -90,13 +88,6 @@ export function LoginForm() {
               {loading ? <Spinner /> : "Sign In"}
             </Button>
           </form>
-
-          <p className="text-xs text-zinc-500 text-center mt-6">
-            Platform admin?{" "}
-            <Link href="/platform/login" className="text-orange-400 hover:text-orange-300">
-              Sign in here
-            </Link>
-          </p>
         </div>
       </motion.div>
     </div>
