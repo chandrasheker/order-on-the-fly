@@ -1,51 +1,82 @@
 # TableTap — Owner Presentation Decks
 
-## Download the two PPTX files
+Professional pitch decks for restaurant owner meetings. Dark premium theme, minimal text, full platform story including KDS, takeaway, Swiggy/Zomato, and premium tiers.
 
-1. **Visual pitch deck (recommended for presenting):**
-   [`TableTap-Restaurant-Owner-Visual-Deck.pptx`](./TableTap-Restaurant-Owner-Visual-Deck.pptx)
+## Download the PPTX files
 
-2. **Detailed owner deck (more complete backup):**
-   [`TableTap-Restaurant-Owner-Detailed-Deck.pptx`](./TableTap-Restaurant-Owner-Detailed-Deck.pptx)
+| File | Slides | Best for |
+|------|--------|----------|
+| **[TableTap-Restaurant-Owner-Visual-Deck.pptx](./TableTap-Restaurant-Owner-Visual-Deck.pptx)** | 18 | **Live pitch** — big visuals, fast flow |
+| **[TableTap-Restaurant-Owner-Detailed-Deck.pptx](./TableTap-Restaurant-Owner-Detailed-Deck.pptx)** | 18 | **Backup Q&A** — more explanation per slide |
+| [TableTap-Restaurant-Owner-Deck.pptx](./TableTap-Restaurant-Owner-Deck.pptx) | 18 | Compatibility copy of visual deck |
 
-A compatibility copy is also available as:
-[`TableTap-Restaurant-Owner-Deck.pptx`](./TableTap-Restaurant-Owner-Deck.pptx)
+Screenshots (when captured) live in [`screenshots/`](./screenshots/).
 
-Screenshots are in [`screenshots/`](./screenshots/).
+## What's in the deck
 
-## Which one should you use?
+1. Hero — complete restaurant platform
+2. Owner pain points
+3. Platform overview (QR + KDS + aggregators)
+4. Guest experience (check-in, menu, rewards)
+5. Security (anti remote misuse)
+6. Staff dashboard
+7. Kitchen Display System (KDS)
+8. Floor plan
+9. Payments & split bill
+10. Takeaway & delivery
+11. Swiggy & Zomato automatic sync
+12. Owner admin tools
+13. Reports & team performance
+14. Core vs Premium pricing tiers
+15. Role-based permissions
+16. Go-live setup steps
+17. Business benefits
+18. Live demo CTA
 
-### Visual pitch deck — 12 slides
-Use this for restaurant-owner meetings. It has:
+## Regenerate decks
 
-- Big screenshots
-- Very short text
-- Eye-catching dark theme
-- Faster, less boring flow
+### Design-only (no app running)
 
-### Detailed owner deck — 15 slides
-Use this as backup if someone asks for more explanation. It includes more context around:
+```bash
+pip install python-pptx
+python3 scripts/build-visual-pptx.py   # Visual pitch deck
+python3 scripts/build-pptx.py          # Detailed backup deck
+```
 
-- Problem statement
-- Customer journey
-- Staff dashboard
-- Payments
-- QR setup
-- Reports
-- Roles
-- Getting started
+### With fresh app screenshots (best quality)
 
-## Regenerate after UI changes
+```bash
+npm run dev                                    # terminal 1 — app must be running
+npm i -D playwright && npx playwright install  # one-time
+npm run presentation                           # captures screenshots + rebuilds visual deck
+```
 
-1. Start the app: `npm run dev`
-2. Run: `npm run presentation`
+The presentation script:
 
-This captures fresh screenshots and rebuilds the visual deck.
-
-Requires Python 3 with `python-pptx` (`pip install python-pptx`).
+1. Logs in as demo owner
+2. Captures customer check-in, menu, staff dashboard, admin pages
+3. Runs `build-visual-pptx.py` to embed screenshots
 
 ## Presenting live
 
-- **Staff demo:** `owner@varanasi.com` / `admin123`
-- **Customer demo:** open Table 1 in Staff Dashboard, then scan the Table 1 QR
-- Keep the pitch conversational; the slides are intentionally visual and light on text.
+| Role | Credentials |
+|------|-------------|
+| Staff demo | `owner@varanasi.com` / `admin123` |
+| Super admin | `admin@varanasi.com` / `admin@varanasi` → `/platform/login` |
+| Customer demo | Open Table 1 in Staff Dashboard → scan Table 1 QR |
+
+**Talking points:**
+
+- Emphasize **one platform** for dine-in, takeaway, Swiggy, and Zomato
+- Show **Integrations** page if owner uses aggregators
+- Demo **open table → scan → order** for the wow moment
+- Mention **SETUP_GUIDE.md** for their IT team / deployment partner
+
+## Setup documentation for owners
+
+Hand off these guides after the meeting:
+
+- [BRINGUP_TROUBLESHOOTING.md](../BRINGUP_TROUBLESHOOTING.md) — git clone to running app, known errors
+- [SETUP_GUIDE.md](../SETUP_GUIDE.md) — complete technical setup
+- [RESTAURANT_SETUP.md](../RESTAURANT_SETUP.md) — config file & wizard
+- [AGGREGATOR_SETUP.md](../AGGREGATOR_SETUP.md) — Swiggy/Zomato onboarding

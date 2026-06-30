@@ -29,7 +29,6 @@ function write(
   message: string,
   meta?: Record<string, unknown>
 ) {
-  ensureLogDir();
   const line = formatLine(level, context, message, meta);
   const printer =
     level === "error"
@@ -38,8 +37,22 @@ function write(
         ? console.warn
         : console.log;
   printer(line);
+
+  const logToFile =
+    process.env.LOG_TO_FILE === "1" ||
+    process.env.NODE_ENV === "production" ||
+    level === "error" ||
+    level === "warn";
+
+  if (!logToFile) return;
+
   try {
-    fs.appendFileSync(LOG_FILE, `${line}\n`, "utf8");
+    ensureLogDir();
+    if (level === "error") {
+      fs.appendFileSync(LOG_FILE, `${line}\n`, "utf8");
+    } else {
+      fs.appendFile(LOG_FILE, `${line}\n`, "utf8", () => undefined);
+    }
   } catch (err) {
     console.error("Failed to write log file:", err);
   }
@@ -84,7 +97,7 @@ export function logApiRequest(
   method: string,
   meta?: Record<string, unknown>
 ) {
-  logInfo(`api:${route}`, `${method} request`, meta);
+  logDebug(`api:${route}`, `${method} request`, meta);
 }
 
 export function logApiError(

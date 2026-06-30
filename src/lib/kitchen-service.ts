@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { checkOverdueItems } from "@/lib/order-service";
 import { todayDateString } from "@/lib/utils";
+import { formatOrderLocation } from "@/lib/order-channel";
 
 export const DEFAULT_KITCHEN_STATIONS = [
   {
@@ -86,7 +87,7 @@ export async function getKitchenTickets(restaurantId: string, stationSlug?: stri
       status: { notIn: ["SERVED", "CANCELLED"] },
     },
     include: {
-      table: { select: { number: true } },
+      table: { select: { number: true, kind: true, serviceLabel: true } },
       items: {
         include: {
           menuItem: { include: { category: { select: { slug: true, name: true } } } },
@@ -110,7 +111,16 @@ export async function getKitchenTickets(restaurantId: string, stationSlug?: stri
         id: order.id,
         orderNumber: order.orderNumber,
         tableNumber: order.table.number,
+        locationLabel: formatOrderLocation({
+          orderChannel: order.orderChannel,
+          tableNumber: order.table.number,
+          tableKind: order.table.kind,
+          serviceLabel: order.table.serviceLabel,
+        }),
+        orderChannel: order.orderChannel,
         customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        externalOrderId: order.externalOrderId,
         status: order.status,
         alarmTriggered: order.alarmTriggered,
         createdAt: order.createdAt,

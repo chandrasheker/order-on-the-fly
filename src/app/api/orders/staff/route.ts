@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { createOrderForTable, OrderCreationError } from "@/lib/order-service";
+import { createChannelOrder } from "@/lib/aggregator-order-service";
 import { canPlaceOfflineOrder } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { sumOrderRevenue, todayDateString } from "@/lib/utils";
+import { featureDisabledResponse } from "@/lib/feature-guard";
+import { buildKitchenChitPayload } from "@/lib/kitchen-chit-service";
+import { ensureServiceTables } from "@/lib/service-tables";
+import type { OrderChannel } from "@/generated/prisma/client";
+
+const REMOTE_CHANNELS: OrderChannel[] = ["TAKEAWAY", "DELIVERY"];
 
 export async function GET(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
   if (!session || !canPlaceOfflineOrder(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await featureDisabledResponse(session.restaurantId, "phone_orders");
+  if (blocked) return blocked;
 
   const tableId = req.nextUrl.searchParams.get("tableId");
   if (!tableId) {
@@ -72,7 +82,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { tableId, customerName, items, openTable } = await req.json();
+    const blocked = await featureDisabledResponse(session.restaurantId, "phone_orders");
+    if (blocked) return blocked;
+
+    const body = await req.json();
+    const channel = body.channel ? (String(body.channel).toUpperCase() as OrderChannel) : null;
+    const items = body.items ?? [];
+
+    if (channel && REMOTE_CHANNELS.includes(channel)) {
+      await ensureServiceTables(session.restaurantId, session.restaurantSlug);
+      const { order, total } = await createChannelOrder({
+        restaurantId: session.restaurantId,
+        restaurantSlug: session.restaurantSlug,
+        channel,
+        customerName: body.customerName,
+        customerPhone: body.customerPhone,
+        externalOrderId: body.externalOrderId,
+        orderNotes: body.orderNotes,
+        items,
+        placedByUserId: session.id,
+        placedByName: session.name,
+      });
+
+      const kitchenChit = await buildKitchenChitPayload(order.id);
+
+      return NextResponse.json(
+        { order: { ...order, total }, kitchenChit },
+        { status: 201 },
+      );
+    }
+
+    const { tableId, customerName, openTable } = body;
 
     if (!tableId || !items?.length) {
       return NextResponse.json({ error: "Table and items are required" }, { status: 400 });
@@ -107,7 +147,9 @@ export async function POST(req: NextRequest) {
       total,
     });
 
-    return NextResponse.json({ order: { ...order, total } }, { status: 201 });
+    const kitchenChit = await buildKitchenChitPayload(order.id);
+
+    return NextResponse.json({ order: { ...order, total }, kitchenChit }, { status: 201 });
   } catch (error) {
     if (error instanceof OrderCreationError) {
       return NextResponse.json(

@@ -121,7 +121,10 @@ async function main() {
 
   console.log("Building PowerPoint…");
   execSync(`python3 scripts/build-visual-pptx.py`, { stdio: "inherit", cwd: process.cwd() });
-  console.log("Done: presentation/TableTap-Restaurant-Owner-Visual-Deck.pptx");
+  execSync(`python3 scripts/build-pptx.py`, { stdio: "inherit", cwd: process.cwd() });
+  console.log("Done:");
+  console.log("  presentation/TableTap-Restaurant-Owner-Visual-Deck.pptx");
+  console.log("  presentation/TableTap-Restaurant-Owner-Detailed-Deck.pptx");
 }
 
 main().catch((err) => {

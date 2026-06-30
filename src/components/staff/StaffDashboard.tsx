@@ -25,6 +25,8 @@ import {
   ArrowRightLeft,
   LayoutGrid,
   Phone,
+  Plug,
+  ClipboardList,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
@@ -35,7 +37,9 @@ import { useRouter } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
 import { SplitPaymentPanel } from "@/components/staff/SplitPaymentPanel";
-import { OfflineOrderPanel } from "@/components/staff/OfflineOrderPanel";
+import { AggregatorInboxBanner } from "@/components/staff/AggregatorInboxBanner";
+import { RemoteOrdersPanel } from "@/components/staff/RemoteOrdersPanel";
+import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { ThermalPrinterButton } from "@/components/staff/ThermalPrinterButton";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
 import {
@@ -154,6 +158,23 @@ interface TableSwitchRequest {
 type ViewMode = StaffTab;
 type ItemFilter = "all" | "overdue" | "alarm";
 
+type RestaurantFeatures = {
+  kds?: boolean;
+  floor_plan?: boolean;
+  split_bill?: boolean;
+  phone_orders?: boolean;
+  aggregator_inbox?: boolean;
+  thermal_receipts?: boolean;
+  staff_performance?: boolean;
+  gst_receipts?: boolean;
+  inventory_86?: boolean;
+  labor_clock?: boolean;
+  reservations?: boolean;
+  tip_pooling?: boolean;
+  guest_crm?: boolean;
+  audit_log?: boolean;
+};
+
 export function StaffDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<{ name: string; role: Role; restaurantName: string } | null>(null);
@@ -171,10 +192,11 @@ export function StaffDashboard() {
   const [now, setNow] = useState(Date.now());
   const [viewMode, setViewMode] = useState<ViewMode>("active");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
+  const [features, setFeatures] = useState<RestaurantFeatures>({});
 
   const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
     useStaffNotifications(alerts);
-  const { printReceipt, autoPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint } = useThermalPrinter();
+  const { printReceipt, autoPrint, kitchenChitPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint, toggleKitchenChitPrint, reprintOrderReceipt, printKitchenChit } = useThermalPrinter();
   const [printMessage, setPrintMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -182,13 +204,29 @@ export function StaffDashboard() {
     return () => clearInterval(t);
   }, []);
 
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const dashRes = await fetch("/api/staff/dashboard");
+      if (!dashRes.ok) return;
+      const data = await dashRes.json();
+      setOrders(data.orders);
+      setPendingOrders(data.pendingOrders ?? []);
+      setCompletedOrders(data.completedOrders ?? []);
+      setAllowedTabs(data.permissions?.tabs ?? ["active"]);
+      setAlerts(data.alerts);
+      setMissedTimeline(data.missedTimeline ?? []);
+      setMissedSummary(data.missedSummary ?? []);
+      setTableSwitchRequests(data.tableSwitchRequests ?? []);
+      setStats(data.stats);
+      setFeatures(data.features ?? {});
+    } catch (error) {
+      console.error("Dashboard fetch failed:", error);
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
-      const [meRes, dashRes] = await Promise.all([
-        fetch("/api/auth/me"),
-        fetch("/api/staff/dashboard"),
-      ]);
-
+      const meRes = await fetch("/api/auth/me");
       if (!meRes.ok) {
         router.push("/");
         return;
@@ -199,31 +237,29 @@ export function StaffDashboard() {
         return;
       }
       setUser(me.user);
-
-      if (dashRes.ok) {
-        const data = await dashRes.json();
-        setOrders(data.orders);
-        setPendingOrders(data.pendingOrders ?? []);
-        setCompletedOrders(data.completedOrders ?? []);
-        setAllowedTabs(data.permissions?.tabs ?? ["active"]);
-        setAlerts(data.alerts);
-        setMissedTimeline(data.missedTimeline ?? []);
-        setMissedSummary(data.missedSummary ?? []);
-        setTableSwitchRequests(data.tableSwitchRequests ?? []);
-        setStats(data.stats);
-      }
+      await fetchDashboard();
     } catch (error) {
       console.error("Dashboard fetch failed:", error);
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, fetchDashboard]);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+    void fetchData();
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      void fetchDashboard();
+    }, 8000);
+    const onVisible = () => {
+      if (!document.hidden) void fetchDashboard();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [fetchData, fetchDashboard]);
 
   const updateItem = async (orderId: string, itemId: string, action: string) => {
     await fetch(`/api/orders/${orderId}`, {
@@ -275,6 +311,31 @@ export function StaffDashboard() {
       }
       window.setTimeout(() => setPrintMessage(null), 5000);
     }
+  };
+
+  const handleRemoteOrderPlaced = async (result?: { kitchenChit?: KitchenChitPayload | null }) => {
+    fetchData();
+    if (printerSupported && kitchenChitPrint && result?.kitchenChit) {
+      try {
+        await printKitchenChit(result.kitchenChit);
+        setPrintMessage("Kitchen chit sent to printer.");
+      } catch (error) {
+        setPrintMessage(
+          error instanceof Error ? error.message : "Order saved, but kitchen chit print failed.",
+        );
+      }
+      window.setTimeout(() => setPrintMessage(null), 5000);
+    }
+  };
+
+  const handleReprintReceipt = async (orderId: string) => {
+    try {
+      await reprintOrderReceipt(orderId);
+      setPrintMessage("Receipt reprinted.");
+    } catch (error) {
+      setPrintMessage(error instanceof Error ? error.message : "Reprint failed.");
+    }
+    window.setTimeout(() => setPrintMessage(null), 5000);
   };
 
   const dismissAlert = async (alertId: string) => {
@@ -425,17 +486,17 @@ export function StaffDashboard() {
             <button onClick={fetchData} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
               <RefreshCw className="w-4 h-4" />
             </button>
-            {user && canAccessKitchen(user.role) && (
+            {user && canAccessKitchen(user.role) && features.kds && (
               <Link href="/kitchen" className="p-2 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-300" title="Kitchen display">
                 <ChefHat className="w-4 h-4" />
               </Link>
             )}
-            {user && canAccessFloorPlan(user.role) && (
+            {user && canAccessFloorPlan(user.role) && features.floor_plan && (
               <Link href="/staff/floor" className="p-2 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 text-violet-300" title="Floor plan">
                 <LayoutGrid className="w-4 h-4" />
               </Link>
             )}
-            {user && canPlaceOfflineOrder(user.role) && (
+            {user && canPlaceOfflineOrder(user.role) && features.phone_orders && (
               <button
                 type="button"
                 onClick={() => setViewMode("offline")}
@@ -445,10 +506,10 @@ export function StaffDashboard() {
                     ? "bg-violet-500/20 border-violet-500/40 text-violet-200"
                     : "bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20",
                 )}
-                title="Phone / offline orders"
+                title="Takeaway, delivery, phone & aggregator orders"
               >
                 <Phone className="w-4 h-4" />
-                <span className="hidden sm:inline">Phone orders</span>
+                <span className="hidden sm:inline">Remote orders</span>
               </button>
             )}
             {isManager && (
@@ -462,6 +523,29 @@ export function StaffDashboard() {
                 <Link href="/admin/rewards" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 relative">
                   <Gift className="w-4 h-4" />
                 </Link>
+                {features.aggregator_inbox && (
+                  <Link
+                    href="/admin/integrations"
+                    className="p-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-300"
+                    title="Swiggy & Zomato automatic sync"
+                  >
+                    <Plug className="w-4 h-4" />
+                  </Link>
+                )}
+                {(features.inventory_86 ||
+                  features.labor_clock ||
+                  features.reservations ||
+                  features.tip_pooling ||
+                  features.guest_crm ||
+                  features.audit_log) && (
+                  <Link
+                    href="/admin/operations"
+                    className="p-2 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-300"
+                    title="Inventory, labor, reservations, tips, CRM, audit"
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                  </Link>
+                )}
               </>
             )}
             {user && canAccessReports(user.role) && (
@@ -469,16 +553,18 @@ export function StaffDashboard() {
                 <BarChart3 className="w-4 h-4" />
               </Link>
             )}
-            {user && canPerformOrderAction(user.role, "mark-paid") && (
+            {user && canPerformOrderAction(user.role, "mark-paid") && features.thermal_receipts && (
               <ThermalPrinterButton
                 status={status}
                 deviceName={deviceName}
                 autoPrint={autoPrint}
+                kitchenChitPrint={kitchenChitPrint}
                 lastError={lastError}
                 printing={printing}
                 supported={printerSupported}
                 onConnect={connect}
                 onToggleAutoPrint={toggleAutoPrint}
+                onToggleKitchenChitPrint={toggleKitchenChitPrint}
               />
             )}
             <button onClick={logout} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
@@ -771,7 +857,12 @@ export function StaffDashboard() {
                 <Card className="p-8 text-center text-zinc-400">No paid orders yet today</Card>
               ) : (
                 completedOrders.map((order) => (
-                  <CompletedOrderRow key={order.id} order={order} />
+                  <CompletedOrderRow
+                    key={order.id}
+                    order={order}
+                    canReprint={Boolean(features.thermal_receipts)}
+                    onReprint={handleReprintReceipt}
+                  />
                 ))
               )}
             </div>
@@ -795,6 +886,7 @@ export function StaffDashboard() {
                     key={order.id}
                     order={order}
                     role={role!}
+                    splitBillEnabled={Boolean(features.split_bill)}
                     onPaymentComplete={handlePaymentComplete}
                   />
                 ))}
@@ -816,7 +908,12 @@ export function StaffDashboard() {
             ) : (
               <div className="space-y-3">
                 {completedOrders.map((order) => (
-                  <CompletedOrderRow key={order.id} order={order} />
+                  <CompletedOrderRow
+                    key={order.id}
+                    order={order}
+                    canReprint={Boolean(features.thermal_receipts)}
+                    onReprint={handleReprintReceipt}
+                  />
                 ))}
               </div>
             )}
@@ -930,7 +1027,10 @@ export function StaffDashboard() {
         )}
 
         {viewMode === "offline" && (
-          <OfflineOrderPanel onOrderPlaced={fetchData} />
+          <div className="space-y-5">
+            {features.aggregator_inbox && <AggregatorInboxBanner />}
+            <RemoteOrdersPanel onOrderPlaced={handleRemoteOrderPlaced} />
+          </div>
         )}
 
         {viewMode === "alerts" && (
@@ -1173,13 +1273,15 @@ function ActiveOrderCard({
 function PendingPaymentCard({
   order,
   role,
+  splitBillEnabled,
   onPaymentComplete,
 }: {
   order: Order;
   role: Role;
+  splitBillEnabled: boolean;
   onPaymentComplete: (res: Response, json: { error?: string; receipt?: ReceiptPayload }) => Promise<void>;
 }) {
-  const summary = order.paymentSummary;
+  const summary = splitBillEnabled ? order.paymentSummary : null;
   const total = summary?.remaining ?? order.total ?? 0;
   const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
 
@@ -1263,7 +1365,15 @@ function PendingPaymentCard({
   );
 }
 
-function CompletedOrderRow({ order }: { order: Order }) {
+function CompletedOrderRow({
+  order,
+  canReprint,
+  onReprint,
+}: {
+  order: Order;
+  canReprint?: boolean;
+  onReprint?: (orderId: string) => void;
+}) {
   const total =
     order.total ??
     sumOrderRevenue(
@@ -1341,9 +1451,19 @@ function CompletedOrderRow({ order }: { order: Order }) {
             })}
           </div>
         </div>
-        <div className="text-right sm:pl-4 sm:border-l sm:border-white/10">
+        <div className="text-right sm:pl-4 sm:border-l sm:border-white/10 space-y-2">
           <p className="text-xs text-zinc-500">Bill total</p>
           <p className="text-xl font-bold text-emerald-400">{formatCurrency(total)}</p>
+          {canReprint && order.paidAt && onReprint && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="w-full sm:w-auto"
+              onClick={() => void onReprint(order.id)}
+            >
+              Reprint receipt
+            </Button>
+          )}
         </div>
       </div>
     </Card>

@@ -3,6 +3,12 @@ import { isOrderItemOpen, todayDateString, sumOrderRevenue } from "@/lib/utils";
 import { clearPaymentAlerts } from "@/lib/payment-service";
 import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
+import { channelForTableKind, isServiceTable } from "@/lib/order-channel";
+import { scheduleAggregatorStatusPush } from "@/lib/aggregator-sync-service";
+import { decrementInventoryForOrder } from "@/lib/inventory-service";
+import { touchGuestProfile } from "@/lib/guest-crm-service";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import type { OrderChannel } from "@/generated/prisma/client";
 
 export async function clearAlertsForOrderItem(orderItemId: string) {
   await prisma.alert.updateMany({
@@ -44,6 +50,7 @@ export async function syncOrderStatus(orderId: string) {
     });
     await autoCompleteZeroBillOrder(orderId);
     await finalizeOrderIfSettled(orderId);
+    scheduleAggregatorStatusPush(orderId);
     return;
   }
 
@@ -57,6 +64,10 @@ export async function syncOrderStatus(orderId: string) {
     where: { id: orderId },
     data: { status },
   });
+
+  if (status === "READY") {
+    scheduleAggregatorStatusPush(orderId);
+  }
 }
 
 export function minutesLateFromExpected(expectedReadyAt: Date, at = new Date()) {
@@ -112,11 +123,26 @@ export async function createOrderForTable(params: {
   tableId: string;
   restaurantId: string;
   customerName?: string | null;
+  customerPhone?: string | null;
+  orderChannel?: OrderChannel;
+  externalOrderId?: string | null;
+  orderNotes?: string | null;
   items: CreateOrderItemInput[];
   placedByUserId?: string | null;
   placedByName?: string | null;
 }) {
-  const { tableId, restaurantId, customerName, items, placedByUserId, placedByName } = params;
+  const {
+    tableId,
+    restaurantId,
+    customerName,
+    customerPhone,
+    orderChannel,
+    externalOrderId,
+    orderNotes,
+    items,
+    placedByUserId,
+    placedByName,
+  } = params;
 
   if (!items.length) {
     throw new OrderCreationError("Order must include at least one item");
@@ -132,13 +158,21 @@ export async function createOrderForTable(params: {
   }
 
   const { isTablePaymentBlocked } = await import("@/lib/payment-service");
-  if (await isTablePaymentBlocked(table.id)) {
+  if (!isServiceTable(table.kind) && (await isTablePaymentBlocked(table.id))) {
     throw new OrderCreationError(
       "This table has an unpaid bill. Collect payment before placing a new order.",
       403,
       "TABLE_PAYMENT_BLOCKED",
     );
   }
+
+  const resolvedChannel =
+    orderChannel ??
+    (placedByUserId
+      ? table.kind === "DINE_IN"
+        ? "WALK_IN"
+        : channelForTableKind(table.kind, table.serviceLabel)
+      : channelForTableKind(table.kind, table.serviceLabel));
 
   const menuItems = await prisma.menuItem.findMany({
     where: {
@@ -150,6 +184,22 @@ export async function createOrderForTable(params: {
 
   if (menuItems.length !== items.length) {
     throw new OrderCreationError("Some items are unavailable", 400);
+  }
+
+  const inventoryOn = await isFeatureEnabled(restaurantId, "inventory_86");
+  if (inventoryOn) {
+    for (const item of items) {
+      const menuItem = menuItems.find((m) => m.id === item.menuItemId)!;
+      if (menuItem.trackInventory && menuItem.stockQuantity != null) {
+        if (menuItem.stockQuantity < item.quantity) {
+          throw new OrderCreationError(
+            `${menuItem.name} is out of stock (${menuItem.stockQuantity} left)`,
+            400,
+            "OUT_OF_STOCK",
+          );
+        }
+      }
+    }
   }
 
   const orderNumber = await getNextOrderNumber(restaurantId);
@@ -173,6 +223,10 @@ export async function createOrderForTable(params: {
     data: {
       orderNumber,
       customerName: customerName?.trim() || null,
+      customerPhone: customerPhone?.trim() || null,
+      orderChannel: resolvedChannel,
+      externalOrderId: externalOrderId?.trim() || null,
+      orderNotes: orderNotes?.trim() || null,
       tableId: table.id,
       restaurantId: table.restaurantId,
       date: todayDateString(),
@@ -188,10 +242,34 @@ export async function createOrderForTable(params: {
   });
 
   const total = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+
+  void decrementInventoryForOrder(
+    table.restaurantId,
+    items.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity }))
+  );
+
+  void touchGuestProfile({
+    restaurantId: table.restaurantId,
+    phone: customerPhone,
+    name: customerName,
+    orderTotal: total,
+  });
+
   return { order, total };
 }
 
-export async function checkOverdueItems(restaurantId: string) {
+/** Throttle overdue scans — dashboard polls frequently. */
+const overdueLastRun = new Map<string, number>();
+const OVERDUE_CHECK_MS = 15_000;
+
+export async function checkOverdueItems(restaurantId: string, force = false) {
+  const nowMs = Date.now();
+  const last = overdueLastRun.get(restaurantId) ?? 0;
+  if (!force && nowMs - last < OVERDUE_CHECK_MS) {
+    return 0;
+  }
+  overdueLastRun.set(restaurantId, nowMs);
+
   const now = new Date();
   const overdueItems = await prisma.orderItem.findMany({
     where: {
@@ -242,8 +320,10 @@ export async function checkOverdueItems(restaurantId: string) {
   return overdueItems.length;
 }
 
-export async function getActiveOrders(restaurantId: string) {
-  await checkOverdueItems(restaurantId);
+export async function getActiveOrders(restaurantId: string, options?: { skipOverdueCheck?: boolean }) {
+  if (!options?.skipOverdueCheck) {
+    await checkOverdueItems(restaurantId);
+  }
 
   return prisma.order.findMany({
     where: {
@@ -300,7 +380,7 @@ export async function getPendingPaymentOrders(restaurantId: string) {
   return orders.filter((o) => sumOrderRevenue(o.items) > 0);
 }
 
-export async function getCompletedOrders(restaurantId: string) {
+export async function getCompletedOrders(restaurantId: string, limit = 50) {
   return prisma.order.findMany({
     where: {
       restaurantId,
@@ -313,11 +393,14 @@ export async function getCompletedOrders(restaurantId: string) {
       items: true,
     },
     orderBy: { paidAt: "desc" },
+    take: limit,
   });
 }
 
-export async function getMissedTimelineItems(restaurantId: string) {
-  await checkOverdueItems(restaurantId);
+export async function getMissedTimelineItems(restaurantId: string, options?: { skipOverdueCheck?: boolean }) {
+  if (!options?.skipOverdueCheck) {
+    await checkOverdueItems(restaurantId);
+  }
 
   const items = await prisma.orderItem.findMany({
     where: {

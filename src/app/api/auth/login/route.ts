@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createToken, verifyPassword } from "@/lib/auth";
+import { getStaffHomePath } from "@/lib/feature-flags";
 import { logApiError, logApiRequest, logInfo, logWarn } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
@@ -52,8 +53,9 @@ export async function POST(req: NextRequest) {
     };
 
     const token = await createToken(session);
+    const homePath = await getStaffHomePath(user.restaurantId, user.role);
 
-    const response = NextResponse.json({ user: session });
+    const response = NextResponse.json({ user: session, homePath });
     response.cookies.set("tabletap_session", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

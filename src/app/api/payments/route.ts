@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { getOrderPaymentSummary } from "@/lib/payment-allocation-service";
 import { prisma } from "@/lib/prisma";
+import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 
 export async function GET(req: NextRequest) {
   const session = await requireSession();
@@ -20,6 +21,11 @@ export async function GET(req: NextRequest) {
   });
   if (!order) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
+
+  const flags = await getRestaurantFeatureFlags(session.restaurantId);
+  if (!flags.split_bill) {
+    return NextResponse.json({ error: "Split bill is not enabled" }, { status: 403 });
   }
 
   const summary = await getOrderPaymentSummary(orderId);

@@ -51,6 +51,8 @@ function isPublicApi(pathname: string, request: NextRequest) {
     return true;
   }
   if (pathname === "/api/platform/auth/login" && request.method === "POST") return true;
+  if (/^\/api\/webhooks\/orders\/[^/]+$/.test(pathname) && request.method === "POST") return true;
+  if (/^\/api\/webhooks\/(swiggy|zomato)\/[^/]+$/.test(pathname) && request.method === "POST") return true;
   if (/^\/api\/orders\/[^/]+$/.test(pathname) && request.method === "PATCH") {
     return true;
   }
@@ -90,10 +92,6 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === "/" && session) {
-    const role = session.role as string;
-    if (role === "COOK") {
-      return NextResponse.redirect(new URL("/kitchen", request.url));
-    }
     return NextResponse.redirect(new URL("/staff/dashboard", request.url));
   }
 
@@ -129,10 +127,14 @@ export async function middleware(request: NextRequest) {
     }
     const role = session.role as string;
     const reportsOnly = pathname.startsWith("/admin/reports");
+    const integrationsOnly = pathname.startsWith("/admin/integrations");
     if (reportsOnly && role !== "OWNER" && role !== "MANAGER") {
       return NextResponse.redirect(new URL("/staff/dashboard", request.url));
     }
-    if (!reportsOnly && role !== "OWNER" && role !== "MANAGER") {
+    if (integrationsOnly && role !== "OWNER" && role !== "MANAGER") {
+      return NextResponse.redirect(new URL("/staff/dashboard", request.url));
+    }
+    if (!reportsOnly && !integrationsOnly && role !== "OWNER" && role !== "MANAGER") {
       return NextResponse.redirect(new URL("/staff/dashboard", request.url));
     }
     return NextResponse.next();

@@ -13,13 +13,23 @@ import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
+import { featureDisabledResponse } from "@/lib/feature-guard";
+import { applyOrderTip } from "@/lib/tip-pool-service";
+import { recordGuestPayment } from "@/lib/guest-crm-service";
+import {
+  recordAuditLog,
+  roleRequiresRejectApproval,
+  verifyManagerApproval,
+} from "@/lib/audit-service";
+import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { action, itemId, tableToken, amount, method, itemIds, note } = await req.json();
+  const { action, itemId, tableToken, amount, method, itemIds, note, tipAmount, managerUserId, managerPassword, reason } =
+    await req.json();
   logApiRequest("orders/[id]", "PATCH", { orderId: id, action, itemId });
 
   const order = await prisma.order.findUnique({
@@ -163,6 +173,19 @@ export async function PATCH(
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
+    if (typeof tipAmount === "number" && tipAmount > 0) {
+      await applyOrderTip(id, tipAmount);
+    }
+
+    if (result.fullyPaid && order.customerPhone) {
+      const summary = result.summary;
+      void recordGuestPayment({
+        restaurantId: session.restaurantId,
+        phone: order.customerPhone,
+        amount: summary?.paid ?? 0,
+      });
+    }
+
     const receipt = result.fullyPaid
       ? await buildReceiptForPaidOrder(id, session.restaurantId)
       : null;
@@ -177,6 +200,9 @@ export async function PATCH(
   }
 
   if (action === "record-payment") {
+    const blocked = await featureDisabledResponse(order.restaurantId, "split_bill");
+    if (blocked) return blocked;
+
     if (order.status !== "SERVED") {
       return NextResponse.json(
         { error: "Order must be fully served before recording payment" },
@@ -252,12 +278,54 @@ export async function PATCH(
       );
     }
 
+    const flags = await getRestaurantFeatureFlags(session.restaurantId);
+    let approvedByUserId: string | undefined;
+    let approvedByName: string | undefined;
+
+    if (flags.audit_log && roleRequiresRejectApproval(session.role)) {
+      if (!managerUserId || !managerPassword) {
+        return NextResponse.json(
+          { error: "Manager approval required (managerUserId + managerPassword)", code: "MANAGER_APPROVAL_REQUIRED" },
+          { status: 403 },
+        );
+      }
+      const approval = await verifyManagerApproval({
+        restaurantId: session.restaurantId,
+        approverUserId: String(managerUserId),
+        approverPassword: String(managerPassword),
+      });
+      if (!approval.ok) {
+        return NextResponse.json({ error: approval.error }, { status: 403 });
+      }
+      approvedByUserId = approval.user.id;
+      approvedByName = approval.user.name;
+    }
+
+    const orderItem = order.items.find((i) => i.id === itemId);
+
     await prisma.orderItem.update({
       where: { id: itemId },
       data: {
         status: "UNAVAILABLE",
         isOverdue: false,
       },
+    });
+
+    await recordAuditLog({
+      restaurantId: session.restaurantId,
+      actionType: "REJECT_ITEM",
+      entityId: itemId,
+      reason: reason ? String(reason) : undefined,
+      payload: {
+        orderId: id,
+        itemName: orderItem?.itemName,
+        orderNumber: order.orderNumber,
+      },
+      actorUserId: session.id,
+      actorName: session.name,
+      approvedByUserId,
+      approvedByName,
+      requiresApproval: Boolean(approvedByUserId),
     });
 
     await clearAlertsForOrderItem(itemId);
@@ -290,7 +358,7 @@ export async function PATCH(
         readyByName: session.name,
       },
     });
-    await prisma.order.update({ where: { id }, data: { status: "READY" } });
+    await syncOrderStatus(id);
     return NextResponse.json({ success: true });
   }
 

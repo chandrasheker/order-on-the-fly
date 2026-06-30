@@ -1,9 +1,19 @@
 # TableTap — Smart Restaurant Ordering SaaS
 
-QR-powered table ordering for restaurants. Customers scan, order, and play games while waiting. Staff manage orders with live timers and alerts.
+QR-powered table ordering for restaurants. Customers scan, order, and play games while waiting. Staff manage orders with live timers and alerts. **Full-service:** kitchen KDS, floor plan, takeaway, Swiggy/Zomato sync, thermal receipts, and premium feature toggles.
 
-TableTap is **fully generic** — launch it for any restaurant by editing one
-config file. Nothing is hard-coded to a specific brand.
+TableTap is **fully generic** — launch it for any restaurant by editing one config file.
+
+## Documentation (start here)
+
+| Guide | What's inside |
+|-------|-----------------|
+| **[BRINGUP_TROUBLESHOOTING.md](./BRINGUP_TROUBLESHOOTING.md)** | **Git clone → app up** — golden path + every known error & fix |
+| **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** | Complete setup — dev, Docker, prod, env vars, every feature |
+| [RESTAURANT_SETUP.md](./RESTAURANT_SETUP.md) | Restaurant config wizard & `restaurant.config.json` |
+| [PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md) | Core vs premium modules & super admin |
+| [AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md) | Swiggy & Zomato automatic sync |
+| [presentation/README.md](./presentation/README.md) | Owner pitch decks (PPTX) |
 
 ## Quick Start (demo restaurant)
 
@@ -13,6 +23,8 @@ npm run dev
 ```
 
 Open `http://localhost:3000` and sign in with the demo staff credentials.
+
+**Something failed?** Work through **[BRINGUP_TROUBLESHOOTING.md](./BRINGUP_TROUBLESHOOTING.md)** — step-by-step from clone to running, with error messages and fixes.
 
 ## Make it your own restaurant (e.g. PistaHouse)
 
@@ -35,30 +47,31 @@ domain / LAN IP so QR codes point to the correct URL.
 ## Access
 
 - **Staff/Owner** — login at `/` to access dashboard, menu, QR codes, and reports
-- **Cooks** — auto-redirect to `/kitchen` (station-routed KDS)
-- **Servers** — dashboard + `/staff/floor` (table map, timers, server assignment)
-- **Platform admin** — login at `/platform/login` to manage staff names, emails, passwords, and roles
+- **Cooks** — redirect to `/kitchen` when KDS premium is enabled; otherwise staff dashboard
+- **Servers** — dashboard + `/staff/floor` when floor-plan premium is enabled
+- **Super admin (hidden)** — `/platform/login` — toggle premium features per restaurant (not linked from staff login). See **[PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md)**
 - **Customers** — scan table QR code to order (no login needed)
 
 ## Full feature set (this branch)
 
-This branch (`cursor/kds-floor-split-bill-6747`) includes **everything on `main`** plus KDS, floor plan, and split bill.
+| Area | Tier | What you get |
+|------|------|----------------|
+| **Deploy** | Core | `npm run setup`, `restaurant.config.json`, Postgres/SQLite |
+| **Guest ordering** | Core | QR + rotating check-in codes, session limits, table open/close |
+| **Staff dashboard** | Core | Live orders, prep timers, overdue alerts, payment pending |
+| **Kitchen (KDS)** | Premium | `/kitchen` — station-routed tickets |
+| **Floor plan** | Premium | `/staff/floor` — table map, timers, server assignment |
+| **Split bill** | Premium | Pay by item, split evenly, partial payments |
+| **Phone orders** | Premium | Staff places walk-in/delivery orders |
+| **Thermal receipts** | Premium | ESC/POS Bluetooth print on full payment |
+| **Staff tracking** | Premium | Team performance in Daily Reports |
+| **GST receipts** | Premium | GSTIN and tax on printed receipts |
 
-| Area | What you get |
-|------|----------------|
-| **Deploy** | `npm run setup`, `restaurant.config.json`, Postgres/SQLite |
-| **Guest ordering** | QR + rotating check-in codes, session limits, table open/close |
-| **Staff dashboard** | Live orders, prep timers, overdue alerts, payment pending |
-| **Phone / offline orders** | Staff places orders for walk-ins without guest QR scan |
-| **Kitchen (KDS)** | `/kitchen` — station-routed tickets (Hot Kitchen, Grill, Bar, Cold) |
-| **Floor plan** | `/staff/floor` — table map, timers, server assignment, live bill |
-| **Split bill** | Pay by item, split evenly, partial payments before full settle |
-| **Payments** | PhonePe QR upload, mark paid, payment block until settled |
-| **Receipts** | ESC/POS Bluetooth thermal print on full payment (GST optional) |
-| **Staff tracking** | Who placed, prepped, served, collected — Team performance reports |
-| **Table switch** | Guest requests move; staff approve; orders + payments migrate |
-| **Loyalty** | Reward spins, feedback |
-| **Admin** | Menu, QR print, receipt settings, daily reports CSV |
+| **Swiggy / Zomato sync** | Premium | Admin → **Integrations** — auto orders, menu sync, status callbacks |
+| **Takeaway & delivery** | Premium | Staff dashboard → **Remote orders** |
+| **Thermal receipts** | Premium | Bluetooth ESC/POS + kitchen chits + reprint |
+
+Full core vs premium list: **[PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md)** · Complete setup: **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**
 
 ## Full-service routes
 
@@ -67,7 +80,8 @@ This branch (`cursor/kds-floor-split-bill-6747`) includes **everything on `main`
 | Kitchen Display (KDS) | `/kitchen` — Hot Kitchen, Grill, Bar, Cold stations |
 | Floor plan & table timers | `/staff/floor` — seat tables, assign servers, live bill |
 | Split bill / partial pay | Staff dashboard → **Pending** tab — pay by item or split evenly |
-| Phone / offline orders | Staff dashboard → **Phone orders** button |
+| Phone / offline orders | Staff dashboard → **Remote orders** (walk-in, takeaway, delivery) |
+| Swiggy / Zomato | Admin → **Integrations** — automatic webhook sync |
 | Team performance | Admin → **Daily Reports** |
 | Receipt & QR settings | Admin → **QR codes** |
 
@@ -177,3 +191,5 @@ docker compose up --build
 - Docker uses `prisma/schema.postgres.prisma` and `prisma/migrations-postgres`.
 - Seed data is idempotent in Docker via `SEED_IF_EMPTY=true`, so container restarts do not wipe production data.
 - The seeded restaurant/staff/menu come from `restaurant.config.json` (or the example). Mount or copy your config before building the image.
+
+**Full production checklist:** see **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** §10.

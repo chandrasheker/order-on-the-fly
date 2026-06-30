@@ -2,6 +2,8 @@ import "dotenv/config";
 import { createRequire } from "node:module";
 import { createPrismaClient } from "../src/lib/create-prisma-client";
 import bcrypt from "bcryptjs";
+import { FEATURE_CATALOG } from "../src/lib/feature-catalog";
+import { ensureServiceTables } from "../src/lib/service-tables";
 
 const require = createRequire(import.meta.url);
 const { loadRestaurantConfig } = require("../scripts/restaurant-config.js");
@@ -57,6 +59,10 @@ async function main() {
   await prisma.platformAdmin.deleteMany();
   await prisma.restaurant.deleteMany();
 
+  const demoPremiumFlags = Object.fromEntries(
+    FEATURE_CATALOG.filter((f) => f.tier === "premium" || f.tier === "roadmap").map((f) => [f.key, true])
+  );
+
   const restaurant = await prisma.restaurant.create({
     data: {
       name: config.restaurant.name,
@@ -73,6 +79,7 @@ async function main() {
       cookSlots: config.counts.cook,
       serverSlots: config.counts.server,
       staffConfigured: true,
+      featureFlags: JSON.stringify(demoPremiumFlags),
     },
   });
 
@@ -94,18 +101,39 @@ async function main() {
     }),
   );
 
+  const tableRows: Array<{
+    number: number;
+    qrToken: string;
+    maxSessions: number;
+    restaurantId: string;
+  }> = [];
+
   for (let i = 1; i <= config.restaurant.tableCount; i++) {
-    await prisma.table.create({
-      data: {
-        number: i,
-        qrToken: `${restaurant.slug}-table-${i}`,
-        maxSessions: config.restaurant.defaultMaxSessions,
-        restaurantId: restaurant.id,
-      },
+    tableRows.push({
+      number: i,
+      qrToken: `${restaurant.slug}-table-${i}`,
+      maxSessions: config.restaurant.defaultMaxSessions,
+      restaurantId: restaurant.id,
     });
   }
+  if (tableRows.length) {
+    await prisma.table.createMany({ data: tableRows });
+  }
+
+  await ensureServiceTables(restaurant.id, restaurant.slug);
 
   const menu: MenuCategory[] = config.menu;
+  const menuItemRows: Array<{
+    name: string;
+    description: string | null;
+    price: number;
+    prepTimeMinutes: number;
+    isVeg: boolean;
+    isSpicy: boolean;
+    sortOrder: number;
+    categoryId: string;
+  }> = [];
+
   for (const cat of menu) {
     const category = await prisma.menuCategory.create({
       data: {
@@ -118,19 +146,21 @@ async function main() {
     });
 
     for (const item of cat.items) {
-      await prisma.menuItem.create({
-        data: {
-          name: item.name,
-          description: item.description,
-          price: item.price,
-          prepTimeMinutes: item.prepTimeMinutes,
-          isVeg: item.isVeg,
-          isSpicy: item.isSpicy,
-          sortOrder: item.sortOrder,
-          categoryId: category.id,
-        },
+      menuItemRows.push({
+        name: item.name,
+        description: item.description,
+        price: item.price,
+        prepTimeMinutes: item.prepTimeMinutes,
+        isVeg: item.isVeg,
+        isSpicy: item.isSpicy,
+        sortOrder: item.sortOrder,
+        categoryId: category.id,
       });
     }
+  }
+
+  if (menuItemRows.length) {
+    await prisma.menuItem.createMany({ data: menuItemRows });
   }
 
   const adminPasswordHash = await bcrypt.hash(config.platformAdmin.password, 10);
