@@ -65,9 +65,28 @@ These are **off by default**. Enable when the customer pays for the add-on.
 | `floor_plan` | Visual table map, seat timers, server assignment, live bill | `/staff/floor` |
 | `split_bill` | Pay by item or split evenly; partial payments | Staff dashboard → Pending |
 | `staff_performance` | Who prepped, served, collected — shift accountability | Admin → Daily Reports → Team performance |
-| `thermal_receipts` | Bluetooth ESC/POS auto-print on full payment | Staff dashboard printer button |
-| `phone_orders` | Staff-entered walk-in / phone orders (no guest QR) | Staff dashboard → Phone orders |
+| `thermal_receipts` | Bluetooth ESC/POS receipts + kitchen chits + reprint | Staff dashboard printer menu |
+| `phone_orders` | Walk-in, **takeaway**, and **delivery** orders | Staff dashboard → **Remote orders** |
 | `gst_receipts` | GSTIN, tax rate, compliant receipt footer | Admin → QR codes → receipt settings |
+| `aggregator_inbox` | **Swiggy / Zomato** manual entry + webhook API | Remote orders → Swiggy/Zomato tabs |
+
+### Remote orders
+
+| Mode | Premium flag | Notes |
+|------|--------------|-------|
+| Walk-in / table | `phone_orders` | Pick table, send to kitchen |
+| Takeaway | `phone_orders` | No table — pack and hand over |
+| Delivery | `phone_orders` | Phone + address notes |
+| Swiggy | `aggregator_inbox` | Order ID + items; webhook supported |
+| Zomato | `aggregator_inbox` | Order ID + items; webhook supported |
+
+**Webhook:** `POST /api/webhooks/orders/{slug}` with `Authorization: Bearer <secret>`. Managers get URL + secret from `GET /api/orders/aggregator`.
+
+### Printing (`thermal_receipts`)
+
+- Auto-print customer receipt when bill fully paid
+- **Auto-print kitchen chit** when any order is sent (toggle in printer menu)
+- **Reprint receipt** on completed orders tab
 
 ---
 
