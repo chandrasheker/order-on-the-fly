@@ -89,6 +89,8 @@ export async function POST(req: NextRequest) {
       tableId,
       restaurantId: session.restaurantId,
       customerName,
+      placedByUserId: session.id,
+      placedByName: session.name,
       items: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
         menuItemId: item.menuItemId,
         quantity: item.quantity,

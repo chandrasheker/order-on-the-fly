@@ -49,6 +49,9 @@ interface OrderItem {
   servedAt?: string | null;
   isOverdue: boolean;
   unitPrice?: number;
+  servedByName?: string | null;
+  preparedByName?: string | null;
+  readyByName?: string | null;
   menuItem?: { isAvailable: boolean; category: { name: string } };
 }
 
@@ -64,6 +67,8 @@ interface Order {
   createdAt: string;
   total?: number;
   paidTotal?: number;
+  placedByName?: string | null;
+  paidByName?: string | null;
 }
 
 interface Alert {
@@ -1033,6 +1038,9 @@ function ActiveOrderCard({
             #{order.orderNumber}
             {order.customerName && ` · ${order.customerName}`}
           </p>
+          {order.placedByName && (
+            <p className="text-xs text-violet-400/80 mt-0.5">Placed by {order.placedByName}</p>
+          )}
         </div>
         <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
       </div>
@@ -1094,9 +1102,16 @@ function ActiveOrderCard({
                   )}
                 </div>
               )}
+              {item.status === "PREPARING" && item.preparedByName && (
+                <span className="text-xs text-sky-400/80">Prep: {item.preparedByName}</span>
+              )}
+              {item.status === "READY" && item.readyByName && (
+                <span className="text-xs text-amber-400/80">Ready: {item.readyByName}</span>
+              )}
               {item.status === "SERVED" && (
                 <span className="text-xs text-emerald-400 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Served
+                  <CheckCircle2 className="w-3 h-3" />
+                  {item.servedByName ? `Served by ${item.servedByName}` : "Served"}
                 </span>
               )}
               {item.status === "UNAVAILABLE" && (
@@ -1152,6 +1167,9 @@ function PendingPaymentCard({
             #{order.orderNumber}
             {order.customerName && ` · ${order.customerName}`}
           </p>
+          {order.placedByName && (
+            <p className="text-xs text-violet-400/80 mt-0.5">Placed by {order.placedByName}</p>
+          )}
         </div>
         <Badge className="bg-yellow-500/15 text-yellow-400 border-yellow-500/30">Awaiting payment</Badge>
       </div>
@@ -1161,6 +1179,9 @@ function PendingPaymentCard({
           <div key={item.id} className="flex justify-between text-sm">
             <span className={item.status === "UNAVAILABLE" ? "text-zinc-500" : "text-zinc-300"}>
               {item.quantity}x {item.itemName}
+              {item.servedByName && (
+                <span className="text-zinc-500 ml-2">· {item.servedByName}</span>
+              )}
             </span>
             <span className="text-zinc-400">
               {item.status === "UNAVAILABLE"
@@ -1216,8 +1237,10 @@ function CompletedOrderRow({ order }: { order: Order }) {
           <p className="text-xs text-zinc-500 mb-3">
             {new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             {order.customerName && ` · ${order.customerName}`}
+            {order.placedByName && ` · Placed by ${order.placedByName}`}
             {order.paidAt &&
               ` · Paid ${new Date(order.paidAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
+            {order.paidByName && ` by ${order.paidByName}`}
           </p>
           <div className="space-y-1">
             {order.items.map((item) => {
@@ -1234,13 +1257,14 @@ function CompletedOrderRow({ order }: { order: Order }) {
                     }
                   >
                     {item.quantity}x {item.itemName}
-                    {item.status === "SERVED" && item.servedAt && (
+                    {item.status === "SERVED" && (
                       <span className="text-zinc-500 ml-2">
-                        served{" "}
-                        {new Date(item.servedAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {item.servedByName ? `${item.servedByName}` : "served"}
+                        {item.servedAt &&
+                          ` ${new Date(item.servedAt).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}`}
                       </span>
                     )}
                     {item.status === "UNAVAILABLE" && (

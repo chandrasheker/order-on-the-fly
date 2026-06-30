@@ -103,8 +103,10 @@ export async function createOrderForTable(params: {
   restaurantId: string;
   customerName?: string | null;
   items: CreateOrderItemInput[];
+  placedByUserId?: string | null;
+  placedByName?: string | null;
 }) {
-  const { tableId, restaurantId, customerName, items } = params;
+  const { tableId, restaurantId, customerName, items, placedByUserId, placedByName } = params;
 
   if (!items.length) {
     throw new OrderCreationError("Order must include at least one item");
@@ -165,6 +167,8 @@ export async function createOrderForTable(params: {
       restaurantId: table.restaurantId,
       date: todayDateString(),
       status: "PENDING",
+      placedByUserId: placedByUserId ?? null,
+      placedByName: placedByName ?? null,
       items: { create: orderItemsData },
     },
     include: {

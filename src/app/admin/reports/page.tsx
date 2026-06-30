@@ -15,6 +15,31 @@ interface ReportData {
   totalRevenue: number;
   itemBreakdown: Record<string, { quantity: number; revenue: number }>;
   tableBreakdown: Record<number, { orders: number; revenue: number }>;
+  staffPerformance?: Array<{
+    userId: string;
+    name: string;
+    role: string;
+    itemsPrepared: number;
+    itemsMarkedReady: number;
+    itemsServed: number;
+    ordersServed: number;
+    ordersPlaced: number;
+    paymentsCollected: number;
+    revenueCollected: number;
+    tablesServed: number[];
+    avgRevenuePerPayment: number;
+  }>;
+  tableServiceLog?: Array<{
+    orderNumber: number;
+    tableNumber: number;
+    customerName: string | null;
+    placedByName: string | null;
+    paidByName: string | null;
+    servers: string[];
+    status: string;
+    paidAt: string | null;
+    total: number;
+  }>;
   orders: {
     orderNumber: number;
     table: number;
@@ -144,6 +169,85 @@ export default function ReportsPage() {
                 )}
               </div>
             </Card>
+
+            {canDownload && report.staffPerformance && report.staffPerformance.length > 0 && (
+              <Card className="p-5">
+                <h2 className="font-bold mb-1">Team performance</h2>
+                <p className="text-sm text-zinc-400 mb-4">
+                  Tracked from serve, prepare, phone-order, and mark-paid actions
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-zinc-500 border-b border-white/10">
+                        <th className="py-2 pr-4">Staff</th>
+                        <th className="py-2 pr-4">Role</th>
+                        <th className="py-2 pr-4">Items served</th>
+                        <th className="py-2 pr-4">Orders served</th>
+                        <th className="py-2 pr-4">Phone orders</th>
+                        <th className="py-2 pr-4">Payments</th>
+                        <th className="py-2 pr-4">Revenue</th>
+                        <th className="py-2">Tables</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.staffPerformance.map((row) => (
+                        <tr key={row.userId} className="border-b border-white/5 last:border-0">
+                          <td className="py-3 pr-4 font-medium text-white">{row.name}</td>
+                          <td className="py-3 pr-4 capitalize text-zinc-400">{row.role.toLowerCase()}</td>
+                          <td className="py-3 pr-4">{row.itemsServed}</td>
+                          <td className="py-3 pr-4">{row.ordersServed}</td>
+                          <td className="py-3 pr-4">{row.ordersPlaced}</td>
+                          <td className="py-3 pr-4">{row.paymentsCollected}</td>
+                          <td className="py-3 pr-4 text-emerald-400">{formatCurrency(row.revenueCollected)}</td>
+                          <td className="py-3 text-zinc-400">
+                            {row.tablesServed.length > 0
+                              ? row.tablesServed.map((t) => `T${t}`).join(", ")
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {canDownload && report.tableServiceLog && report.tableServiceLog.length > 0 && (
+              <Card className="p-5">
+                <h2 className="font-bold mb-4">Table service log</h2>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {report.tableServiceLog.map((entry) => (
+                    <div
+                      key={`${entry.orderNumber}-${entry.tableNumber}`}
+                      className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-white/5 last:border-0 text-sm"
+                    >
+                      <div>
+                        <span className="font-medium text-white">
+                          #{entry.orderNumber} · Table {entry.tableNumber}
+                        </span>
+                        {entry.customerName && (
+                          <span className="text-zinc-500"> · {entry.customerName}</span>
+                        )}
+                      </div>
+                      <div className="text-zinc-400 text-right">
+                        {entry.servers.length > 0 ? (
+                          <span>Served by {entry.servers.join(", ")}</span>
+                        ) : (
+                          <span className="text-zinc-600">Not served yet</span>
+                        )}
+                        {entry.paidByName && (
+                          <span className="block text-emerald-400/80">Paid by {entry.paidByName}</span>
+                        )}
+                        {entry.placedByName && (
+                          <span className="block text-violet-400/80">Placed by {entry.placedByName}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
 
             <Card className="p-5">
               <h2 className="font-bold mb-4">Order Details</h2>
