@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Spinner, Badge } from "@/components/ui";
-import { Crown, Save, Sparkles } from "lucide-react";
+import { Crown, Save, Sparkles, CheckSquare, Square } from "lucide-react";
 import type { FeatureKey } from "@/lib/feature-catalog";
 
 type FeatureRow = {
@@ -60,6 +60,20 @@ export function PlatformFeaturesPanel() {
     }));
   };
 
+  const setAllToggleable = (
+    restaurantId: string,
+    features: FeatureRow[],
+    enabled: boolean,
+  ) => {
+    setDrafts((prev) => {
+      const current = { ...prev[restaurantId] };
+      for (const feature of features) {
+        current[feature.key] = enabled;
+      }
+      return { ...prev, [restaurantId]: current };
+    });
+  };
+
   const save = async (restaurantId: string) => {
     setSavingId(restaurantId);
     setMessage(null);
@@ -107,7 +121,11 @@ export function PlatformFeaturesPanel() {
       {restaurants.map((restaurant) => {
         const premium = restaurant.features.filter((f) => f.tier === "premium");
         const roadmap = restaurant.features.filter((f) => f.tier === "roadmap");
+        const toggleable = [...premium, ...roadmap];
         const draft = drafts[restaurant.id] ?? {};
+        const enabledCount = toggleable.filter((f) => draft[f.key] ?? f.enabled).length;
+        const allEnabled = toggleable.length > 0 && enabledCount === toggleable.length;
+        const noneEnabled = enabledCount === 0;
 
         return (
           <Card key={restaurant.id} className="p-5 space-y-5">
@@ -117,17 +135,39 @@ export function PlatformFeaturesPanel() {
                   <Crown className="w-5 h-5 text-amber-400" />
                   {restaurant.name}
                 </h2>
-                <p className="text-xs text-zinc-500">{restaurant.slug}</p>
+                <p className="text-xs text-zinc-500">
+                  {restaurant.slug} · {enabledCount}/{toggleable.length} premium & roadmap enabled
+                </p>
               </div>
-              <Button onClick={() => save(restaurant.id)} disabled={savingId === restaurant.id}>
-                {savingId === restaurant.id ? (
-                  <Spinner />
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" /> Save feature toggles
-                  </>
-                )}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setAllToggleable(restaurant.id, toggleable, true)}
+                  disabled={allEnabled}
+                >
+                  <CheckSquare className="w-4 h-4" />
+                  Select all
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setAllToggleable(restaurant.id, toggleable, false)}
+                  disabled={noneEnabled}
+                >
+                  <Square className="w-4 h-4" />
+                  Deselect all
+                </Button>
+                <Button onClick={() => save(restaurant.id)} disabled={savingId === restaurant.id}>
+                  {savingId === restaurant.id ? (
+                    <Spinner />
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" /> Save feature toggles
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-3">
