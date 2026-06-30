@@ -34,7 +34,10 @@ import { useRouter } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
 import { OfflineOrderPanel } from "@/components/staff/OfflineOrderPanel";
+import { ThermalPrinterButton } from "@/components/staff/ThermalPrinterButton";
+import { useThermalPrinter } from "@/hooks/useThermalPrinter";
 import { canManageTableOrdering } from "@/lib/staff-permissions";
+import type { ReceiptPayload } from "@/lib/receipt-service";
 
 interface OrderItem {
   id: string;
@@ -137,6 +140,8 @@ export function StaffDashboard() {
 
   const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
     useStaffNotifications(alerts);
+  const { printReceipt, autoPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint } = useThermalPrinter();
+  const [printMessage, setPrintMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -214,12 +219,32 @@ export function StaffDashboard() {
   };
 
   const markOrderPaid = async (orderId: string) => {
-    await fetch(`/api/orders/${orderId}`, {
+    const res = await fetch(`/api/orders/${orderId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "mark-paid" }),
     });
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(json.error || "Could not mark order paid");
+      fetchData();
+      return;
+    }
+
     fetchData();
+
+    if (printerSupported && autoPrint && json.receipt) {
+      try {
+        await printReceipt(json.receipt as ReceiptPayload);
+        setPrintMessage("Receipt sent to printer.");
+      } catch (error) {
+        setPrintMessage(
+          error instanceof Error ? error.message : "Payment saved, but receipt print failed.",
+        );
+      }
+      window.setTimeout(() => setPrintMessage(null), 5000);
+    }
   };
 
   const dismissAlert = async (alertId: string) => {
@@ -388,6 +413,18 @@ export function StaffDashboard() {
                 <BarChart3 className="w-4 h-4" />
               </Link>
             )}
+            {user && canPerformOrderAction(user.role, "mark-paid") && (
+              <ThermalPrinterButton
+                status={status}
+                deviceName={deviceName}
+                autoPrint={autoPrint}
+                lastError={lastError}
+                printing={printing}
+                supported={printerSupported}
+                onConnect={connect}
+                onToggleAutoPrint={toggleAutoPrint}
+              />
+            )}
             <button onClick={logout} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
               <LogOut className="w-4 h-4" />
             </button>
@@ -396,6 +433,11 @@ export function StaffDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
+        {printMessage && (
+          <div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-200">
+            {printMessage}
+          </div>
+        )}
         {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
 
         {tableSwitchRequests.length > 0 && (
