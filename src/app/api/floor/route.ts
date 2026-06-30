@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { canAccessFloorPlan, canManageFloorLayout } from "@/lib/staff-permissions";
 import { getFloorSnapshot, updateTableFloor } from "@/lib/floor-service";
 import { featureDisabledResponse } from "@/lib/feature-guard";
+import { logApiError } from "@/lib/logger";
 
 export async function GET() {
   const session = await requireSession();
@@ -13,8 +14,19 @@ export async function GET() {
   const blocked = await featureDisabledResponse(session.restaurantId, "floor_plan");
   if (blocked) return blocked;
 
-  const snapshot = await getFloorSnapshot(session.restaurantId);
-  return NextResponse.json(snapshot);
+  try {
+    const snapshot = await getFloorSnapshot(session.restaurantId);
+    return NextResponse.json(snapshot);
+  } catch (error) {
+    logApiError("floor", "GET", error);
+    return NextResponse.json(
+      {
+        error:
+          "Floor plan data could not be loaded. Run npm run db:setup if this is a fresh install.",
+      },
+      { status: 500 },
+    );
+  }
 }
 
 export async function PATCH(req: NextRequest) {
