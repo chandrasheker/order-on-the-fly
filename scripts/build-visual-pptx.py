@@ -439,7 +439,7 @@ def build():
     bg(s, ORANGE)
     textbox(s, "Ready for a live demo?", 0.8, 1.45, 11.7, 0.85, 46, WHITE, True, PP_ALIGN.CENTER)
     textbox(s, "Open a table · Scan the QR · Place an order · Watch the kitchen", 1.5, 2.45, 10.3, 0.55, 22, AMBER, True, PP_ALIGN.CENTER)
-    card(s, 1.8, 3.65, 2.9, 1.15, "Staff login", "owner@varanasi.com", PANEL_2)
+    card(s, 1.8, 3.65, 2.9, 1.15, "Staff login", "owner@dvadtech.com", PANEL_2)
     card(s, 5.2, 3.65, 2.9, 1.15, "Password", "admin123", PANEL_2)
     card(s, 8.6, 3.65, 2.9, 1.15, "Super admin", "/platform/login", PANEL_2)
     card(s, 3.5, 5.15, 6.3, 1.0, "TableTap", "Scan · Order · Serve · Grow — the complete restaurant platform", PANEL_3)

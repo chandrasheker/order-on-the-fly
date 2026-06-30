@@ -61,8 +61,8 @@ The presentation script:
 
 | Role | Credentials |
 |------|-------------|
-| Staff demo | `owner@varanasi.com` / `admin123` |
-| Super admin | `admin@varanasi.com` / `admin@varanasi` → `/platform/login` |
+| Staff demo | `owner@dvadtech.com` / `admin123` |
+| Super admin | `admin@dvadtech.com` / `admin@dvadtech` → `/platform/login` |
 | Customer demo | Open Table 1 in Staff Dashboard → scan Table 1 QR |
 
 **Talking points:**

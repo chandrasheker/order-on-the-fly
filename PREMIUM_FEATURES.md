@@ -15,7 +15,7 @@ TableTap ships with **core features always on** and **premium modules hidden** u
 
 After `npm run setup` with the bundled config:
 
-- **Email:** value of `platformAdmin.email` in `restaurant.config.json` (default `chandra@varanasi.com`)
+- **Email:** value of `platformAdmin.email` in `restaurant.config.json` (default `chandra@dvadtech.com`)
 - **Password:** value of `platformAdmin.password` (default `admin123`)
 
 Change these in production. Run `npx tsx scripts/ensure-platform-admin.ts` if the account is missing.
@@ -23,13 +23,13 @@ Change these in production. Run `npx tsx scripts/ensure-platform-admin.ts` if th
 ### Enable all premium for a restaurant (CLI)
 
 ```bash
-npx tsx scripts/enable-premium-features.ts --slug varanasi --all
+npx tsx scripts/enable-premium-features.ts --slug dvadtech --all
 ```
 
 Enable specific modules:
 
 ```bash
-npx tsx scripts/enable-premium-features.ts --slug varanasi --features kds,split_bill,floor_plan
+npx tsx scripts/enable-premium-features.ts --slug dvadtech --features kds,split_bill,floor_plan
 ```
 
 ---
@@ -108,7 +108,7 @@ Managers get URL + secret from **Admin → Integrations** (`GET /api/integration
 Enable from super admin (`/platform` → Premium features) or CLI:
 
 ```bash
-npx tsx scripts/enable-premium-features.ts --slug varanasi --features inventory_86,labor_clock,reservations,tip_pooling,guest_crm,audit_log
+npx tsx scripts/enable-premium-features.ts --slug dvadtech --features inventory_86,labor_clock,reservations,tip_pooling,guest_crm,audit_log
 ```
 
 | Feature key | What it solves | Route / location |

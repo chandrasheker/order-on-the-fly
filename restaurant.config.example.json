@@ -4,10 +4,10 @@
     "url": "http://localhost:3000"
   },
   "restaurant": {
-    "name": "Varanasi Restaurant",
-    "slug": "varanasi",
+    "name": "Dvadtech Restaurant",
+    "slug": "dvadtech",
     "logoUrl": null,
-    "backgroundImageUrl": "/restaurants/varanasi-hotel-background.jpg",
+    "backgroundImageUrl": "/restaurants/dvadtech-hotel-background.jpg",
     "tableCount": 10,
     "defaultMaxSessions": 2,
     "rewards": {
@@ -19,26 +19,26 @@
   },
   "platformAdmin": {
     "name": "Platform Admin",
-    "email": "admin@varanasi.com",
-    "password": "admin@varanasi"
+    "email": "admin@dvadtech.com",
+    "password": "admin@dvadtech"
   },
   "staff": {
-    "domain": "varanasi.com",
+    "domain": "dvadtech.com",
     "defaultPassword": "admin123",
     "owners": [
-      { "name": "Rajesh Kumar", "email": "owner@varanasi.com", "password": "admin123" }
+      { "name": "Rajesh Kumar", "email": "owner@dvadtech.com", "password": "admin123" }
     ],
     "managers": [
-      { "name": "Priya Sharma", "email": "manager1@varanasi.com", "password": "admin123" },
+      { "name": "Priya Sharma", "email": "manager1@dvadtech.com", "password": "admin123" },
       { "name": "Manager 2" }
     ],
     "cooks": [
-      { "name": "Chef Anand", "email": "cook1@varanasi.com", "password": "admin123" },
+      { "name": "Chef Anand", "email": "cook1@dvadtech.com", "password": "admin123" },
       { "name": "Cook 2" },
       { "name": "Cook 3" }
     ],
     "servers": [
-      { "name": "Arun Patel", "email": "server1@varanasi.com", "password": "admin123" },
+      { "name": "Arun Patel", "email": "server1@dvadtech.com", "password": "admin123" },
       { "name": "Server 2" },
       { "name": "Server 3" },
       { "name": "Server 4" }

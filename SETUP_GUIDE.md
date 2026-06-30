@@ -81,8 +81,8 @@ This will:
 
 | Role | URL | Email | Password |
 |------|-----|-------|----------|
-| Owner | `/` → dashboard | `owner@varanasi.com` | `admin123` |
-| Platform admin | `/platform/login` | `admin@varanasi.com` | `admin@varanasi` |
+| Owner | `/` → dashboard | `owner@dvadtech.com` | `admin123` |
+| Platform admin | `/platform/login` | `admin@dvadtech.com` | `admin@dvadtech` |
 | Customer | Scan Table 1 QR | — | no login |
 
 **Phone testing on same Wi-Fi:**
@@ -330,10 +330,10 @@ Premium modules are **off by default**. Enable from super admin or CLI.
 
 ```bash
 # All premium modules
-npx tsx scripts/enable-premium-features.ts --slug varanasi --all
+npx tsx scripts/enable-premium-features.ts --slug dvadtech --all
 
 # Specific modules
-npx tsx scripts/enable-premium-features.ts --slug varanasi \
+npx tsx scripts/enable-premium-features.ts --slug dvadtech \
   --features kds,floor_plan,split_bill,thermal_receipts,phone_orders,gst_receipts,aggregator_inbox,staff_performance
 ```
 

@@ -139,5 +139,5 @@ Sandbox URLs: set `ZOMATO_API_BASE` / `SWIGGY_API_BASE` in `.env`.
 5. Verify menu sync + status callbacks with partner sandbox if available
 
 ```bash
-npx tsx scripts/enable-premium-features.ts --slug varanasi --features aggregator_inbox
+npx tsx scripts/enable-premium-features.ts --slug dvadtech --features aggregator_inbox
 ```
