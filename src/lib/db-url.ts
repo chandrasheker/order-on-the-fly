@@ -4,7 +4,7 @@ function resolveSqlitePath(raw: string) {
   const filePath = raw.startsWith("file:") ? raw.slice(5) : raw;
   return path.isAbsolute(filePath)
     ? filePath
-    : path.resolve(process.cwd(), filePath);
+    : path.resolve(/* turbopackIgnore: true */ process.cwd(), filePath);
 }
 
 export function isPostgresUrl(raw: string) {

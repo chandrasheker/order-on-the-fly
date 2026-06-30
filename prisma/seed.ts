@@ -1,26 +1,10 @@
 import "dotenv/config";
 import { createRequire } from "node:module";
-import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { getDatabaseUrl, isPostgresUrl } from "../src/lib/db-url";
+import { createPrismaClient } from "../src/lib/create-prisma-client";
 import bcrypt from "bcryptjs";
 
 const require = createRequire(import.meta.url);
 const { loadRestaurantConfig } = require("../scripts/restaurant-config.js");
-
-async function createPrismaClient() {
-  const databaseUrl = getDatabaseUrl();
-
-  if (isPostgresUrl(databaseUrl)) {
-    const { PrismaPg } = await import("@prisma/adapter-pg");
-    const { Pool } = await import("pg");
-    const adapter = new PrismaPg(new Pool({ connectionString: databaseUrl }));
-    return new PrismaClient({ adapter });
-  }
-
-  const adapter = new PrismaBetterSqlite3({ url: databaseUrl });
-  return new PrismaClient({ adapter });
-}
 
 type StaffMember = {
   slotKey: string;
@@ -49,7 +33,7 @@ type MenuCategory = {
 };
 
 async function main() {
-  const prisma = await createPrismaClient();
+  const prisma = createPrismaClient();
   const config = loadRestaurantConfig();
 
   if (process.env.SEED_IF_EMPTY === "true") {

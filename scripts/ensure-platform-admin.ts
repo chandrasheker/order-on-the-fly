@@ -1,9 +1,7 @@
 import "dotenv/config";
 import { createRequire } from "node:module";
 import bcrypt from "bcryptjs";
-import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { getDatabaseUrl, isPostgresUrl } from "../src/lib/db-url";
+import { createPrismaClient } from "../src/lib/create-prisma-client";
 
 const require = createRequire(import.meta.url);
 const { loadRestaurantConfig } = require("../scripts/restaurant-config.js");
@@ -13,22 +11,8 @@ const ADMIN_EMAIL = config.platformAdmin.email;
 const ADMIN_PASSWORD = config.platformAdmin.password;
 const ADMIN_NAME = config.platformAdmin.name;
 
-async function createPrismaClient() {
-  const databaseUrl = getDatabaseUrl();
-
-  if (isPostgresUrl(databaseUrl)) {
-    const { PrismaPg } = await import("@prisma/adapter-pg");
-    const { Pool } = await import("pg");
-    const adapter = new PrismaPg(new Pool({ connectionString: databaseUrl }));
-    return new PrismaClient({ adapter });
-  }
-
-  const adapter = new PrismaBetterSqlite3({ url: databaseUrl });
-  return new PrismaClient({ adapter });
-}
-
 async function main() {
-  const prisma = await createPrismaClient();
+  const prisma = createPrismaClient();
   const existing = await prisma.platformAdmin.findUnique({
     where: { email: ADMIN_EMAIL },
   });
