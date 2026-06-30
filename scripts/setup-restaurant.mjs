@@ -49,10 +49,26 @@ function validateConfig() {
   return loaded;
 }
 
+function printLoginSummary() {
+  const { loadRestaurantConfig } = require("./restaurant-config.js");
+  const config = loadRestaurantConfig();
+  const appUrl = config.app.url.replace(/\/$/, "");
+
+  console.log("\n--- How to sign in ---");
+  console.log(`Staff (owner, managers, cooks, servers): ${appUrl}/`);
+  console.log(`  Owner email:    ${config.primaryOwner.email}`);
+  console.log(`  Owner password: ${config.primaryOwner.password}`);
+  console.log(`Platform admin (manage staff & passwords): ${appUrl}/platform/login`);
+  console.log(`  Admin email:    ${config.platformAdmin.email}`);
+  console.log(`  Admin password: ${config.platformAdmin.password}`);
+  console.log("\nNote: platform admin and staff use different login pages.");
+}
+
 function seedAndOptionallyStart() {
   console.log("\n🧱 Resetting and seeding the database for this restaurant...");
   execSync("npm run db:reset", { stdio: "inherit", cwd: ROOT });
   console.log("\n✅ Setup complete!");
+  printLoginSummary();
   if (shouldStart) {
     console.log("\n🚀 Starting the app (npm run dev)...\n");
     execSync("npm run dev", { stdio: "inherit", cwd: ROOT });

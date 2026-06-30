@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -54,7 +55,7 @@ export function LoginForm() {
               <ChefHat className="w-7 h-7 text-white" />
             </div>
             <h1 className="text-2xl font-bold text-white">TableTap</h1>
-            <p className="text-sm text-zinc-400 mt-1">Sign in to continue</p>
+            <p className="text-sm text-zinc-400 mt-1">Staff sign in (owner, manager, cook, server)</p>
           </div>
 
           <form onSubmit={login} className="space-y-4">
@@ -89,6 +90,13 @@ export function LoginForm() {
               {loading ? <Spinner /> : "Sign In"}
             </Button>
           </form>
+
+          <p className="text-xs text-zinc-500 text-center mt-6">
+            Platform admin?{" "}
+            <Link href="/platform/login" className="text-orange-400 hover:text-orange-300">
+              Sign in here
+            </Link>
+          </p>
         </div>
       </motion.div>
     </div>

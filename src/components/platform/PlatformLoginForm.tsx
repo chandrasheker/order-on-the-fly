@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -84,6 +85,13 @@ export function PlatformLoginForm() {
               {loading ? <Spinner /> : "Sign In"}
             </Button>
           </form>
+
+          <p className="text-xs text-zinc-500 text-center mt-6">
+            Restaurant staff?{" "}
+            <Link href="/" className="text-violet-400 hover:text-violet-300">
+              Staff sign in
+            </Link>
+          </p>
         </div>
       </motion.div>
     </div>
