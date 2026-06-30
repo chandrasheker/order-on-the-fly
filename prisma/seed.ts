@@ -2,19 +2,25 @@ import "dotenv/config";
 import { createRequire } from "node:module";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
 import { getDatabaseUrl, isPostgresUrl } from "../src/lib/db-url";
 import bcrypt from "bcryptjs";
 
 const require = createRequire(import.meta.url);
 const { loadRestaurantConfig } = require("../scripts/restaurant-config.js");
 
-const databaseUrl = getDatabaseUrl();
-const adapter = isPostgresUrl(databaseUrl)
-  ? new PrismaPg(new Pool({ connectionString: databaseUrl }))
-  : new PrismaBetterSqlite3({ url: databaseUrl });
-const prisma = new PrismaClient({ adapter });
+async function createPrismaClient() {
+  const databaseUrl = getDatabaseUrl();
+
+  if (isPostgresUrl(databaseUrl)) {
+    const { PrismaPg } = await import("@prisma/adapter-pg");
+    const { Pool } = await import("pg");
+    const adapter = new PrismaPg(new Pool({ connectionString: databaseUrl }));
+    return new PrismaClient({ adapter });
+  }
+
+  const adapter = new PrismaBetterSqlite3({ url: databaseUrl });
+  return new PrismaClient({ adapter });
+}
 
 type StaffMember = {
   slotKey: string;
@@ -43,6 +49,7 @@ type MenuCategory = {
 };
 
 async function main() {
+  const prisma = await createPrismaClient();
   const config = loadRestaurantConfig();
 
   if (process.env.SEED_IF_EMPTY === "true") {
@@ -164,11 +171,11 @@ async function main() {
   console.log(
     `📱 Table 1 check-in URL: /order/${restaurant.slug}/${restaurant.slug}-table-1/check-in`,
   );
+
+  await prisma.$disconnect();
 }
 
-main()
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

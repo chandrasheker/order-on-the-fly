@@ -3,8 +3,6 @@ import { createRequire } from "node:module";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
 import { getDatabaseUrl, isPostgresUrl } from "../src/lib/db-url";
 
 const require = createRequire(import.meta.url);
@@ -15,13 +13,22 @@ const ADMIN_EMAIL = config.platformAdmin.email;
 const ADMIN_PASSWORD = config.platformAdmin.password;
 const ADMIN_NAME = config.platformAdmin.name;
 
-const databaseUrl = getDatabaseUrl();
-const adapter = isPostgresUrl(databaseUrl)
-  ? new PrismaPg(new Pool({ connectionString: databaseUrl }))
-  : new PrismaBetterSqlite3({ url: databaseUrl });
-const prisma = new PrismaClient({ adapter });
+async function createPrismaClient() {
+  const databaseUrl = getDatabaseUrl();
+
+  if (isPostgresUrl(databaseUrl)) {
+    const { PrismaPg } = await import("@prisma/adapter-pg");
+    const { Pool } = await import("pg");
+    const adapter = new PrismaPg(new Pool({ connectionString: databaseUrl }));
+    return new PrismaClient({ adapter });
+  }
+
+  const adapter = new PrismaBetterSqlite3({ url: databaseUrl });
+  return new PrismaClient({ adapter });
+}
 
 async function main() {
+  const prisma = await createPrismaClient();
   const existing = await prisma.platformAdmin.findUnique({
     where: { email: ADMIN_EMAIL },
   });
@@ -48,11 +55,11 @@ async function main() {
     });
     console.log(`Platform admin password restored for ${ADMIN_EMAIL}`);
   }
+
+  await prisma.$disconnect();
 }
 
-main()
-  .catch((err) => {
-    console.error("Failed to ensure platform admin:", err.message);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+main().catch((err) => {
+  console.error("Failed to ensure platform admin:", err.message);
+  process.exit(1);
+});
