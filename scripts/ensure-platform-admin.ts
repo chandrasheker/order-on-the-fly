@@ -2,12 +2,17 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { getDatabaseUrl } from "../src/lib/db-url";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
+import { getDatabaseUrl, isPostgresUrl } from "../src/lib/db-url";
 
 const ADMIN_EMAIL = "admin@varanasi.com";
 const ADMIN_PASSWORD = "admin@varanasi";
 
-const adapter = new PrismaBetterSqlite3({ url: getDatabaseUrl() });
+const databaseUrl = getDatabaseUrl();
+const adapter = isPostgresUrl(databaseUrl)
+  ? new PrismaPg(new Pool({ connectionString: databaseUrl }))
+  : new PrismaBetterSqlite3({ url: databaseUrl });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {

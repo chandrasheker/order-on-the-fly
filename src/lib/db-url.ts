@@ -7,12 +7,21 @@ function resolveSqlitePath(raw: string) {
     : path.resolve(process.cwd(), filePath);
 }
 
-/** Shared SQLite URL used by Prisma CLI, seed script, and runtime client. */
+export function isPostgresUrl(raw: string) {
+  return raw.startsWith("postgres://") || raw.startsWith("postgresql://");
+}
+
+/** Shared database URL used by Prisma CLI, seed script, and runtime client. */
 export function getDatabaseUrl() {
   const raw = process.env.DATABASE_URL ?? "file:./dev.db";
+  if (isPostgresUrl(raw)) return raw;
   return `file:${resolveSqlitePath(raw)}`;
 }
 
 export function getDatabaseFilePath() {
+  const raw = process.env.DATABASE_URL ?? "file:./dev.db";
+  if (isPostgresUrl(raw)) {
+    throw new Error("getDatabaseFilePath is only available for SQLite DATABASE_URL values");
+  }
   return resolveSqlitePath(process.env.DATABASE_URL ?? "file:./dev.db");
 }

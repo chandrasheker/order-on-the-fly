@@ -8,9 +8,9 @@ const databaseUrl =
   process.env.DATABASE_URL ?? `file:${path.join(process.cwd(), "dev.db")}`;
 
 export default defineConfig({
-  schema: "prisma/schema.prisma",
+  schema: process.env.PRISMA_SCHEMA ?? "prisma/schema.prisma",
   migrations: {
-    path: "prisma/migrations",
+    path: process.env.PRISMA_MIGRATIONS ?? "prisma/migrations",
   },
   datasource: {
     url: databaseUrl,

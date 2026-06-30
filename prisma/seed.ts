@@ -1,10 +1,15 @@
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { getDatabaseUrl } from "../src/lib/db-url";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
+import { getDatabaseUrl, isPostgresUrl } from "../src/lib/db-url";
 import bcrypt from "bcryptjs";
 
-const adapter = new PrismaBetterSqlite3({ url: getDatabaseUrl() });
+const databaseUrl = getDatabaseUrl();
+const adapter = isPostgresUrl(databaseUrl)
+  ? new PrismaPg(new Pool({ connectionString: databaseUrl }))
+  : new PrismaBetterSqlite3({ url: databaseUrl });
 const prisma = new PrismaClient({ adapter });
 
 const menuData = [
@@ -103,7 +108,16 @@ const menuData = [
 ];
 
 async function main() {
+  if (process.env.SEED_IF_EMPTY === "true") {
+    const existingRestaurants = await prisma.restaurant.count();
+    if (existingRestaurants > 0) {
+      console.log("Seed skipped; database already has restaurant data.");
+      return;
+    }
+  }
+
   await prisma.alert.deleteMany();
+  await prisma.tableSwitchRequest.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.menuItem.deleteMany();
