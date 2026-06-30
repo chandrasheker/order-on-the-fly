@@ -33,7 +33,7 @@ npm run setup -- --start
 
 # 5. Verify
 # Open http://localhost:3000
-# Login: owner@varanasi.com / admin123  (demo config)
+# Login: owner@dvadtech.com / admin123  (demo config)
 ```
 
 **Success criteria:**
@@ -271,7 +271,7 @@ For one-off scripts:
 
 ```bash
 export $(grep -v '^#' .env | xargs)   # Linux
-npx tsx scripts/enable-premium-features.ts --slug varanasi --all
+npx tsx scripts/enable-premium-features.ts --slug dvadtech --all
 ```
 
 ---
@@ -492,7 +492,7 @@ docker compose up --build
 **Checks:**
 
 1. Use credentials from **your** `restaurant.config.json`, not docs defaults
-2. Demo defaults (example config): `owner@varanasi.com` / `admin123`
+2. Demo defaults (example config): `owner@dvadtech.com` / `admin123`
 3. Staff login is at `/` — **not** `/platform/login`
 
 **Fix after config change:**
@@ -508,7 +508,7 @@ npm run db:reset
 **Checks:**
 
 1. Use `platformAdmin.email` / `platformAdmin.password` from config
-2. Demo: `admin@varanasi.com` / `admin@varanasi`
+2. Demo: `admin@dvadtech.com` / `admin@dvadtech`
 3. This is a **different** account from staff owner
 
 **Fix:**
@@ -715,7 +715,7 @@ npx tsx scripts/enable-premium-features.ts --slug YOUR_SLUG --features aggregato
 
 ---
 
-### Error: `Restaurant not found: varanasi` (CLI enable script)
+### Error: `Restaurant not found: dvadtech` (CLI enable script)
 
 **Cause:** Wrong slug or DB not seeded.
 
@@ -852,7 +852,7 @@ npm run presentation
 ```bash
 npm run db:reset
 npm run dev
-# Verify owner@varanasi.com / admin123 works in browser first
+# Verify owner@dvadtech.com / admin123 works in browser first
 npm run presentation
 ```
 
@@ -885,7 +885,7 @@ npm run db:reset
 npm run dev
 ```
 
-Open `http://localhost:3000` → `owner@varanasi.com` / `admin123`
+Open `http://localhost:3000` → `owner@dvadtech.com` / `admin123`
 
 ---
 
