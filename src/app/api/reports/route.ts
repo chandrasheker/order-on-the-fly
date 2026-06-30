@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { todayDateString, sumPaidOrderRevenue, orderItemLineTotal, countsTowardRevenue } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import { getStaffPerformanceReport, getTableServiceLog } from "@/lib/staff-performance-service";
 
 export async function GET(req: NextRequest) {
   const session = await requireSession();
@@ -26,6 +27,13 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: "asc" },
   });
 
+  const performance = isManager
+    ? await getStaffPerformanceReport(session.restaurantId, date)
+    : null;
+  const tableLog = isManager
+    ? await getTableServiceLog(session.restaurantId, date)
+    : null;
+
   const summary = {
     date,
     restaurant: session.restaurantName,
@@ -33,12 +41,17 @@ export async function GET(req: NextRequest) {
     totalRevenue: orders.reduce((sum, o) => sum + sumPaidOrderRevenue(o, o.items), 0),
     itemBreakdown: {} as Record<string, { quantity: number; revenue: number }>,
     tableBreakdown: {} as Record<number, { orders: number; revenue: number }>,
+    staffPerformance: performance?.staff ?? [],
+    staffTotals: performance?.totals ?? null,
+    tableServiceLog: tableLog ?? [],
     orders: orders.map((o) => ({
       orderNumber: o.orderNumber,
       table: o.table.number,
       customer: o.customerName,
       status: o.status,
       time: o.createdAt,
+      placedBy: o.placedByName,
+      paidBy: o.paidByName,
       items: o.items.map((i) => ({
         name: i.itemName,
         qty: i.quantity,
@@ -47,6 +60,9 @@ export async function GET(req: NextRequest) {
         status: i.status,
         prepTime: i.prepTimeMinutes,
         served: i.servedAt,
+        servedBy: i.servedByName,
+        preparedBy: i.preparedByName,
+        readyBy: i.readyByName,
         overdue: i.isOverdue,
       })),
       total: sumPaidOrderRevenue(o, o.items),
@@ -74,7 +90,20 @@ export async function GET(req: NextRequest) {
 
   if (format === "csv") {
     const rows = [
-      ["Order #", "Table", "Customer", "Item", "Qty", "Price", "Total", "Status", "Time", "Overdue"].join(","),
+      [
+        "Order #",
+        "Table",
+        "Customer",
+        "Item",
+        "Qty",
+        "Price",
+        "Total",
+        "Status",
+        "Time",
+        "Overdue",
+        "Served By",
+        "Paid By",
+      ].join(","),
     ];
     for (const o of summary.orders) {
       for (const item of o.items) {
@@ -90,7 +119,9 @@ export async function GET(req: NextRequest) {
             o.status,
             new Date(o.time).toLocaleTimeString(),
             item.overdue ? "YES" : "NO",
-          ].join(",")
+            item.servedBy || "",
+            o.paidBy || "",
+          ].join(","),
         );
       }
     }

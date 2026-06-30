@@ -43,6 +43,7 @@ domain / LAN IP so QR codes point to the correct URL.
 - Add menu items with name and price in any category
 - Set **Today's Special** — one active special shown to customers
 - Toggle item availability, print QR codes, download daily reports
+- **Team performance** — track which staff served each table, orders served, payments collected (see **[RESTAURANT_ROADMAP.md](./RESTAURANT_ROADMAP.md)** for the full feature roadmap vs. industry POS systems)
 
 ## Reset Database
 

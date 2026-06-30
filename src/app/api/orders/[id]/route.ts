@@ -153,7 +153,11 @@ export async function PATCH(
     const paidAt = new Date();
     await prisma.order.update({
       where: { id },
-      data: { paidAt },
+      data: {
+        paidAt,
+        paidByUserId: session.id,
+        paidByName: session.name,
+      },
     });
 
     await clearPaymentAlerts(id);
@@ -191,6 +195,8 @@ export async function PATCH(
       data: {
         status: "SERVED",
         servedAt,
+        servedByUserId: session.id,
+        servedByName: session.name,
         ...timeline,
       },
     });
@@ -221,7 +227,11 @@ export async function PATCH(
   if (action === "prepare-item" && itemId) {
     await prisma.orderItem.update({
       where: { id: itemId },
-      data: { status: "PREPARING" },
+      data: {
+        status: "PREPARING",
+        preparedByUserId: session.id,
+        preparedByName: session.name,
+      },
     });
     await prisma.order.update({ where: { id }, data: { status: "PREPARING" } });
     return NextResponse.json({ success: true });
@@ -230,7 +240,11 @@ export async function PATCH(
   if (action === "ready-item" && itemId) {
     await prisma.orderItem.update({
       where: { id: itemId },
-      data: { status: "READY" },
+      data: {
+        status: "READY",
+        readyByUserId: session.id,
+        readyByName: session.name,
+      },
     });
     await prisma.order.update({ where: { id }, data: { status: "READY" } });
     return NextResponse.json({ success: true });
@@ -247,6 +261,8 @@ export async function PATCH(
         data: {
           status: "SERVED",
           servedAt,
+          servedByUserId: session.id,
+          servedByName: session.name,
           ...timeline,
         },
       });
