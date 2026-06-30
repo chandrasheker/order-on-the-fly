@@ -2,11 +2,14 @@ const { execSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { logInfo, logError } = require("./logger");
+const { loadRestaurantConfig } = require("./restaurant-config");
 
 require("dotenv/config");
 require("./ensure-env.js");
 
-const OWNER_EMAIL = "owner@varanasi.com";
+const config = loadRestaurantConfig();
+const OWNER_EMAIL = config.primaryOwner.email;
+const OWNER_PASSWORD = config.primaryOwner.password;
 
 function resolveDbPath() {
   const raw = process.env.DATABASE_URL || "file:./dev.db";
@@ -44,8 +47,8 @@ function needsSeed(dbPath) {
       .get(OWNER_EMAIL);
     db.close();
     if (!owner) return true;
-    // Re-seed when demo login no longer works (stale or corrupted accounts).
-    return !bcrypt.compareSync("admin123", owner.passwordHash);
+    // Re-seed when the configured owner login no longer works (stale or corrupted accounts).
+    return !bcrypt.compareSync(OWNER_PASSWORD, owner.passwordHash);
   } catch {
     return true;
   }
@@ -76,8 +79,8 @@ if (!tableExists(dbPath, "Table")) {
 }
 
 if (needsSeed(dbPath)) {
-  logInfo("init-db", "Seeding restaurant data (Varanasi accounts)");
-  console.log("Seeding restaurant data (Varanasi accounts)...");
+  logInfo("init-db", "Seeding restaurant data", { restaurant: config.restaurant.name });
+  console.log(`Seeding restaurant data (${config.restaurant.name})...`);
   execSync("npx tsx prisma/seed.ts", { stdio: "inherit" });
 } else {
   logInfo("init-db", "Seed skipped; owner account already exists");

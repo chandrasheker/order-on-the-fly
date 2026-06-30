@@ -202,9 +202,6 @@ export function OrderPageClient({ slug, token }: Props) {
   if (loading || tableSession.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] relative">
-        {slug === "varanasi" && (
-          <OrderPageBackground imageUrl="/restaurants/varanasi-hotel-background.jpg" />
-        )}
         <Spinner className="w-8 h-8 relative z-10" />
       </div>
     );
@@ -213,9 +210,6 @@ export function OrderPageClient({ slug, token }: Props) {
   if (!data) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] text-white p-6 relative">
-        {slug === "varanasi" && (
-          <OrderPageBackground imageUrl="/restaurants/varanasi-hotel-background.jpg" />
-        )}
         <div className="text-center max-w-sm space-y-3 relative z-10">
           <p className="font-medium">Could not load this table&apos;s menu.</p>
           <p className="text-sm text-zinc-400">

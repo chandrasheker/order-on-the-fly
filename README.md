@@ -2,16 +2,35 @@
 
 QR-powered table ordering for restaurants. Customers scan, order, and play games while waiting. Staff manage orders with live timers and alerts.
 
-## Quick Start
+TableTap is **fully generic** — launch it for any restaurant by editing one
+config file. Nothing is hard-coded to a specific brand.
+
+## Quick Start (demo restaurant)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open **https://varanasihotel.duckdns.org** (or `http://localhost:3000` when running locally) and sign in with your staff credentials.
+Open `http://localhost:3000` and sign in with the demo staff credentials.
 
-Set `NEXT_PUBLIC_APP_URL` in `.env` to your public domain so QR codes point to the correct URL.
+## Make it your own restaurant (e.g. PistaHouse)
+
+One command sets up branding, staff, tables, and menu:
+
+```bash
+npm run setup                # interactive wizard
+# or use a ready-made config:
+npm run setup -- --from examples/pistahouse.config.json --start
+```
+
+See **[RESTAURANT_SETUP.md](./RESTAURANT_SETUP.md)** for the full list of inputs
+(name, logo, owner/manager/staff, menu, tables, rewards) and all setup options.
+The active config lives in `restaurant.config.json` (copy from
+`restaurant.config.example.json`).
+
+Set `NEXT_PUBLIC_APP_URL` in `.env` (or `app.url` in the config) to your public
+domain / LAN IP so QR codes point to the correct URL.
 
 ## Access
 
@@ -46,4 +65,4 @@ Server helper scripts live in `scripts/deploy/` (systemd + nginx):
 
 Run on the server from the repo root, e.g. `bash scripts/deploy/restart-app.sh`.
 
-Set `NEXT_PUBLIC_APP_URL` to your public domain (e.g. `https://varanasihotel.duckdns.org`) before building. Production start: `node scripts/start-server.js --pull --no-clean --prod`.
+Set `NEXT_PUBLIC_APP_URL` to your public domain (or set `app.url` in `restaurant.config.json`) before building. Production start: `node scripts/start-server.js --pull --no-clean --prod`.

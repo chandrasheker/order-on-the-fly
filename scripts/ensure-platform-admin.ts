@@ -1,11 +1,17 @@
 import "dotenv/config";
+import { createRequire } from "node:module";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { getDatabaseUrl } from "../src/lib/db-url";
 
-const ADMIN_EMAIL = "admin@varanasi.com";
-const ADMIN_PASSWORD = "admin@varanasi";
+const require = createRequire(import.meta.url);
+const { loadRestaurantConfig } = require("../scripts/restaurant-config.js");
+
+const config = loadRestaurantConfig();
+const ADMIN_EMAIL = config.platformAdmin.email;
+const ADMIN_PASSWORD = config.platformAdmin.password;
+const ADMIN_NAME = config.platformAdmin.name;
 
 const adapter = new PrismaBetterSqlite3({ url: getDatabaseUrl() });
 const prisma = new PrismaClient({ adapter });
@@ -21,7 +27,7 @@ async function main() {
       data: {
         email: ADMIN_EMAIL,
         passwordHash,
-        name: "Platform Admin",
+        name: ADMIN_NAME,
       },
     });
     console.log(`Platform admin ready: ${ADMIN_EMAIL}`);

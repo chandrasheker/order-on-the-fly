@@ -35,7 +35,7 @@ export function getBaseUrl() {
   const raw =
     process.env.NEXT_PUBLIC_APP_URL ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-    "https://varanasihotel.duckdns.org";
+    "http://localhost:3000";
   return raw.replace(/\/+$/, "");
 }
 

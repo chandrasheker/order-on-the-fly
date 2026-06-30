@@ -1,0 +1,85 @@
+{
+  "app": {
+    "name": "PistaHouse Ordering",
+    "url": "http://localhost:3000"
+  },
+  "restaurant": {
+    "name": "PistaHouse",
+    "slug": "pistahouse",
+    "logoUrl": null,
+    "backgroundImageUrl": null,
+    "tableCount": 12,
+    "defaultMaxSessions": 3,
+    "rewards": {
+      "thresholdTea": 300,
+      "thresholdBeverage": 600,
+      "teaLabel": "Free Irani Chai (next visit)",
+      "beverageLabel": "Free Falooda (next visit)"
+    }
+  },
+  "platformAdmin": {
+    "name": "PistaHouse Admin",
+    "email": "admin@pistahouse.com",
+    "password": "ChangeThisAdminPass!"
+  },
+  "staff": {
+    "domain": "pistahouse.com",
+    "defaultPassword": "ChangeThisStaffPass!",
+    "owners": [
+      { "name": "Owner Name", "email": "owner@pistahouse.com", "password": "OwnerStrongPass!" }
+    ],
+    "managers": [
+      { "name": "Manager One" },
+      { "name": "Manager Two" }
+    ],
+    "cooks": [
+      { "name": "Head Chef" },
+      { "name": "Cook Two" },
+      { "name": "Cook Three" }
+    ],
+    "servers": [
+      { "name": "Server One" },
+      { "name": "Server Two" },
+      { "name": "Server Three" },
+      { "name": "Server Four" }
+    ]
+  },
+  "menu": [
+    { "name": "Today's Special", "icon": "⭐", "items": [] },
+    {
+      "name": "Biryani",
+      "icon": "🍗",
+      "items": [
+        { "name": "Chicken Dum Biryani", "description": "Signature Hyderabadi biryani", "price": 280, "prepTimeMinutes": 20, "isVeg": false, "isSpicy": true },
+        { "name": "Mutton Biryani", "description": "Slow-cooked tender mutton", "price": 360, "prepTimeMinutes": 25, "isVeg": false, "isSpicy": true },
+        { "name": "Veg Biryani", "description": "Fragrant basmati with veggies", "price": 200, "prepTimeMinutes": 18, "isVeg": true }
+      ]
+    },
+    {
+      "name": "Bakery",
+      "icon": "🥐",
+      "items": [
+        { "name": "Osmania Biscuits (250g)", "description": "Classic Hyderabadi tea biscuits", "price": 90, "prepTimeMinutes": 2, "isVeg": true },
+        { "name": "Fruit Cake Slice", "description": "Rich and moist", "price": 70, "prepTimeMinutes": 2, "isVeg": true },
+        { "name": "Veg Puff", "description": "Flaky pastry with spiced filling", "price": 40, "prepTimeMinutes": 3, "isVeg": true }
+      ]
+    },
+    {
+      "name": "Beverages",
+      "icon": "🥤",
+      "items": [
+        { "name": "Irani Chai", "description": "Signature creamy tea", "price": 40, "prepTimeMinutes": 4, "isVeg": true },
+        { "name": "Falooda", "description": "Rose, vermicelli & ice cream", "price": 140, "prepTimeMinutes": 6, "isVeg": true },
+        { "name": "Fresh Lime Soda", "description": "Sweet or salted", "price": 60, "prepTimeMinutes": 3, "isVeg": true }
+      ]
+    },
+    {
+      "name": "Desserts",
+      "icon": "🍰",
+      "items": [
+        { "name": "Qubani Ka Meetha", "description": "Apricot dessert with cream", "price": 120, "prepTimeMinutes": 4, "isVeg": true },
+        { "name": "Double Ka Meetha", "description": "Hyderabadi bread pudding", "price": 110, "prepTimeMinutes": 4, "isVeg": true }
+      ]
+    }
+  ]
+}
