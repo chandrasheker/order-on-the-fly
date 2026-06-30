@@ -3,7 +3,8 @@
 TableTap is fully generic. To launch it for **any** restaurant (e.g. PistaHouse),
 you only fill **one config file** and run **one command** — no code changes.
 
-> **Full setup (env, Docker, premium, Swiggy/Zomato, production):** see **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**
+> **Full setup (env, Docker, premium, Swiggy/Zomato, production):** see **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**  
+> **Bring-up errors (git clone → running):** see **[BRINGUP_TROUBLESHOOTING.md](./BRINGUP_TROUBLESHOOTING.md)**
 
 ---
 

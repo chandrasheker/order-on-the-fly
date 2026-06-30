@@ -9,6 +9,7 @@ Everything you need to install, configure, and launch TableTap for a restaurant 
 | Document | Purpose |
 |----------|---------|
 | **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** (this file) | End-to-end setup — dev, prod, every feature |
+| **[BRINGUP_TROUBLESHOOTING.md](./BRINGUP_TROUBLESHOOTING.md)** | Git clone → running — known errors & mitigations |
 | **[RESTAURANT_SETUP.md](./RESTAURANT_SETUP.md)** | Restaurant config file & wizard |
 | **[PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md)** | Core vs premium modules & super admin |
 | **[AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md)** | Swiggy & Zomato automatic sync |
@@ -584,6 +585,10 @@ Webhook auth: `Authorization: Bearer <webhook-secret-from-admin-ui>`
 ---
 
 ## 13. Troubleshooting
+
+**Full bring-up runbook (git clone → app running, every known error):** **[BRINGUP_TROUBLESHOOTING.md](./BRINGUP_TROUBLESHOOTING.md)**
+
+Quick fixes:
 
 | Problem | Fix |
 |---------|-----|

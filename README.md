@@ -8,7 +8,8 @@ TableTap is **fully generic** — launch it for any restaurant by editing one co
 
 | Guide | What's inside |
 |-------|-----------------|
-| **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** | **Complete setup** — dev, Docker, prod, env vars, every feature |
+| **[BRINGUP_TROUBLESHOOTING.md](./BRINGUP_TROUBLESHOOTING.md)** | **Git clone → app up** — golden path + every known error & fix |
+| **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** | Complete setup — dev, Docker, prod, env vars, every feature |
 | [RESTAURANT_SETUP.md](./RESTAURANT_SETUP.md) | Restaurant config wizard & `restaurant.config.json` |
 | [PREMIUM_FEATURES.md](./PREMIUM_FEATURES.md) | Core vs premium modules & super admin |
 | [AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md) | Swiggy & Zomato automatic sync |
@@ -22,6 +23,8 @@ npm run dev
 ```
 
 Open `http://localhost:3000` and sign in with the demo staff credentials.
+
+**Something failed?** Work through **[BRINGUP_TROUBLESHOOTING.md](./BRINGUP_TROUBLESHOOTING.md)** — step-by-step from clone to running, with error messages and fixes.
 
 ## Make it your own restaurant (e.g. PistaHouse)
 

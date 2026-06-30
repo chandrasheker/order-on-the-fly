@@ -76,6 +76,7 @@ The presentation script:
 
 Hand off these guides after the meeting:
 
+- [BRINGUP_TROUBLESHOOTING.md](../BRINGUP_TROUBLESHOOTING.md) — git clone to running app, known errors
 - [SETUP_GUIDE.md](../SETUP_GUIDE.md) — complete technical setup
 - [RESTAURANT_SETUP.md](../RESTAURANT_SETUP.md) — config file & wizard
 - [AGGREGATOR_SETUP.md](../AGGREGATOR_SETUP.md) — Swiggy/Zomato onboarding
