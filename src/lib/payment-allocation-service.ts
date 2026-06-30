@@ -85,6 +85,38 @@ function computeSummaryFromOrder(
   };
 }
 
+export async function getOrderPaymentSummaries(orderIds: string[]) {
+  if (orderIds.length === 0) {
+    return new Map<string, ReturnType<typeof computeSummaryFromOrder>>();
+  }
+
+  const orders = await prisma.order.findMany({
+    where: { id: { in: orderIds } },
+    include: {
+      items: true,
+      payments: { include: { allocations: true } },
+    },
+  });
+
+  const summaries = new Map<string, ReturnType<typeof computeSummaryFromOrder>>();
+  for (const order of orders) {
+    const paidByItem = new Map<string, number>();
+    for (const item of order.items) {
+      paidByItem.set(item.id, 0);
+    }
+    for (const payment of order.payments) {
+      for (const allocation of payment.allocations) {
+        paidByItem.set(
+          allocation.orderItemId,
+          (paidByItem.get(allocation.orderItemId) ?? 0) + allocation.amount,
+        );
+      }
+    }
+    summaries.set(order.id, computeSummaryFromOrder(order, paidByItem));
+  }
+  return summaries;
+}
+
 export async function getOrderPaymentSummary(orderId: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },

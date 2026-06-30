@@ -5,12 +5,13 @@ import {
   getPendingPaymentOrders,
   getCompletedOrders,
   getMissedTimelineItems,
+  checkOverdueItems,
 } from "@/lib/order-service";
 import { todayDateString, sumOrderRevenue, sumPaidOrderRevenue } from "@/lib/utils";
 import { getTabsForRole } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { logApiRequest, logInfo } from "@/lib/logger";
-import { getOrderPaymentSummary } from "@/lib/payment-allocation-service";
+import { getOrderPaymentSummaries } from "@/lib/payment-allocation-service";
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import { ensureServiceTables } from "@/lib/service-tables";
 
@@ -22,16 +23,21 @@ export async function GET() {
   }
 
   const today = todayDateString();
-  await ensureServiceTables(session.restaurantId, session.restaurantSlug);
   const features = await getRestaurantFeatureFlags(session.restaurantId);
+
+  await ensureServiceTables(session.restaurantId, session.restaurantSlug);
   if (features.aggregator_inbox) {
     const { ensureAggregatorConnectionRows } = await import("@/lib/aggregator-connection-service");
     await ensureAggregatorConnectionRows(session.restaurantId);
   }
 
+  await checkOverdueItems(session.restaurantId);
+
+  const skipOverdue = { skipOverdueCheck: true as const };
+
   const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests, todayPaymentSum] =
     await Promise.all([
-      getActiveOrders(session.restaurantId),
+      getActiveOrders(session.restaurantId, skipOverdue),
       getPendingPaymentOrders(session.restaurantId),
       getCompletedOrders(session.restaurantId),
       prisma.alert.findMany({
@@ -42,7 +48,7 @@ export async function GET() {
       prisma.order.count({
         where: { restaurantId: session.restaurantId, date: today },
       }),
-      getMissedTimelineItems(session.restaurantId),
+      getMissedTimelineItems(session.restaurantId, skipOverdue),
       prisma.tableSwitchRequest.findMany({
         where: { restaurantId: session.restaurantId, status: "PENDING" },
         orderBy: { requestedAt: "asc" },
@@ -77,34 +83,33 @@ export async function GET() {
       paidTotal: sumPaidOrderRevenue(o, o.items),
     }));
 
-  const pendingWithPayments = (
-    await Promise.all(
-      withTotal(pendingOrders).map(async (order) => ({
+  const pendingWithTotals = withTotal(pendingOrders);
+  let pendingWithPayments = pendingWithTotals;
+
+  if (features.split_bill && pendingWithTotals.length > 0) {
+    const summaries = await getOrderPaymentSummaries(pendingWithTotals.map((o) => o.id));
+    pendingWithPayments = pendingWithTotals
+      .map((order) => ({
         ...order,
-        paymentSummary: features.split_bill
-          ? await getOrderPaymentSummary(order.id)
-          : null,
-      })),
-    )
-  ).filter((order) => {
-    if (features.split_bill) {
-      return (order.paymentSummary?.remaining ?? order.total ?? 0) > 0;
-    }
-    return !order.paidAt;
-  });
+        paymentSummary: summaries.get(order.id) ?? null,
+      }))
+      .filter((order) => (order.paymentSummary?.remaining ?? order.total ?? 0) > 0);
+  } else {
+    pendingWithPayments = pendingWithTotals.filter((order) => !order.paidAt);
+  }
 
   const roleTabs = getTabsForRole(session.role).filter((tab) => {
     if (tab === "offline" && !features.phone_orders) return false;
     return true;
   });
 
-  logInfo("api:staff/dashboard", "Dashboard loaded", {
-    restaurantId: session.restaurantId,
-    activeOrders: orders.length,
-    pendingPayments: pendingWithPayments.length,
-    completedOrders: completedOrders.length,
-    unreadAlerts: alerts.length,
-  });
+  if (process.env.DEBUG === "1") {
+    logInfo("api:staff/dashboard", "Dashboard loaded", {
+      restaurantId: session.restaurantId,
+      activeOrders: orders.length,
+      pendingPayments: pendingWithPayments.length,
+    });
+  }
 
   return NextResponse.json({
     orders,

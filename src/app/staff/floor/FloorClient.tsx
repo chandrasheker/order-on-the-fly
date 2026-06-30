@@ -57,28 +57,40 @@ export default function FloorPlanPage() {
   const [selected, setSelected] = useState<FloorTable | null>(null);
   const [role, setRole] = useState("SERVER");
 
-  const load = useCallback(async () => {
-    const [meRes, floorRes] = await Promise.all([
-      fetch("/api/auth/me"),
-      fetch("/api/floor"),
-    ]);
-    if (meRes.ok) {
-      const me = await meRes.json();
-      setRole(me.user?.role ?? "SERVER");
-    }
+  const loadFloor = useCallback(async () => {
+    const floorRes = await fetch("/api/floor");
     if (floorRes.ok) {
       const data = await floorRes.json();
       setTables(data.tables ?? []);
       setServers(data.servers ?? []);
     }
-    setLoading(false);
   }, []);
 
+  const load = useCallback(async () => {
+    const meRes = await fetch("/api/auth/me");
+    if (meRes.ok) {
+      const me = await meRes.json();
+      setRole(me.user?.role ?? "SERVER");
+    }
+    await loadFloor();
+    setLoading(false);
+  }, [loadFloor]);
+
   useEffect(() => {
-    load();
-    const poll = setInterval(load, 5000);
-    return () => clearInterval(poll);
-  }, [load]);
+    void load();
+    const poll = setInterval(() => {
+      if (document.hidden) return;
+      void loadFloor();
+    }, 8000);
+    const onVisible = () => {
+      if (!document.hidden) void loadFloor();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [load, loadFloor]);
 
   const patchTable = async (tableId: string, body: Record<string, unknown>) => {
     const res = await fetch("/api/floor", {

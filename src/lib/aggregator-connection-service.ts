@@ -15,6 +15,10 @@ import { createChannelOrder, type AggregatorItemInput } from "@/lib/aggregator-o
 import { buildKitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { scheduleMenuSync } from "@/lib/aggregator-sync-service";
 import { OrderCreationError } from "@/lib/order-service";
+import {
+  isAggregatorRowsReady,
+  markAggregatorRowsReady,
+} from "@/lib/restaurant-setup-cache";
 
 const PLATFORM_CHANNEL: Record<AggregatorPlatform, OrderChannel> = {
   SWIGGY: "SWIGGY",
@@ -54,6 +58,8 @@ export async function getAggregatorConnectionsForRestaurant(restaurantId: string
 }
 
 export async function ensureAggregatorConnectionRows(restaurantId: string) {
+  if (isAggregatorRowsReady(restaurantId)) return;
+
   for (const platform of ["SWIGGY", "ZOMATO"] as AggregatorPlatform[]) {
     await prisma.aggregatorConnection.upsert({
       where: { restaurantId_platform: { restaurantId, platform } },
@@ -61,6 +67,8 @@ export async function ensureAggregatorConnectionRows(restaurantId: string) {
       update: {},
     });
   }
+
+  markAggregatorRowsReady(restaurantId);
 }
 
 export async function saveAggregatorCredentials(params: {

@@ -204,13 +204,29 @@ export function StaffDashboard() {
     return () => clearInterval(t);
   }, []);
 
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const dashRes = await fetch("/api/staff/dashboard");
+      if (!dashRes.ok) return;
+      const data = await dashRes.json();
+      setOrders(data.orders);
+      setPendingOrders(data.pendingOrders ?? []);
+      setCompletedOrders(data.completedOrders ?? []);
+      setAllowedTabs(data.permissions?.tabs ?? ["active"]);
+      setAlerts(data.alerts);
+      setMissedTimeline(data.missedTimeline ?? []);
+      setMissedSummary(data.missedSummary ?? []);
+      setTableSwitchRequests(data.tableSwitchRequests ?? []);
+      setStats(data.stats);
+      setFeatures(data.features ?? {});
+    } catch (error) {
+      console.error("Dashboard fetch failed:", error);
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
-      const [meRes, dashRes] = await Promise.all([
-        fetch("/api/auth/me"),
-        fetch("/api/staff/dashboard"),
-      ]);
-
+      const meRes = await fetch("/api/auth/me");
       if (!meRes.ok) {
         router.push("/");
         return;
@@ -221,32 +237,29 @@ export function StaffDashboard() {
         return;
       }
       setUser(me.user);
-
-      if (dashRes.ok) {
-        const data = await dashRes.json();
-        setOrders(data.orders);
-        setPendingOrders(data.pendingOrders ?? []);
-        setCompletedOrders(data.completedOrders ?? []);
-        setAllowedTabs(data.permissions?.tabs ?? ["active"]);
-        setAlerts(data.alerts);
-        setMissedTimeline(data.missedTimeline ?? []);
-        setMissedSummary(data.missedSummary ?? []);
-        setTableSwitchRequests(data.tableSwitchRequests ?? []);
-        setStats(data.stats);
-        setFeatures(data.features ?? {});
-      }
+      await fetchDashboard();
     } catch (error) {
       console.error("Dashboard fetch failed:", error);
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, fetchDashboard]);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+    void fetchData();
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      void fetchDashboard();
+    }, 8000);
+    const onVisible = () => {
+      if (!document.hidden) void fetchDashboard();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [fetchData, fetchDashboard]);
 
   const updateItem = async (orderId: string, itemId: string, action: string) => {
     await fetch(`/api/orders/${orderId}`, {

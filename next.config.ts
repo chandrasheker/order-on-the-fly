@@ -7,11 +7,6 @@ const nextConfig: NextConfig = {
     "pg",
     "@prisma/adapter-pg",
   ],
-  logging: {
-    fetches: {
-      fullUrl: true,
-    },
-  },
 };
 
 export default nextConfig;

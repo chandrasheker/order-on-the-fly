@@ -7,7 +7,7 @@ import {
 } from "@/lib/feature-catalog";
 
 /** In-memory cache — toggles apply within this window without app restart. */
-const CACHE_TTL_MS = 10_000;
+const CACHE_TTL_MS = 60_000;
 
 type CacheEntry = {
   expiresAt: number;

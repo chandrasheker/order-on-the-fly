@@ -258,7 +258,18 @@ export async function createOrderForTable(params: {
   return { order, total };
 }
 
-export async function checkOverdueItems(restaurantId: string) {
+/** Throttle overdue scans — dashboard polls frequently. */
+const overdueLastRun = new Map<string, number>();
+const OVERDUE_CHECK_MS = 15_000;
+
+export async function checkOverdueItems(restaurantId: string, force = false) {
+  const nowMs = Date.now();
+  const last = overdueLastRun.get(restaurantId) ?? 0;
+  if (!force && nowMs - last < OVERDUE_CHECK_MS) {
+    return 0;
+  }
+  overdueLastRun.set(restaurantId, nowMs);
+
   const now = new Date();
   const overdueItems = await prisma.orderItem.findMany({
     where: {
@@ -309,8 +320,10 @@ export async function checkOverdueItems(restaurantId: string) {
   return overdueItems.length;
 }
 
-export async function getActiveOrders(restaurantId: string) {
-  await checkOverdueItems(restaurantId);
+export async function getActiveOrders(restaurantId: string, options?: { skipOverdueCheck?: boolean }) {
+  if (!options?.skipOverdueCheck) {
+    await checkOverdueItems(restaurantId);
+  }
 
   return prisma.order.findMany({
     where: {
@@ -367,7 +380,7 @@ export async function getPendingPaymentOrders(restaurantId: string) {
   return orders.filter((o) => sumOrderRevenue(o.items) > 0);
 }
 
-export async function getCompletedOrders(restaurantId: string) {
+export async function getCompletedOrders(restaurantId: string, limit = 50) {
   return prisma.order.findMany({
     where: {
       restaurantId,
@@ -380,11 +393,14 @@ export async function getCompletedOrders(restaurantId: string) {
       items: true,
     },
     orderBy: { paidAt: "desc" },
+    take: limit,
   });
 }
 
-export async function getMissedTimelineItems(restaurantId: string) {
-  await checkOverdueItems(restaurantId);
+export async function getMissedTimelineItems(restaurantId: string, options?: { skipOverdueCheck?: boolean }) {
+  if (!options?.skipOverdueCheck) {
+    await checkOverdueItems(restaurantId);
+  }
 
   const items = await prisma.orderItem.findMany({
     where: {

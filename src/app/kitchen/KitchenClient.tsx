@@ -54,32 +54,42 @@ export default function KitchenClient() {
   const [now, setNow] = useState(Date.now());
   const [role, setRole] = useState<string>("COOK");
 
-  const load = useCallback(async () => {
-    const [meRes, dataRes] = await Promise.all([
-      fetch("/api/auth/me"),
-      fetch(`/api/kitchen/orders?station=${activeStation}`),
-    ]);
-    if (meRes.ok) {
-      const me = await meRes.json();
-      setRole(me.user?.role ?? "COOK");
-    }
+  const loadKitchen = useCallback(async () => {
+    const dataRes = await fetch(`/api/kitchen/orders?station=${activeStation}`);
     if (dataRes.ok) {
       const data = await dataRes.json();
       setStations(data.stations ?? []);
       setTickets(data.tickets ?? []);
     }
-    setLoading(false);
   }, [activeStation]);
 
+  const load = useCallback(async () => {
+    const [meRes] = await Promise.all([fetch("/api/auth/me")]);
+    if (meRes.ok) {
+      const me = await meRes.json();
+      setRole(me.user?.role ?? "COOK");
+    }
+    await loadKitchen();
+    setLoading(false);
+  }, [loadKitchen]);
+
   useEffect(() => {
-    load();
-    const poll = setInterval(load, 4000);
+    void load();
+    const poll = setInterval(() => {
+      if (document.hidden) return;
+      void loadKitchen();
+    }, 6000);
     const tick = setInterval(() => setNow(Date.now()), 1000);
+    const onVisible = () => {
+      if (!document.hidden) void loadKitchen();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearInterval(poll);
       clearInterval(tick);
+      document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [load]);
+  }, [load, loadKitchen]);
 
   const updateItem = async (orderId: string, itemId: string, action: string) => {
     await fetch(`/api/orders/${orderId}`, {

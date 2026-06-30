@@ -2,8 +2,14 @@ import { prisma } from "@/lib/prisma";
 import { SERVICE_TABLE_DEFS } from "@/lib/order-channel";
 import type { OrderChannel } from "@/generated/prisma/client";
 import { randomBytes } from "node:crypto";
+import {
+  isServiceTablesReady,
+  markServiceTablesReady,
+} from "@/lib/restaurant-setup-cache";
 
 export async function ensureServiceTables(restaurantId: string, slug: string) {
+  if (isServiceTablesReady(restaurantId)) return;
+
   for (const def of SERVICE_TABLE_DEFS) {
     const existing = await prisma.table.findFirst({
       where: { restaurantId, number: def.number },
@@ -30,6 +36,8 @@ export async function ensureServiceTables(restaurantId: string, slug: string) {
       },
     });
   }
+
+  markServiceTablesReady(restaurantId);
 }
 
 export async function getServiceTableId(
