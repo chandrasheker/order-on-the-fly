@@ -81,6 +81,102 @@ export async function getNextOrderNumber(restaurantId: string) {
   return (last?.orderNumber ?? 0) + 1;
 }
 
+export type CreateOrderItemInput = {
+  menuItemId: string;
+  quantity: number;
+  notes?: string;
+};
+
+export class OrderCreationError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status = 400, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export async function createOrderForTable(params: {
+  tableId: string;
+  restaurantId: string;
+  customerName?: string | null;
+  items: CreateOrderItemInput[];
+}) {
+  const { tableId, restaurantId, customerName, items } = params;
+
+  if (!items.length) {
+    throw new OrderCreationError("Order must include at least one item");
+  }
+
+  const table = await prisma.table.findFirst({
+    where: { id: tableId, restaurantId, isActive: true },
+    include: { restaurant: true },
+  });
+
+  if (!table) {
+    throw new OrderCreationError("Table not found", 404);
+  }
+
+  const { isTablePaymentBlocked } = await import("@/lib/payment-service");
+  if (await isTablePaymentBlocked(table.id)) {
+    throw new OrderCreationError(
+      "This table has an unpaid bill. Collect payment before placing a new order.",
+      403,
+      "TABLE_PAYMENT_BLOCKED",
+    );
+  }
+
+  const menuItems = await prisma.menuItem.findMany({
+    where: {
+      id: { in: items.map((i) => i.menuItemId) },
+      isAvailable: true,
+      category: { restaurantId },
+    },
+  });
+
+  if (menuItems.length !== items.length) {
+    throw new OrderCreationError("Some items are unavailable", 400);
+  }
+
+  const orderNumber = await getNextOrderNumber(restaurantId);
+  const now = new Date();
+
+  const orderItemsData = items.map((item) => {
+    const menuItem = menuItems.find((m) => m.id === item.menuItemId)!;
+    const expectedReadyAt = new Date(now.getTime() + menuItem.prepTimeMinutes * 60 * 1000);
+    return {
+      menuItemId: menuItem.id,
+      quantity: item.quantity,
+      prepTimeMinutes: menuItem.prepTimeMinutes,
+      expectedReadyAt,
+      unitPrice: menuItem.price,
+      itemName: menuItem.name,
+      notes: item.notes,
+    };
+  });
+
+  const order = await prisma.order.create({
+    data: {
+      orderNumber,
+      customerName: customerName?.trim() || null,
+      tableId: table.id,
+      restaurantId: table.restaurantId,
+      date: todayDateString(),
+      status: "PENDING",
+      items: { create: orderItemsData },
+    },
+    include: {
+      items: true,
+      table: true,
+    },
+  });
+
+  const total = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  return { order, total };
+}
+
 export async function checkOverdueItems(restaurantId: string) {
   const now = new Date();
   const overdueItems = await prisma.orderItem.findMany({
