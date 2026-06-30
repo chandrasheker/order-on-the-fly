@@ -102,20 +102,30 @@ Managers get URL + secret from **Admin → Integrations** (`GET /api/integration
 
 ---
 
-## Roadmap features (early-access toggles)
+### Roadmap features (now implemented)
 
-Toggleable in super admin for future billing; **UI/API stubs only** until built.
+Enable from super admin (`/platform` → Premium features) or CLI:
 
-| Feature key | Problem solved |
-|-------------|----------------|
-| `inventory_86` | Auto-86 when stock hits zero — menu updates instantly |
-| `labor_clock` | Shift clock-in/out + sales per labor hour (SPLH) |
-| `reservations` | Waitlist + SMS when table ready |
-| `tip_pooling` | Fair tip splits with payroll export |
-| `guest_crm` | Repeat guest recognition by phone |
-| `audit_log` | Manager approval trail for voids and comps |
+```bash
+npx tsx scripts/enable-premium-features.ts --slug varanasi --features inventory_86,labor_clock,reservations,tip_pooling,guest_crm,audit_log
+```
 
-See **[RESTAURANT_ROADMAP.md](./RESTAURANT_ROADMAP.md)** for full product direction.
+| Feature key | What it solves | Route / location |
+|-------------|----------------|------------------|
+| `inventory_86` | Stock tracking — auto-86 when quantity hits 0 | Admin → **Operations** → Inventory |
+| `labor_clock` | Shift clock-in/out + SPLH (sales per labor hour) | Admin → **Operations** → Labor; staff clock in/out |
+| `reservations` | Waitlist + notify guest when table ready | Admin → **Operations** → Reservations |
+| `tip_pooling` | Tips on mark-paid + payroll export | Admin → **Operations** → Tips |
+| `guest_crm` | Repeat guest profiles by phone | Admin → **Operations** → Guest CRM |
+| `audit_log` | Manager approval for server/cook rejections + audit trail | Admin → **Operations** → Audit log |
+
+**SMS for reservations:** set `SMS_WEBHOOK_URL` in `.env` to POST `{ to, message }` when notifying guests.
+
+---
+
+### Roadmap features (early-access toggles — legacy note)
+
+Previously listed as "coming soon" — all six modules above are **live** when toggled on.
 
 ---
 

@@ -60,7 +60,7 @@ async function main() {
   await prisma.restaurant.deleteMany();
 
   const demoPremiumFlags = Object.fromEntries(
-    FEATURE_CATALOG.filter((f) => f.tier === "premium").map((f) => [f.key, true])
+    FEATURE_CATALOG.filter((f) => f.tier === "premium" || f.tier === "roadmap").map((f) => [f.key, true])
   );
 
   const restaurant = await prisma.restaurant.create({

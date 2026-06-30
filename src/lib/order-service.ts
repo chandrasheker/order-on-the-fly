@@ -5,6 +5,9 @@ import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
 import { channelForTableKind, isServiceTable } from "@/lib/order-channel";
 import { scheduleAggregatorStatusPush } from "@/lib/aggregator-sync-service";
+import { decrementInventoryForOrder } from "@/lib/inventory-service";
+import { touchGuestProfile } from "@/lib/guest-crm-service";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import type { OrderChannel } from "@/generated/prisma/client";
 
 export async function clearAlertsForOrderItem(orderItemId: string) {
@@ -183,6 +186,22 @@ export async function createOrderForTable(params: {
     throw new OrderCreationError("Some items are unavailable", 400);
   }
 
+  const inventoryOn = await isFeatureEnabled(restaurantId, "inventory_86");
+  if (inventoryOn) {
+    for (const item of items) {
+      const menuItem = menuItems.find((m) => m.id === item.menuItemId)!;
+      if (menuItem.trackInventory && menuItem.stockQuantity != null) {
+        if (menuItem.stockQuantity < item.quantity) {
+          throw new OrderCreationError(
+            `${menuItem.name} is out of stock (${menuItem.stockQuantity} left)`,
+            400,
+            "OUT_OF_STOCK",
+          );
+        }
+      }
+    }
+  }
+
   const orderNumber = await getNextOrderNumber(restaurantId);
   const now = new Date();
 
@@ -223,6 +242,19 @@ export async function createOrderForTable(params: {
   });
 
   const total = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+
+  void decrementInventoryForOrder(
+    table.restaurantId,
+    items.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity }))
+  );
+
+  void touchGuestProfile({
+    restaurantId: table.restaurantId,
+    phone: customerPhone,
+    name: customerName,
+    orderTotal: total,
+  });
+
   return { order, total };
 }
 

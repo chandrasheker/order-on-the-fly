@@ -178,7 +178,6 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     problem: "Item runs out → menu hides it instantly; no angry guests.",
     tier: "roadmap",
     defaultEnabled: false,
-    roadmap: true,
   },
   {
     key: "labor_clock",
@@ -186,7 +185,6 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     problem: "Tie sales to labor hours for staffing decisions.",
     tier: "roadmap",
     defaultEnabled: false,
-    roadmap: true,
   },
   {
     key: "reservations",
@@ -194,7 +192,6 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     problem: "Queue phone bookings and SMS when table is ready.",
     tier: "roadmap",
     defaultEnabled: false,
-    roadmap: true,
   },
   {
     key: "aggregator_inbox",
@@ -209,7 +206,6 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     problem: "Fair tip splits with export for payroll.",
     tier: "roadmap",
     defaultEnabled: false,
-    roadmap: true,
   },
   {
     key: "guest_crm",
@@ -217,7 +213,6 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     problem: "Recognize regulars by phone and target rewards.",
     tier: "roadmap",
     defaultEnabled: false,
-    roadmap: true,
   },
   {
     key: "audit_log",
@@ -225,7 +220,6 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     problem: "Manager approval trail for voids, comps, and discounts.",
     tier: "roadmap",
     defaultEnabled: false,
-    roadmap: true,
   },
 ];
 

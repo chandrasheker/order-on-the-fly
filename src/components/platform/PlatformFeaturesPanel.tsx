@@ -174,9 +174,15 @@ export function PlatformFeaturesPanel() {
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-sm">{feature.name}</span>
-                      <Badge className="bg-violet-500/15 text-violet-300 border-violet-500/30">
-                        Coming soon
-                      </Badge>
+                      {feature.roadmap ? (
+                        <Badge className="bg-violet-500/15 text-violet-300 border-violet-500/30">
+                          Coming soon
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30">
+                          Live
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-xs text-zinc-500 mt-1">{feature.problem}</p>
                   </div>

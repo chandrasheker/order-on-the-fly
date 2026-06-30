@@ -26,7 +26,9 @@ async function main() {
     process.exit(1);
   }
 
-  const premiumKeys = FEATURE_CATALOG.filter((f) => f.tier === "premium").map((f) => f.key);
+  const premiumKeys = FEATURE_CATALOG.filter((f) => f.tier === "premium" || f.tier === "roadmap").map(
+    (f) => f.key
+  );
   const selected: Record<string, boolean> = all
     ? Object.fromEntries(premiumKeys.map((k) => [k, true]))
     : Object.fromEntries(

@@ -71,6 +71,23 @@ enum AggregatorConnectionStatus {
   ERROR
 }
 
+enum ReservationStatus {
+  WAITLIST
+  CONFIRMED
+  NOTIFIED
+  SEATED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AuditActionType {
+  REJECT_ITEM
+  VOID_ORDER
+  COMP
+  DISCOUNT
+  STOCK_ADJUST
+}
+
 model Restaurant {
   id                    String         @id @default(cuid())
   name                  String
@@ -108,6 +125,11 @@ model Restaurant {
   kitchenStations       KitchenStation[]
   payments              Payment[]
   aggregatorConnections AggregatorConnection[]
+  reservations          Reservation[]
+  shiftClocks           ShiftClock[]
+  guestProfiles         GuestProfile[]
+  auditLogs             AuditLog[]
+  tipPoolPayouts        TipPoolPayout[]
 }
 
 model User {
@@ -121,6 +143,7 @@ model User {
   restaurantId String
   restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   assignedTables Table[]    @relation("TableServer")
+  shiftClocks    ShiftClock[]
   createdAt      DateTime   @default(now())
 
   @@unique([restaurantId, slotKey])
@@ -160,6 +183,7 @@ model Table {
   payments     Payment[]
   sourceSwitchRequests TableSwitchRequest[] @relation("SourceTableSwitchRequests")
   targetSwitchRequests TableSwitchRequest[] @relation("TargetTableSwitchRequests")
+  reservations         Reservation[]
 
   @@unique([restaurantId, number])
 }
@@ -228,6 +252,9 @@ model MenuItem {
   sortOrder       Int          @default(0)
   swiggyItemId    String?
   zomatoItemId    String?
+  trackInventory  Boolean      @default(false)
+  stockQuantity   Int?
+  lowStockThreshold Int        @default(5)
   categoryId      String
   category        MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   orderItems      OrderItem[]
@@ -258,6 +285,9 @@ model Order {
   placedByName       String?
   paidByUserId       String?
   paidByName         String?
+  tipAmount          Float       @default(0)
+  discountAmount     Float       @default(0)
+  compReason         String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   date           String
@@ -422,4 +452,90 @@ model Alert {
   createdAt    DateTime @default(now())
 
   @@index([restaurantId, isRead])
+}
+
+model Reservation {
+  id           String            @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  guestName    String
+  guestPhone   String
+  partySize    Int               @default(2)
+  scheduledAt  DateTime?
+  status       ReservationStatus @default(WAITLIST)
+  tableId      String?
+  table        Table?            @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  notes        String?
+  notifiedAt   DateTime?
+  seatedAt     DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([restaurantId, status])
+  @@index([restaurantId, scheduledAt])
+}
+
+model ShiftClock {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clockInAt    DateTime   @default(now())
+  clockOutAt   DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId, clockInAt])
+  @@index([userId, clockOutAt])
+}
+
+model GuestProfile {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  phone        String
+  name         String?
+  visitCount   Int        @default(0)
+  totalSpend   Float      @default(0)
+  lastVisitAt  DateTime?
+  notes        String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([restaurantId, phone])
+  @@index([restaurantId, lastVisitAt])
+}
+
+model AuditLog {
+  id               String          @id @default(cuid())
+  restaurantId     String
+  restaurant       Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  actionType       AuditActionType
+  entityId         String?
+  reason           String?
+  payload          String?
+  actorUserId      String?
+  actorName        String?
+  approvedByUserId String?
+  approvedByName   String?
+  requiresApproval Boolean         @default(false)
+  approvedAt       DateTime?
+  createdAt        DateTime        @default(now())
+
+  @@index([restaurantId, createdAt])
+  @@index([restaurantId, actionType])
+}
+
+model TipPoolPayout {
+  id            String     @id @default(cuid())
+  restaurantId  String
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  periodStart   String
+  periodEnd     String
+  totalTips     Float
+  exportData    String
+  createdByName String?
+  createdAt     DateTime   @default(now())
+
+  @@index([restaurantId, periodStart])
 }

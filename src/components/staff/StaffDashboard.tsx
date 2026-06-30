@@ -26,6 +26,7 @@ import {
   LayoutGrid,
   Phone,
   Plug,
+  ClipboardList,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
@@ -166,6 +167,12 @@ type RestaurantFeatures = {
   thermal_receipts?: boolean;
   staff_performance?: boolean;
   gst_receipts?: boolean;
+  inventory_86?: boolean;
+  labor_clock?: boolean;
+  reservations?: boolean;
+  tip_pooling?: boolean;
+  guest_crm?: boolean;
+  audit_log?: boolean;
 };
 
 export function StaffDashboard() {
@@ -510,6 +517,20 @@ export function StaffDashboard() {
                     title="Swiggy & Zomato automatic sync"
                   >
                     <Plug className="w-4 h-4" />
+                  </Link>
+                )}
+                {(features.inventory_86 ||
+                  features.labor_clock ||
+                  features.reservations ||
+                  features.tip_pooling ||
+                  features.guest_crm ||
+                  features.audit_log) && (
+                  <Link
+                    href="/admin/operations"
+                    className="p-2 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-300"
+                    title="Inventory, labor, reservations, tips, CRM, audit"
+                  >
+                    <ClipboardList className="w-4 h-4" />
                   </Link>
                 )}
               </>
