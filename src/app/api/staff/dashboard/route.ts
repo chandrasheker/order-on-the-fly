@@ -24,6 +24,10 @@ export async function GET() {
   const today = todayDateString();
   await ensureServiceTables(session.restaurantId, session.restaurantSlug);
   const features = await getRestaurantFeatureFlags(session.restaurantId);
+  if (features.aggregator_inbox) {
+    const { ensureAggregatorConnectionRows } = await import("@/lib/aggregator-connection-service");
+    await ensureAggregatorConnectionRows(session.restaurantId);
+  }
 
   const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests, todayPaymentSum] =
     await Promise.all([

@@ -10,6 +10,8 @@ type AggregatorItemInput = {
   notes?: string;
 };
 
+export type { AggregatorItemInput };
+
 export async function createChannelOrder(params: {
   restaurantId: string;
   restaurantSlug: string;

@@ -199,7 +199,7 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
   {
     key: "aggregator_inbox",
     name: "Swiggy / Zomato inbox",
-    problem: "Delivery aggregator orders on the same kitchen board as dine-in.",
+    problem: "Swiggy/Zomato orders auto-sync via webhook when credentials are saved — no manual entry.",
     tier: "premium",
     defaultEnabled: false,
   },

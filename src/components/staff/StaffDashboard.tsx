@@ -25,6 +25,7 @@ import {
   ArrowRightLeft,
   LayoutGrid,
   Phone,
+  Plug,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
@@ -35,6 +36,7 @@ import { useRouter } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
 import { SplitPaymentPanel } from "@/components/staff/SplitPaymentPanel";
+import { AggregatorInboxBanner } from "@/components/staff/AggregatorInboxBanner";
 import { RemoteOrdersPanel } from "@/components/staff/RemoteOrdersPanel";
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { ThermalPrinterButton } from "@/components/staff/ThermalPrinterButton";
@@ -501,6 +503,15 @@ export function StaffDashboard() {
                 <Link href="/admin/rewards" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 relative">
                   <Gift className="w-4 h-4" />
                 </Link>
+                {features.aggregator_inbox && (
+                  <Link
+                    href="/admin/integrations"
+                    className="p-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-300"
+                    title="Swiggy & Zomato automatic sync"
+                  >
+                    <Plug className="w-4 h-4" />
+                  </Link>
+                )}
               </>
             )}
             {user && canAccessReports(user.role) && (
@@ -982,10 +993,10 @@ export function StaffDashboard() {
         )}
 
         {viewMode === "offline" && (
-          <RemoteOrdersPanel
-            aggregatorEnabled={Boolean(features.aggregator_inbox)}
-            onOrderPlaced={handleRemoteOrderPlaced}
-          />
+          <div className="space-y-5">
+            {features.aggregator_inbox && <AggregatorInboxBanner />}
+            <RemoteOrdersPanel onOrderPlaced={handleRemoteOrderPlaced} />
+          </div>
         )}
 
         {viewMode === "alerts" && (

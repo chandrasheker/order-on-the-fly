@@ -1,23 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ArrowLeft,
-  Phone,
-  UserRound,
-  ShoppingBag,
-  Truck,
-  ExternalLink,
-} from "lucide-react";
+import { ArrowLeft, Phone, UserRound, ShoppingBag, Truck } from "lucide-react";
 import { MenuView } from "@/components/customer/MenuView";
 import { StaffCartPanel } from "@/components/staff/StaffCartPanel";
 import { TableOrderHistory } from "@/components/staff/TableOrderHistory";
-import { Input, Spinner, Badge } from "@/components/ui";
+import { Input, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useStaffCartStore } from "@/store/staff-cart";
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 
-type OrderMode = "walkin" | "takeaway" | "delivery" | "swiggy" | "zomato";
+type OrderMode = "walkin" | "takeaway" | "delivery";
 
 type TableRow = {
   id: string;
@@ -44,48 +37,36 @@ type MenuCategory = {
 };
 
 interface RemoteOrdersPanelProps {
-  aggregatorEnabled?: boolean;
   onOrderPlaced?: (result?: { kitchenChit?: KitchenChitPayload | null }) => void;
 }
 
 const MODE_META: Record<
   OrderMode,
-  { label: string; description: string; channel?: string; needsTable: boolean; premium?: "aggregator" }
+  { label: string; description: string; channel?: string; needsTable: boolean; icon: typeof Phone }
 > = {
   walkin: {
     label: "Walk-in / table",
     description: "Guest at a table — pick table, add items, send to kitchen.",
     needsTable: true,
+    icon: Phone,
   },
   takeaway: {
     label: "Takeaway",
     description: "Pack and hand over — no table needed.",
     channel: "TAKEAWAY",
     needsTable: false,
+    icon: ShoppingBag,
   },
   delivery: {
     label: "Delivery",
     description: "Out for delivery — capture phone and address notes.",
     channel: "DELIVERY",
     needsTable: false,
-  },
-  swiggy: {
-    label: "Swiggy",
-    description: "Enter Swiggy order ID and items — lands on kitchen board.",
-    channel: "SWIGGY",
-    needsTable: false,
-    premium: "aggregator",
-  },
-  zomato: {
-    label: "Zomato",
-    description: "Enter Zomato order ID and items — lands on kitchen board.",
-    channel: "ZOMATO",
-    needsTable: false,
-    premium: "aggregator",
+    icon: Truck,
   },
 };
 
-export function RemoteOrdersPanel({ aggregatorEnabled = false, onOrderPlaced }: RemoteOrdersPanelProps) {
+export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
   const [mode, setMode] = useState<OrderMode>("walkin");
   const [tables, setTables] = useState<TableRow[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
@@ -96,7 +77,6 @@ export function RemoteOrdersPanel({ aggregatorEnabled = false, onOrderPlaced }: 
   const [success, setSuccess] = useState("");
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [customerPhone, setCustomerPhone] = useState("");
-  const [externalOrderId, setExternalOrderId] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
 
   const {
@@ -159,7 +139,6 @@ export function RemoteOrdersPanel({ aggregatorEnabled = false, onOrderPlaced }: 
     setTable(null);
     clearCart();
     setCustomerPhone("");
-    setExternalOrderId("");
     setOrderNotes("");
     setError("");
     setSuccess("");
@@ -182,7 +161,6 @@ export function RemoteOrdersPanel({ aggregatorEnabled = false, onOrderPlaced }: 
       const payload = {
         customerName: customerName.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
-        externalOrderId: externalOrderId.trim() || undefined,
         orderNotes: orderNotes.trim() || undefined,
         items: items.map((item) => ({
           menuItemId: item.menuItemId,
@@ -192,13 +170,7 @@ export function RemoteOrdersPanel({ aggregatorEnabled = false, onOrderPlaced }: 
       };
 
       let res: Response;
-      if (meta.channel && meta.premium === "aggregator") {
-        res = await fetch("/api/orders/aggregator", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, channel: meta.channel }),
-        });
-      } else if (meta.channel) {
+      if (meta.channel) {
         res = await fetch("/api/orders/staff", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -222,7 +194,6 @@ export function RemoteOrdersPanel({ aggregatorEnabled = false, onOrderPlaced }: 
       setSuccess(`Order #${json.order?.orderNumber ?? ""} sent to kitchen · ${label}`);
       clearCart();
       setCustomerPhone("");
-      setExternalOrderId("");
       setOrderNotes("");
       setHistoryRefreshKey((key) => key + 1);
       await loadTables();
@@ -242,15 +213,12 @@ export function RemoteOrdersPanel({ aggregatorEnabled = false, onOrderPlaced }: 
     );
   }
 
-  const modes: OrderMode[] = ["walkin", "takeaway", "delivery"];
-  if (aggregatorEnabled) {
-    modes.push("swiggy", "zomato");
-  }
+  const modes = Object.keys(MODE_META) as OrderMode[];
 
   if (meta.needsTable && !tableId) {
     return (
       <div className="space-y-5">
-        <ModePicker modes={modes} mode={mode} onChange={resetMode} aggregatorEnabled={aggregatorEnabled} />
+        <ModePicker modes={modes} mode={mode} onChange={resetMode} />
 
         <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
           <p className="text-sm text-zinc-400">{meta.description}</p>
@@ -286,7 +254,7 @@ export function RemoteOrdersPanel({ aggregatorEnabled = false, onOrderPlaced }: 
   return (
     <div className="space-y-5 pb-28">
       <div className="sticky top-[4.5rem] z-20 -mx-1 px-1 py-3 bg-[#0a0a12]/95 backdrop-blur-md border-b border-white/5 space-y-3">
-        <ModePicker modes={modes} mode={mode} onChange={resetMode} aggregatorEnabled={aggregatorEnabled} compact />
+        <ModePicker modes={modes} mode={mode} onChange={resetMode} compact />
 
         <div className="flex flex-wrap items-center gap-3 justify-between">
           <div className="flex items-center gap-3">
@@ -318,7 +286,7 @@ export function RemoteOrdersPanel({ aggregatorEnabled = false, onOrderPlaced }: 
                 className="h-10"
               />
             </div>
-            {(mode === "delivery" || mode === "swiggy" || mode === "zomato") && (
+            {mode === "delivery" && (
               <Input
                 placeholder="Phone"
                 value={customerPhone}
@@ -326,20 +294,20 @@ export function RemoteOrdersPanel({ aggregatorEnabled = false, onOrderPlaced }: 
                 className="h-10 min-w-[160px]"
               />
             )}
-            {(mode === "swiggy" || mode === "zomato") && (
-              <Input
-                placeholder={`${meta.label} order ID`}
-                value={externalOrderId}
-                onChange={(e) => setExternalOrderId(e.target.value)}
-                className="h-10 min-w-[180px]"
-              />
-            )}
           </div>
         </div>
 
-        {(mode === "delivery" || mode === "takeaway") && (
+        {mode === "delivery" && (
           <Input
-            placeholder={mode === "delivery" ? "Delivery address / notes" : "Pickup notes (optional)"}
+            placeholder="Delivery address / notes"
+            value={orderNotes}
+            onChange={(e) => setOrderNotes(e.target.value)}
+            className="h-10"
+          />
+        )}
+        {mode === "takeaway" && (
+          <Input
+            placeholder="Pickup notes (optional)"
             value={orderNotes}
             onChange={(e) => setOrderNotes(e.target.value)}
             className="h-10"
@@ -407,27 +375,18 @@ function ModePicker({
   modes,
   mode,
   onChange,
-  aggregatorEnabled,
   compact,
 }: {
   modes: OrderMode[];
   mode: OrderMode;
   onChange: (mode: OrderMode) => void;
-  aggregatorEnabled: boolean;
   compact?: boolean;
 }) {
-  const icons: Record<OrderMode, typeof Phone> = {
-    walkin: Phone,
-    takeaway: ShoppingBag,
-    delivery: Truck,
-    swiggy: ExternalLink,
-    zomato: ExternalLink,
-  };
-
   return (
     <div className={cn("flex flex-wrap gap-2", compact ? "" : "mb-2")}>
       {modes.map((entry) => {
-        const Icon = icons[entry];
+        const meta = MODE_META[entry];
+        const Icon = meta.icon;
         const active = mode === entry;
         return (
           <button
@@ -442,20 +401,10 @@ function ModePicker({
             )}
           >
             <Icon className="w-4 h-4" />
-            {MODE_META[entry].label}
-            {entry === "swiggy" || entry === "zomato" ? (
-              <Badge className="bg-orange-500/15 text-orange-300 border-orange-500/30 text-[10px]">
-                Inbox
-              </Badge>
-            ) : null}
+            {meta.label}
           </button>
         );
       })}
-      {!aggregatorEnabled && !compact && (
-        <p className="text-xs text-zinc-500 w-full mt-1">
-          Swiggy / Zomato inbox is a premium add-on — enable via TableTap super admin.
-        </p>
-      )}
     </div>
   );
 }

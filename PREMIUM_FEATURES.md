@@ -68,7 +68,9 @@ These are **off by default**. Enable when the customer pays for the add-on.
 | `thermal_receipts` | Bluetooth ESC/POS receipts + kitchen chits + reprint | Staff dashboard printer menu |
 | `phone_orders` | Walk-in, **takeaway**, and **delivery** orders | Staff dashboard → **Remote orders** |
 | `gst_receipts` | GSTIN, tax rate, compliant receipt footer | Admin → QR codes → receipt settings |
-| `aggregator_inbox` | **Swiggy / Zomato** manual entry + webhook API | Remote orders → Swiggy/Zomato tabs |
+| `aggregator_inbox` | **Swiggy / Zomato automatic sync** (credentials + webhook) | Admin → **Integrations** |
+
+See **[AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md)** for what owners need from Swiggy/Zomato partner teams.
 
 ### Remote orders
 
@@ -99,7 +101,6 @@ Toggleable in super admin for future billing; **UI/API stubs only** until built.
 | `inventory_86` | Auto-86 when stock hits zero — menu updates instantly |
 | `labor_clock` | Shift clock-in/out + sales per labor hour (SPLH) |
 | `reservations` | Waitlist + SMS when table ready |
-| `aggregator_inbox` | Swiggy/Zomato orders on the same kitchen board |
 | `tip_pooling` | Fair tip splits with payroll export |
 | `guest_crm` | Repeat guest recognition by phone |
 | `audit_log` | Manager approval trail for voids and comps |

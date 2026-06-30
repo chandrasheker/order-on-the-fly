@@ -58,6 +58,19 @@ enum OrderChannel {
   WALK_IN
 }
 
+enum AggregatorPlatform {
+  SWIGGY
+  ZOMATO
+}
+
+enum AggregatorConnectionStatus {
+  NOT_CONFIGURED
+  CREDENTIALS_SAVED
+  WEBHOOK_PENDING
+  CONNECTED
+  ERROR
+}
+
 model Restaurant {
   id                    String         @id @default(cuid())
   name                  String
@@ -94,6 +107,7 @@ model Restaurant {
   rewards               Reward[]
   kitchenStations       KitchenStation[]
   payments              Payment[]
+  aggregatorConnections AggregatorConnection[]
 }
 
 model User {
@@ -212,6 +226,8 @@ model MenuItem {
   isVeg           Boolean      @default(true)
   isSpicy         Boolean      @default(false)
   sortOrder       Int          @default(0)
+  swiggyItemId    String?
+  zomatoItemId    String?
   categoryId      String
   category        MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   orderItems      OrderItem[]
@@ -247,6 +263,27 @@ model Order {
 
   @@index([restaurantId, date])
   @@index([tableId])
+  @@index([restaurantId, orderChannel, externalOrderId])
+}
+
+model AggregatorConnection {
+  id              String                     @id @default(cuid())
+  restaurantId    String
+  restaurant      Restaurant                 @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  platform        AggregatorPlatform
+  outletId        String?
+  apiKeyEnc       String?
+  apiSecretEnc    String?
+  webhookSecret   String?
+  autoConfirm     Boolean                    @default(true)
+  status          AggregatorConnectionStatus @default(NOT_CONFIGURED)
+  lastOrderAt     DateTime?
+  lastError       String?
+  configuredAt    DateTime?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  @@unique([restaurantId, platform])
 }
 
 model KitchenStation {
