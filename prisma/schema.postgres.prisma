@@ -241,6 +241,8 @@ model Order {
   orderChannel   OrderChannel @default(DINE_IN)
   externalOrderId String?
   orderNotes     String?
+  aggregatorReadyPushedAt DateTime?
+  aggregatorPickedUpPushedAt DateTime?
   status         OrderStatus @default(PENDING)
   tableId        String
   table          Table       @relation(fields: [tableId], references: [id])
@@ -276,8 +278,11 @@ model AggregatorConnection {
   apiSecretEnc    String?
   webhookSecret   String?
   autoConfirm     Boolean                    @default(true)
+  autoMenuSync    Boolean                    @default(true)
+  pushStatusUpdates Boolean                  @default(true)
   status          AggregatorConnectionStatus @default(NOT_CONFIGURED)
   lastOrderAt     DateTime?
+  lastMenuSyncAt  DateTime?
   lastError       String?
   configuredAt    DateTime?
   createdAt       DateTime                   @default(now())

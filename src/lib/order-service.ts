@@ -4,6 +4,7 @@ import { clearPaymentAlerts } from "@/lib/payment-service";
 import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
 import { channelForTableKind, isServiceTable } from "@/lib/order-channel";
+import { scheduleAggregatorStatusPush } from "@/lib/aggregator-sync-service";
 import type { OrderChannel } from "@/generated/prisma/client";
 
 export async function clearAlertsForOrderItem(orderItemId: string) {
@@ -46,6 +47,7 @@ export async function syncOrderStatus(orderId: string) {
     });
     await autoCompleteZeroBillOrder(orderId);
     await finalizeOrderIfSettled(orderId);
+    scheduleAggregatorStatusPush(orderId);
     return;
   }
 
@@ -59,6 +61,10 @@ export async function syncOrderStatus(orderId: string) {
     where: { id: orderId },
     data: { status },
   });
+
+  if (status === "READY") {
+    scheduleAggregatorStatusPush(orderId);
+  }
 }
 
 export function minutesLateFromExpected(expectedReadyAt: Date, at = new Date()) {

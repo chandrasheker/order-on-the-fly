@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { scheduleMenuSync, syncMenuItemAvailability } from "@/lib/aggregator-sync-service";
 
 export async function GET() {
   const session = await requireSession();
@@ -70,6 +71,8 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  scheduleMenuSync(session.restaurantId);
+
   return NextResponse.json({ item }, { status: 201 });
 }
 
@@ -79,7 +82,8 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { itemId, isAvailable, prepTimeMinutes, price, name } = await req.json();
+  const { itemId, isAvailable, prepTimeMinutes, price, name, swiggyItemId, zomatoItemId } =
+    await req.json();
 
   if (!itemId) {
     return NextResponse.json({ error: "Item ID required" }, { status: 400 });
@@ -111,8 +115,19 @@ export async function PATCH(req: NextRequest) {
       ...(prepTimeMinutes !== undefined && { prepTimeMinutes }),
       ...(price !== undefined && { price: parseFloat(String(price)) }),
       ...(name !== undefined && { name: name.trim() }),
+      ...(swiggyItemId !== undefined && {
+        swiggyItemId: swiggyItemId ? String(swiggyItemId).trim() : null,
+      }),
+      ...(zomatoItemId !== undefined && {
+        zomatoItemId: zomatoItemId ? String(zomatoItemId).trim() : null,
+      }),
     },
   });
+
+  if (isAvailable !== undefined) {
+    void syncMenuItemAvailability(session.restaurantId, itemId, Boolean(isAvailable));
+  }
+  scheduleMenuSync(session.restaurantId);
 
   return NextResponse.json({ item: updated });
 }
@@ -137,5 +152,6 @@ export async function DELETE(req: NextRequest) {
   }
 
   await prisma.menuItem.delete({ where: { id: itemId } });
+  scheduleMenuSync(session.restaurantId);
   return NextResponse.json({ success: true });
 }

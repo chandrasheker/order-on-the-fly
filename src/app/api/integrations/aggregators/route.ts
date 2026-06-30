@@ -7,6 +7,7 @@ import {
   saveAggregatorCredentials,
   testAggregatorConnection,
 } from "@/lib/aggregator-connection-service";
+import { syncRestaurantMenuToAggregators } from "@/lib/aggregator-sync-service";
 import type { AggregatorPlatform } from "@/generated/prisma/client";
 
 export async function GET() {
@@ -69,6 +70,9 @@ export async function PATCH(req: NextRequest) {
     apiKey: body.apiKey ? String(body.apiKey) : undefined,
     apiSecret: body.apiSecret ? String(body.apiSecret) : undefined,
     autoConfirm: body.autoConfirm !== undefined ? Boolean(body.autoConfirm) : undefined,
+    autoMenuSync: body.autoMenuSync !== undefined ? Boolean(body.autoMenuSync) : undefined,
+    pushStatusUpdates:
+      body.pushStatusUpdates !== undefined ? Boolean(body.pushStatusUpdates) : undefined,
   });
 
   return NextResponse.json({
@@ -89,9 +93,21 @@ export async function POST(req: NextRequest) {
   if (blocked) return blocked;
 
   const body = await req.json();
+  const action = String(body.action ?? "test").toLowerCase();
   const platform = String(body.platform ?? "").toUpperCase() as AggregatorPlatform;
   if (platform !== "SWIGGY" && platform !== "ZOMATO") {
     return NextResponse.json({ error: "platform must be SWIGGY or ZOMATO" }, { status: 400 });
+  }
+
+  if (action === "sync-menu") {
+    const result = await syncRestaurantMenuToAggregators(session.restaurantId, platform);
+    return NextResponse.json({
+      ok: result.ok,
+      message: result.ok
+        ? "Menu sync sent to platform"
+        : result.results?.map((r) => `${r.platform}: ${r.detail}`).join("; ") ?? result.error,
+      results: result.results,
+    });
   }
 
   const result = await testAggregatorConnection({

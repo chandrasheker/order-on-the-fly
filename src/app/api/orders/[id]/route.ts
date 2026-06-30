@@ -294,7 +294,7 @@ export async function PATCH(
         readyByName: session.name,
       },
     });
-    await prisma.order.update({ where: { id }, data: { status: "READY" } });
+    await syncOrderStatus(id);
     return NextResponse.json({ success: true });
   }
 

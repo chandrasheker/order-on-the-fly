@@ -13,6 +13,7 @@ import {
 } from "@/lib/aggregators/platform-adapters";
 import { createChannelOrder, type AggregatorItemInput } from "@/lib/aggregator-order-service";
 import { buildKitchenChitPayload } from "@/lib/kitchen-chit-service";
+import { scheduleMenuSync } from "@/lib/aggregator-sync-service";
 import { OrderCreationError } from "@/lib/order-service";
 
 const PLATFORM_CHANNEL: Record<AggregatorPlatform, OrderChannel> = {
@@ -37,7 +38,10 @@ export async function getAggregatorConnectionsForRestaurant(restaurantId: string
     outletId: row.outletId ?? "",
     status: row.status,
     autoConfirm: row.autoConfirm,
+    autoMenuSync: row.autoMenuSync,
+    pushStatusUpdates: row.pushStatusUpdates,
     lastOrderAt: row.lastOrderAt?.toISOString() ?? null,
+    lastMenuSyncAt: row.lastMenuSyncAt?.toISOString() ?? null,
     lastError: row.lastError,
     configuredAt: row.configuredAt?.toISOString() ?? null,
     hasApiKey: Boolean(row.apiKeyEnc),
@@ -67,6 +71,8 @@ export async function saveAggregatorCredentials(params: {
   apiKey?: string;
   apiSecret?: string;
   autoConfirm?: boolean;
+  autoMenuSync?: boolean;
+  pushStatusUpdates?: boolean;
 }) {
   await ensureAggregatorConnectionRows(params.restaurantId);
 
@@ -90,11 +96,17 @@ export async function saveAggregatorCredentials(params: {
         : {}),
       webhookSecret,
       autoConfirm: params.autoConfirm ?? existing?.autoConfirm ?? true,
+      autoMenuSync: params.autoMenuSync ?? existing?.autoMenuSync ?? true,
+      pushStatusUpdates: params.pushStatusUpdates ?? existing?.pushStatusUpdates ?? true,
       status: "CREDENTIALS_SAVED",
       configuredAt: new Date(),
       lastError: null,
     },
   });
+
+  if (params.apiKey?.trim() && updated.autoMenuSync) {
+    scheduleMenuSync(params.restaurantId);
+  }
 
   return {
     platform: updated.platform,
@@ -103,6 +115,8 @@ export async function saveAggregatorCredentials(params: {
     webhookUrl: aggregatorWebhookUrl(params.slug, params.platform),
     webhookSecret,
     autoConfirm: updated.autoConfirm,
+    autoMenuSync: updated.autoMenuSync,
+    pushStatusUpdates: updated.pushStatusUpdates,
   };
 }
 

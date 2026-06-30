@@ -11,7 +11,10 @@ type Connection = {
   outletId: string;
   status: string;
   autoConfirm: boolean;
+  autoMenuSync: boolean;
+  pushStatusUpdates: boolean;
   lastOrderAt: string | null;
+  lastMenuSyncAt: string | null;
   lastError: string | null;
   apiKeyMasked: string;
   webhookUrl: string;
@@ -29,10 +32,22 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function IntegrationsPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, { outletId: string; apiKey: string; apiSecret: string }>>({});
+  const [drafts, setDrafts] = useState<
+    Record<
+      string,
+      {
+        outletId: string;
+        apiKey: string;
+        apiSecret: string;
+        autoMenuSync: boolean;
+        pushStatusUpdates: boolean;
+      }
+    >
+  >({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
+  const [syncingMenu, setSyncingMenu] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -48,7 +63,13 @@ export default function IntegrationsPage() {
       Object.fromEntries(
         list.map((c) => [
           c.platform,
-          { outletId: c.outletId, apiKey: "", apiSecret: "" },
+          {
+            outletId: c.outletId,
+            apiKey: "",
+            apiSecret: "",
+            autoMenuSync: c.autoMenuSync ?? true,
+            pushStatusUpdates: c.pushStatusUpdates ?? true,
+          },
         ])
       )
     );
@@ -71,6 +92,8 @@ export default function IntegrationsPage() {
         outletId: draft.outletId,
         apiKey: draft.apiKey || undefined,
         apiSecret: draft.apiSecret || undefined,
+        autoMenuSync: draft.autoMenuSync,
+        pushStatusUpdates: draft.pushStatusUpdates,
       }),
     });
     const json = await res.json();
@@ -89,12 +112,26 @@ export default function IntegrationsPage() {
     const res = await fetch("/api/integrations/aggregators", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ platform }),
+      body: JSON.stringify({ platform, action: "test" }),
     });
     const json = await res.json();
     setMessage({ type: json.ok ? "ok" : "err", text: json.message });
     await load();
     setTesting(null);
+  };
+
+  const syncMenu = async (platform: Connection["platform"]) => {
+    setSyncingMenu(platform);
+    setMessage(null);
+    const res = await fetch("/api/integrations/aggregators", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform, action: "sync-menu" }),
+    });
+    const json = await res.json();
+    setMessage({ type: json.ok ? "ok" : "err", text: json.message });
+    await load();
+    setSyncingMenu(null);
   };
 
   if (loading) {
@@ -130,6 +167,8 @@ export default function IntegrationsPage() {
             <li>Save credentials below — TableTap generates your webhook URL + secret.</li>
             <li>Share webhook URL with Zomato/Swiggy partner team (one-time setup per outlet).</li>
             <li>Orders appear on kitchen board automatically — no manual entry.</li>
+            <li>Menu changes sync outbound when auto menu sync is on.</li>
+            <li>Marking orders ready / served pushes status back to Swiggy/Zomato.</li>
           </ol>
           <p className="text-xs text-zinc-500">
             Zomato POS docs:{" "}
@@ -152,7 +191,13 @@ export default function IntegrationsPage() {
         )}
 
         {connections.map((conn) => {
-          const draft = drafts[conn.platform] ?? { outletId: "", apiKey: "", apiSecret: "" };
+          const draft = drafts[conn.platform] ?? {
+            outletId: "",
+            apiKey: "",
+            apiSecret: "",
+            autoMenuSync: true,
+            pushStatusUpdates: true,
+          };
           const live = conn.status === "CONNECTED";
           return (
             <Card key={conn.platform} className="p-5 space-y-4">
@@ -179,6 +224,11 @@ export default function IntegrationsPage() {
               {conn.lastOrderAt && (
                 <p className="text-xs text-zinc-500">
                   Last automatic order: {new Date(conn.lastOrderAt).toLocaleString()}
+                </p>
+              )}
+              {conn.lastMenuSyncAt && (
+                <p className="text-xs text-zinc-500">
+                  Last menu sync: {new Date(conn.lastMenuSyncAt).toLocaleString()}
                 </p>
               )}
               {conn.lastError && (
@@ -233,6 +283,37 @@ export default function IntegrationsPage() {
                 </div>
               </div>
 
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={draft.autoMenuSync}
+                    onChange={(e) =>
+                      setDrafts((prev) => ({
+                        ...prev,
+                        [conn.platform]: { ...prev[conn.platform], autoMenuSync: e.target.checked },
+                      }))
+                    }
+                    className="rounded border-white/20"
+                  />
+                  <span className="text-zinc-300">Auto sync menu to {conn.platform === "SWIGGY" ? "Swiggy" : "Zomato"}</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={draft.pushStatusUpdates}
+                    onChange={(e) =>
+                      setDrafts((prev) => ({
+                        ...prev,
+                        [conn.platform]: { ...prev[conn.platform], pushStatusUpdates: e.target.checked },
+                      }))
+                    }
+                    className="rounded border-white/20"
+                  />
+                  <span className="text-zinc-300">Push ready / picked up status to platform</span>
+                </label>
+              </div>
+
               {conn.webhookUrl && (
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-2 text-xs">
                   <p className="text-zinc-500">Give this to {conn.platform === "SWIGGY" ? "Swiggy" : "Zomato"} partner team:</p>
@@ -259,6 +340,13 @@ export default function IntegrationsPage() {
                 >
                   {testing === conn.platform ? <Spinner /> : <RefreshCw className="w-4 h-4" />}
                   Test readiness
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => void syncMenu(conn.platform)}
+                  disabled={syncingMenu === conn.platform || !conn.outletId}
+                >
+                  {syncingMenu === conn.platform ? <Spinner /> : "Sync menu now"}
                 </Button>
               </div>
             </Card>
