@@ -30,6 +30,12 @@ enum OrderItemStatus {
   UNAVAILABLE
 }
 
+enum TableSwitchRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Restaurant {
   id                    String         @id @default(cuid())
   name                  String
@@ -50,6 +56,7 @@ model Restaurant {
   createdAt             DateTime       @default(now())
   users                 User[]
   tables                Table[]
+  tableSwitchRequests   TableSwitchRequest[]
   categories            MenuCategory[]
   orders                Order[]
   alerts                Alert[]
@@ -92,6 +99,8 @@ model Table {
   restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   orders       Order[]
   sessions     TableSession[]
+  sourceSwitchRequests TableSwitchRequest[] @relation("SourceTableSwitchRequests")
+  targetSwitchRequests TableSwitchRequest[] @relation("TargetTableSwitchRequests")
 
   @@unique([restaurantId, number])
 }
@@ -106,6 +115,32 @@ model TableSession {
 
   @@unique([tableId, sessionKey])
   @@index([tableId, lastSeenAt])
+}
+
+model TableSwitchRequest {
+  id                String                   @id @default(cuid())
+  status            TableSwitchRequestStatus @default(PENDING)
+  customerName      String?
+  sessionKey        String
+  note              String?
+  sourceTableNumber Int
+  targetTableNumber Int
+  sourceTableId     String
+  sourceTable       Table                    @relation("SourceTableSwitchRequests", fields: [sourceTableId], references: [id], onDelete: Cascade)
+  targetTableId     String
+  targetTable       Table                    @relation("TargetTableSwitchRequests", fields: [targetTableId], references: [id], onDelete: Cascade)
+  restaurantId      String
+  restaurant        Restaurant               @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  approvedByUserId  String?
+  approvedByName    String?
+  requestedAt       DateTime                 @default(now())
+  respondedAt       DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@index([restaurantId, status])
+  @@index([sourceTableId, status])
+  @@index([targetTableId])
 }
 
 model MenuCategory {

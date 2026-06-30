@@ -117,6 +117,7 @@ async function main() {
   }
 
   await prisma.alert.deleteMany();
+  await prisma.tableSwitchRequest.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.menuItem.deleteMany();

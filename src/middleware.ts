@@ -47,6 +47,9 @@ function isPublicApi(pathname: string, request: NextRequest) {
   if (pathname === "/api/tables/session") return true;
   if (pathname === "/api/tables/check-in" && request.method === "POST") return true;
   if (pathname === "/api/tables/dining-status" && request.method === "GET") return true;
+  if (pathname === "/api/table-switch" && (request.method === "GET" || request.method === "POST")) {
+    return true;
+  }
   if (pathname === "/api/platform/auth/login" && request.method === "POST") return true;
   if (/^\/api\/orders\/[^/]+$/.test(pathname) && request.method === "PATCH") {
     return true;

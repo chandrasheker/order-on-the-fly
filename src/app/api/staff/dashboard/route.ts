@@ -20,7 +20,7 @@ export async function GET() {
 
   const today = todayDateString();
 
-  const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData] =
+  const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests] =
     await Promise.all([
       getActiveOrders(session.restaurantId),
       getPendingPaymentOrders(session.restaurantId),
@@ -34,6 +34,11 @@ export async function GET() {
         where: { restaurantId: session.restaurantId, date: today },
       }),
       getMissedTimelineItems(session.restaurantId),
+      prisma.tableSwitchRequest.findMany({
+        where: { restaurantId: session.restaurantId, status: "PENDING" },
+        orderBy: { requestedAt: "asc" },
+        take: 20,
+      }),
     ]);
 
   const todayRevenue = completedOrders.reduce(
@@ -92,6 +97,7 @@ export async function GET() {
       currentPrepTime: item.menuItem?.prepTimeMinutes,
     })),
     missedSummary: missedData.summary,
+    tableSwitchRequests,
     stats: {
       activeOrders: orders.length,
       pendingPayments: pendingOrders.length,
