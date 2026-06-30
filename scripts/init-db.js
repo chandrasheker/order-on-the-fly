@@ -88,4 +88,6 @@ if (needsSeed(dbPath)) {
 
 logInfo("init-db", "Database ready", { login: OWNER_EMAIL });
 console.log("Database ready.");
-console.log(`Staff login: ${OWNER_EMAIL}`);
+console.log(`Staff login (${config.restaurant.name}): ${config.primaryOwner.email}`);
+console.log(`Platform admin login: ${config.platformAdmin.email}`);
+console.log("Open / for staff sign-in, or /platform/login for platform admin.");

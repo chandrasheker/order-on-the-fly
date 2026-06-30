@@ -43,17 +43,16 @@ async function main() {
       },
     });
     console.log(`Platform admin ready: ${ADMIN_EMAIL}`);
-    return;
-  }
-
-  const valid = await bcrypt.compare(ADMIN_PASSWORD, existing.passwordHash);
-  if (!valid) {
-    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
-    await prisma.platformAdmin.update({
-      where: { email: ADMIN_EMAIL },
-      data: { passwordHash },
-    });
-    console.log(`Platform admin password restored for ${ADMIN_EMAIL}`);
+  } else {
+    const valid = await bcrypt.compare(ADMIN_PASSWORD, existing.passwordHash);
+    if (!valid) {
+      const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+      await prisma.platformAdmin.update({
+        where: { email: ADMIN_EMAIL },
+        data: { passwordHash },
+      });
+      console.log(`Platform admin password restored for ${ADMIN_EMAIL}`);
+    }
   }
 
   await prisma.$disconnect();
