@@ -9,6 +9,7 @@ import {
 } from "@/lib/order-service";
 import { requestOrderPayment } from "@/lib/payment-service";
 import { recordFullOrderPayment, recordOrderPayment } from "@/lib/payment-allocation-service";
+import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
@@ -153,8 +154,17 @@ export async function PATCH(
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    logInfo("api:orders/[id]", "Order marked paid", { orderId: id });
-    return NextResponse.json({ success: true, summary: result.summary, fullyPaid: result.fullyPaid });
+    const receipt = result.fullyPaid
+      ? await buildReceiptForPaidOrder(id, session.restaurantId)
+      : null;
+
+    logInfo("api:orders/[id]", "Order marked paid", { orderId: id, fullyPaid: result.fullyPaid });
+    return NextResponse.json({
+      success: true,
+      summary: result.summary,
+      fullyPaid: result.fullyPaid,
+      receipt,
+    });
   }
 
   if (action === "record-payment") {
@@ -183,6 +193,10 @@ export async function PATCH(
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
+    const receipt = result.fullyPaid
+      ? await buildReceiptForPaidOrder(id, session.restaurantId)
+      : null;
+
     logInfo("api:orders/[id]", "Partial payment recorded", {
       orderId: id,
       amount: payAmount,
@@ -192,6 +206,7 @@ export async function PATCH(
       success: true,
       summary: result.summary,
       fullyPaid: result.fullyPaid,
+      receipt,
     });
   }
 
@@ -207,6 +222,8 @@ export async function PATCH(
       data: {
         status: "SERVED",
         servedAt,
+        servedByUserId: session.id,
+        servedByName: session.name,
         ...timeline,
       },
     });
@@ -237,7 +254,11 @@ export async function PATCH(
   if (action === "prepare-item" && itemId) {
     await prisma.orderItem.update({
       where: { id: itemId },
-      data: { status: "PREPARING" },
+      data: {
+        status: "PREPARING",
+        preparedByUserId: session.id,
+        preparedByName: session.name,
+      },
     });
     await prisma.order.update({ where: { id }, data: { status: "PREPARING" } });
     return NextResponse.json({ success: true });
@@ -246,7 +267,11 @@ export async function PATCH(
   if (action === "ready-item" && itemId) {
     await prisma.orderItem.update({
       where: { id: itemId },
-      data: { status: "READY" },
+      data: {
+        status: "READY",
+        readyByUserId: session.id,
+        readyByName: session.name,
+      },
     });
     await prisma.order.update({ where: { id }, data: { status: "READY" } });
     return NextResponse.json({ success: true });
@@ -263,6 +288,8 @@ export async function PATCH(
         data: {
           status: "SERVED",
           servedAt,
+          servedByUserId: session.id,
+          servedByName: session.name,
           ...timeline,
         },
       });

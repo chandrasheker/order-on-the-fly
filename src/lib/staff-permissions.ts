@@ -7,7 +7,8 @@ export type StaffTab =
   | "revenue"
   | "overdue"
   | "missed"
-  | "alerts";
+  | "alerts"
+  | "offline";
 
 export type OrderAction =
   | "prepare-item"
@@ -19,10 +20,10 @@ export type OrderAction =
   | "record-payment";
 
 const TAB_ACCESS: Record<Role, StaffTab[]> = {
-  OWNER: ["active", "pending", "completed", "revenue", "overdue", "missed", "alerts"],
-  MANAGER: ["active", "pending", "completed", "revenue", "overdue", "missed", "alerts"],
+  OWNER: ["active", "pending", "completed", "revenue", "overdue", "missed", "alerts", "offline"],
+  MANAGER: ["active", "pending", "completed", "revenue", "overdue", "missed", "alerts", "offline"],
   COOK: ["active", "completed", "overdue", "missed", "alerts"],
-  SERVER: ["active", "pending", "overdue", "alerts"],
+  SERVER: ["active", "pending", "overdue", "alerts", "offline"],
 };
 
 const ACTION_ACCESS: Record<Role, OrderAction[]> = {
@@ -78,6 +79,10 @@ export function canAccessFloorPlan(role: Role) {
 
 export function canManageFloorLayout(role: Role) {
   return role === "OWNER" || role === "MANAGER";
+}
+
+export function canPlaceOfflineOrder(role: Role) {
+  return canManageTableOrdering(role);
 }
 
 export function canAccessReports(role: Role) {

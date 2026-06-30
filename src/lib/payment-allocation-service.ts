@@ -176,9 +176,14 @@ export async function recordOrderPayment(params: {
 
   const updated = await getOrderPaymentSummary(order.id);
   if (updated?.fullyPaid) {
+    const paidAt = new Date();
     await prisma.order.update({
       where: { id: order.id },
-      data: { paidAt: new Date() },
+      data: {
+        paidAt,
+        paidByUserId: params.collectedByUserId ?? null,
+        paidByName: params.collectedByName ?? null,
+      },
     });
     await clearPaymentAlerts(order.id);
     await maybeAutoCloseTableAfterPayment(order.tableId);

@@ -59,6 +59,12 @@ model Restaurant {
   serverSlots           Int            @default(4)
   staffConfigured       Boolean        @default(false)
   paymentQrUrl          String?
+  receiptAddress        String?
+  receiptPhone          String?
+  receiptGstin          String?
+  receiptGstEnabled     Boolean        @default(false)
+  receiptGstRate        Float          @default(5)
+  receiptFooter         String?
   createdAt             DateTime       @default(now())
   users                 User[]
   tables                Table[]
@@ -206,6 +212,10 @@ model Order {
   paidAt         DateTime?
   paymentRequestedAt DateTime?
   oosNoticeDismissedAt DateTime?
+  placedByUserId     String?
+  placedByName       String?
+  paidByUserId       String?
+  paidByName         String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   date           String
@@ -272,6 +282,12 @@ model OrderItem {
   missedTimeline  Boolean         @default(false)
   minutesLate     Int?
   notes           String?
+  preparedByUserId String?
+  preparedByName   String?
+  readyByUserId    String?
+  readyByName      String?
+  servedByUserId   String?
+  servedByName     String?
   orderId         String
   order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuItemId      String

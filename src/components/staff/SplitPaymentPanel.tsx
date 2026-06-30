@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import { CircleDollarSign, Split, ChevronDown, ChevronUp } from "lucide-react";
+import type { ReceiptPayload } from "@/lib/receipt-service";
 
 type PaymentItem = {
   id: string;
@@ -35,13 +36,16 @@ interface SplitPaymentPanelProps {
   orderNumber: number;
   tableNumber: number;
   summary?: PaymentSummary | null;
-  onPaid: () => void;
+  onPaymentComplete: (
+    res: Response,
+    json: { error?: string; receipt?: ReceiptPayload },
+  ) => Promise<void>;
 }
 
 export function SplitPaymentPanel({
   orderId,
   summary,
-  onPaid,
+  onPaymentComplete,
 }: SplitPaymentPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -68,35 +72,17 @@ export function SplitPaymentPanel({
     });
   };
 
-  const recordPayment = async (amount: number, itemIds?: string[]) => {
+  const submitPayment = async (body: Record<string, unknown>) => {
     setBusy(true);
     try {
-      await fetch(`/api/orders/${orderId}`, {
+      const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "record-payment",
-          amount,
-          method,
-          itemIds,
-        }),
+        body: JSON.stringify(body),
       });
+      const json = await res.json().catch(() => ({}));
       setSelectedItems(new Set());
-      onPaid();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const payFull = async () => {
-    setBusy(true);
-    try {
-      await fetch(`/api/orders/${orderId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "mark-paid", method }),
-      });
-      onPaid();
+      await onPaymentComplete(res, json);
     } finally {
       setBusy(false);
     }
@@ -115,7 +101,7 @@ export function SplitPaymentPanel({
         size="sm"
         className="w-full bg-emerald-600 hover:bg-emerald-500"
         disabled={busy}
-        onClick={payFull}
+        onClick={() => void submitPayment({ action: "mark-paid", method })}
       >
         <CircleDollarSign className="w-4 h-4" /> Pay full {formatCurrency(summary.remaining)}
       </Button>
@@ -161,7 +147,12 @@ export function SplitPaymentPanel({
                 className="w-full mt-2"
                 disabled={busy}
                 onClick={() =>
-                  recordPayment(selectedTotal, Array.from(selectedItems))
+                  void submitPayment({
+                    action: "record-payment",
+                    amount: selectedTotal,
+                    method,
+                    itemIds: Array.from(selectedItems),
+                  })
                 }
               >
                 Pay selected {formatCurrency(selectedTotal)}
@@ -187,7 +178,13 @@ export function SplitPaymentPanel({
               size="sm"
               className="w-full mt-2"
               disabled={busy}
-              onClick={() => recordPayment(splitAmount)}
+              onClick={() =>
+                void submitPayment({
+                  action: "record-payment",
+                  amount: splitAmount,
+                  method,
+                })
+              }
             >
               Record 1/{splitCount} share ({formatCurrency(splitAmount)})
             </Button>

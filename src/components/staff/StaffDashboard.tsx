@@ -24,6 +24,7 @@ import {
   CircleDollarSign,
   ArrowRightLeft,
   LayoutGrid,
+  Phone,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
@@ -34,7 +35,16 @@ import { useRouter } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
 import { SplitPaymentPanel } from "@/components/staff/SplitPaymentPanel";
-import { canManageTableOrdering, canAccessKitchen, canAccessFloorPlan } from "@/lib/staff-permissions";
+import { OfflineOrderPanel } from "@/components/staff/OfflineOrderPanel";
+import { ThermalPrinterButton } from "@/components/staff/ThermalPrinterButton";
+import { useThermalPrinter } from "@/hooks/useThermalPrinter";
+import {
+  canManageTableOrdering,
+  canAccessKitchen,
+  canAccessFloorPlan,
+  canPlaceOfflineOrder,
+} from "@/lib/staff-permissions";
+import type { ReceiptPayload } from "@/lib/receipt-service";
 
 interface OrderItem {
   id: string;
@@ -46,6 +56,9 @@ interface OrderItem {
   servedAt?: string | null;
   isOverdue: boolean;
   unitPrice?: number;
+  servedByName?: string | null;
+  preparedByName?: string | null;
+  readyByName?: string | null;
   menuItem?: { isAvailable: boolean; category: { name: string } };
 }
 
@@ -83,6 +96,8 @@ interface Order {
       createdAt: string;
     }>;
   } | null;
+  placedByName?: string | null;
+  paidByName?: string | null;
 }
 
 interface Alert {
@@ -159,6 +174,8 @@ export function StaffDashboard() {
 
   const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
     useStaffNotifications(alerts);
+  const { printReceipt, autoPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint } = useThermalPrinter();
+  const [printMessage, setPrintMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -235,13 +252,29 @@ export function StaffDashboard() {
     }
   };
 
-  const markOrderPaid = async (orderId: string) => {
-    await fetch(`/api/orders/${orderId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "mark-paid" }),
-    });
+  const handlePaymentComplete = async (
+    res: Response,
+    json: { error?: string; receipt?: ReceiptPayload },
+  ) => {
+    if (!res.ok) {
+      alert(json.error || "Could not record payment");
+      fetchData();
+      return;
+    }
+
     fetchData();
+
+    if (printerSupported && autoPrint && json.receipt) {
+      try {
+        await printReceipt(json.receipt);
+        setPrintMessage("Receipt sent to printer.");
+      } catch (error) {
+        setPrintMessage(
+          error instanceof Error ? error.message : "Payment saved, but receipt print failed.",
+        );
+      }
+      window.setTimeout(() => setPrintMessage(null), 5000);
+    }
   };
 
   const dismissAlert = async (alertId: string) => {
@@ -402,6 +435,22 @@ export function StaffDashboard() {
                 <LayoutGrid className="w-4 h-4" />
               </Link>
             )}
+            {user && canPlaceOfflineOrder(user.role) && (
+              <button
+                type="button"
+                onClick={() => setViewMode("offline")}
+                className={cn(
+                  "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors",
+                  viewMode === "offline"
+                    ? "bg-violet-500/20 border-violet-500/40 text-violet-200"
+                    : "bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20",
+                )}
+                title="Phone / offline orders"
+              >
+                <Phone className="w-4 h-4" />
+                <span className="hidden sm:inline">Phone orders</span>
+              </button>
+            )}
             {isManager && (
               <>
                 <Link href="/admin/qr" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
@@ -420,6 +469,18 @@ export function StaffDashboard() {
                 <BarChart3 className="w-4 h-4" />
               </Link>
             )}
+            {user && canPerformOrderAction(user.role, "mark-paid") && (
+              <ThermalPrinterButton
+                status={status}
+                deviceName={deviceName}
+                autoPrint={autoPrint}
+                lastError={lastError}
+                printing={printing}
+                supported={printerSupported}
+                onConnect={connect}
+                onToggleAutoPrint={toggleAutoPrint}
+              />
+            )}
             <button onClick={logout} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
               <LogOut className="w-4 h-4" />
             </button>
@@ -428,6 +489,11 @@ export function StaffDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
+        {printMessage && (
+          <div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-200">
+            {printMessage}
+          </div>
+        )}
         {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
 
         {tableSwitchRequests.length > 0 && (
@@ -610,6 +676,27 @@ export function StaffDashboard() {
                 </div>
               </button>
             )}
+
+            {showTab("offline") && (
+              <button
+                type="button"
+                onClick={() => setViewMode("offline")}
+                className={cn(
+                  "text-left rounded-2xl border p-4 transition-all col-span-2 md:col-span-1",
+                  viewMode === "offline"
+                    ? "border-violet-500/50 bg-violet-500/10"
+                    : "border-violet-500/20 bg-violet-500/5 hover:border-violet-500/40"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <Phone className="w-5 h-5 text-violet-400" />
+                  <div>
+                    <p className="text-xs text-zinc-500">Offline Order</p>
+                    <p className="text-sm font-semibold text-violet-200">Phone / walk-in</p>
+                  </div>
+                </div>
+              </button>
+            )}
           </div>
         )}
 
@@ -636,6 +723,14 @@ export function StaffDashboard() {
               <Card className="p-12 text-center">
                 <ChefHat className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
                 <p className="text-zinc-400 mb-2">No active orders right now.</p>
+                {showTab("offline") && (
+                  <button
+                    onClick={() => setViewMode("offline")}
+                    className="text-sm text-violet-400 hover:text-violet-300 mr-4"
+                  >
+                    Take an offline order →
+                  </button>
+                )}
                 <button
                   onClick={() => setViewMode("pending")}
                   className="text-sm text-yellow-400 hover:text-yellow-300"
@@ -698,7 +793,7 @@ export function StaffDashboard() {
                     key={order.id}
                     order={order}
                     role={role!}
-                    onRefresh={fetchData}
+                    onPaymentComplete={handlePaymentComplete}
                   />
                 ))}
               </div>
@@ -830,6 +925,10 @@ export function StaffDashboard() {
               </div>
             )}
           </>
+        )}
+
+        {viewMode === "offline" && (
+          <OfflineOrderPanel onOrderPlaced={fetchData} />
         )}
 
         {viewMode === "alerts" && (
@@ -974,6 +1073,9 @@ function ActiveOrderCard({
             #{order.orderNumber}
             {order.customerName && ` · ${order.customerName}`}
           </p>
+          {order.placedByName && (
+            <p className="text-xs text-violet-400/80 mt-0.5">Placed by {order.placedByName}</p>
+          )}
         </div>
         <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
       </div>
@@ -1035,9 +1137,16 @@ function ActiveOrderCard({
                   )}
                 </div>
               )}
+              {item.status === "PREPARING" && item.preparedByName && (
+                <span className="text-xs text-sky-400/80">Prep: {item.preparedByName}</span>
+              )}
+              {item.status === "READY" && item.readyByName && (
+                <span className="text-xs text-amber-400/80">Ready: {item.readyByName}</span>
+              )}
               {item.status === "SERVED" && (
                 <span className="text-xs text-emerald-400 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Served
+                  <CheckCircle2 className="w-3 h-3" />
+                  {item.servedByName ? `Served by ${item.servedByName}` : "Served"}
                 </span>
               )}
               {item.status === "UNAVAILABLE" && (
@@ -1062,11 +1171,11 @@ function ActiveOrderCard({
 function PendingPaymentCard({
   order,
   role,
-  onRefresh,
+  onPaymentComplete,
 }: {
   order: Order;
   role: Role;
-  onRefresh: () => void;
+  onPaymentComplete: (res: Response, json: { error?: string; receipt?: ReceiptPayload }) => Promise<void>;
 }) {
   const summary = order.paymentSummary;
   const total = summary?.remaining ?? order.total ?? 0;
@@ -1086,6 +1195,9 @@ function PendingPaymentCard({
             #{order.orderNumber}
             {order.customerName && ` · ${order.customerName}`}
           </p>
+          {order.placedByName && (
+            <p className="text-xs text-violet-400/80 mt-0.5">Placed by {order.placedByName}</p>
+          )}
         </div>
         <Badge className="bg-yellow-500/15 text-yellow-400 border-yellow-500/30">Awaiting payment</Badge>
       </div>
@@ -1097,14 +1209,20 @@ function PendingPaymentCard({
           quantity: i.quantity,
           status: i.status,
           remaining: i.status === "UNAVAILABLE" ? 0 : (i.unitPrice ?? 0) * i.quantity,
-        }))).map((item) => (
+        }))).map((item) => {
+          const servedByName = order.items.find((i) => i.id === item.id)?.servedByName;
+          return (
           <div key={item.id} className="flex justify-between text-sm">
             <span className={item.status === "UNAVAILABLE" ? "text-zinc-500" : "text-zinc-300"}>
               {item.quantity}x {item.itemName}
+              {servedByName && (
+                <span className="text-zinc-500 ml-2">· {servedByName}</span>
+              )}
             </span>
             <span className="text-zinc-400">{formatCurrency(item.remaining)}</span>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
@@ -1118,7 +1236,7 @@ function PendingPaymentCard({
           orderNumber={order.orderNumber}
           tableNumber={order.table.number}
           summary={summary}
-          onPaid={onRefresh}
+          onPaymentComplete={onPaymentComplete}
         />
       )}
     </motion.div>
@@ -1151,8 +1269,10 @@ function CompletedOrderRow({ order }: { order: Order }) {
           <p className="text-xs text-zinc-500 mb-3">
             {new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             {order.customerName && ` · ${order.customerName}`}
+            {order.placedByName && ` · Placed by ${order.placedByName}`}
             {order.paidAt &&
               ` · Paid ${new Date(order.paidAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
+            {order.paidByName && ` by ${order.paidByName}`}
           </p>
           <div className="space-y-1">
             {order.items.map((item) => {
@@ -1169,13 +1289,14 @@ function CompletedOrderRow({ order }: { order: Order }) {
                     }
                   >
                     {item.quantity}x {item.itemName}
-                    {item.status === "SERVED" && item.servedAt && (
+                    {item.status === "SERVED" && (
                       <span className="text-zinc-500 ml-2">
-                        served{" "}
-                        {new Date(item.servedAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {item.servedByName ? `${item.servedByName}` : "served"}
+                        {item.servedAt &&
+                          ` ${new Date(item.servedAt).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}`}
                       </span>
                     )}
                     {item.status === "UNAVAILABLE" && (

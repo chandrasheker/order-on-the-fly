@@ -1,0 +1,28 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth";
+import { canAccessReports } from "@/lib/staff-permissions";
+import {
+  getStaffPerformanceReport,
+  getTableServiceLog,
+} from "@/lib/staff-performance-service";
+import { todayDateString } from "@/lib/utils";
+
+export async function GET(req: NextRequest) {
+  const session = await requireSession(["OWNER", "MANAGER"]);
+  if (!session || !canAccessReports(session.role)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const date = req.nextUrl.searchParams.get("date") || todayDateString();
+  const includeTables = req.nextUrl.searchParams.get("tables") === "1";
+
+  const performance = await getStaffPerformanceReport(session.restaurantId, date);
+  const tableLog = includeTables
+    ? await getTableServiceLog(session.restaurantId, date)
+    : undefined;
+
+  return NextResponse.json({
+    ...performance,
+    tableLog,
+  });
+}
