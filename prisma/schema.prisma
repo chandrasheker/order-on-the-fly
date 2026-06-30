@@ -53,6 +53,12 @@ model Restaurant {
   serverSlots           Int            @default(4)
   staffConfigured       Boolean        @default(false)
   paymentQrUrl          String?
+  receiptAddress        String?
+  receiptPhone          String?
+  receiptGstin          String?
+  receiptGstEnabled     Boolean        @default(false)
+  receiptGstRate        Float          @default(5)
+  receiptFooter         String?
   createdAt             DateTime       @default(now())
   users                 User[]
   tables                Table[]

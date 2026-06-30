@@ -12,6 +12,11 @@ import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
+import {
+  buildReceiptPayload,
+  RECEIPT_ORDER_INCLUDE,
+  RECEIPT_RESTAURANT_SELECT,
+} from "@/lib/receipt-service";
 
 export async function PATCH(
   req: NextRequest,
@@ -145,17 +150,33 @@ export async function PATCH(
       return NextResponse.json({ error: "Order already marked paid" }, { status: 400 });
     }
 
+    const paidAt = new Date();
     await prisma.order.update({
       where: { id },
-      data: { paidAt: new Date() },
+      data: { paidAt },
     });
 
     await clearPaymentAlerts(id);
 
     await maybeAutoCloseTableAfterPayment(order.tableId);
 
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: session.restaurantId },
+      select: RECEIPT_RESTAURANT_SELECT,
+    });
+
+    const paidOrder = await prisma.order.findUnique({
+      where: { id },
+      include: RECEIPT_ORDER_INCLUDE,
+    });
+
+    const receipt =
+      restaurant && paidOrder
+        ? buildReceiptPayload(restaurant, { ...paidOrder, paidAt })
+        : null;
+
     logInfo("api:orders/[id]", "Order marked paid", { orderId: id });
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, receipt });
   }
 
   if (action === "serve-item" && itemId) {
