@@ -15,7 +15,8 @@ export type OrderAction =
   | "serve-item"
   | "reject-item"
   | "serve-all"
-  | "mark-paid";
+  | "mark-paid"
+  | "record-payment";
 
 const TAB_ACCESS: Record<Role, StaffTab[]> = {
   OWNER: ["active", "pending", "completed", "revenue", "overdue", "missed", "alerts"],
@@ -32,6 +33,7 @@ const ACTION_ACCESS: Record<Role, OrderAction[]> = {
     "reject-item",
     "serve-all",
     "mark-paid",
+    "record-payment",
   ],
   MANAGER: [
     "prepare-item",
@@ -40,9 +42,10 @@ const ACTION_ACCESS: Record<Role, OrderAction[]> = {
     "reject-item",
     "serve-all",
     "mark-paid",
+    "record-payment",
   ],
   COOK: ["prepare-item", "ready-item", "reject-item"],
-  SERVER: ["serve-item", "reject-item", "serve-all", "mark-paid"],
+  SERVER: ["serve-item", "reject-item", "serve-all", "mark-paid", "record-payment"],
 };
 
 export function canAccessTab(role: Role, tab: StaffTab) {
@@ -63,6 +66,18 @@ export function canAccessAdminMenu(role: Role) {
 
 export function canManageTableOrdering(role: Role) {
   return role === "OWNER" || role === "MANAGER" || role === "SERVER";
+}
+
+export function canAccessKitchen(role: Role) {
+  return role === "OWNER" || role === "MANAGER" || role === "COOK";
+}
+
+export function canAccessFloorPlan(role: Role) {
+  return role === "OWNER" || role === "MANAGER" || role === "SERVER";
+}
+
+export function canManageFloorLayout(role: Role) {
+  return role === "OWNER" || role === "MANAGER";
 }
 
 export function canAccessReports(role: Role) {

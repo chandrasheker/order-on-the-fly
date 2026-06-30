@@ -35,8 +35,18 @@ domain / LAN IP so QR codes point to the correct URL.
 ## Access
 
 - **Staff/Owner** — login at `/` to access dashboard, menu, QR codes, and reports
+- **Cooks** — auto-redirect to `/kitchen` (station-routed KDS)
+- **Servers** — dashboard + `/staff/floor` (table map, timers, server assignment)
 - **Platform admin** — login at `/platform/login` to manage staff names, emails, passwords, and roles
 - **Customers** — scan table QR code to order (no login needed)
+
+## Full-service features
+
+| Feature | Route / location |
+|---------|------------------|
+| Kitchen Display (KDS) | `/kitchen` — Hot Kitchen, Grill, Bar, Cold stations |
+| Floor plan & table timers | `/staff/floor` — seat tables, assign servers, live bill |
+| Split bill / partial pay | Staff dashboard → **Pending** tab — pay by item or split evenly |
 
 ## Owner Features
 

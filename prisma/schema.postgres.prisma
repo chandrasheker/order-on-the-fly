@@ -36,6 +36,12 @@ enum TableSwitchRequestStatus {
   REJECTED
 }
 
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+}
+
 model Restaurant {
   id                    String         @id @default(cuid())
   name                  String
@@ -62,6 +68,8 @@ model Restaurant {
   alerts                Alert[]
   feedbacks             Feedback[]
   rewards               Reward[]
+  kitchenStations       KitchenStation[]
+  payments              Payment[]
 }
 
 model User {
@@ -73,8 +81,9 @@ model User {
   slotKey      String?
   plainPassword String?
   restaurantId String
-  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  createdAt    DateTime   @default(now())
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  assignedTables Table[]    @relation("TableServer")
+  createdAt      DateTime   @default(now())
 
   @@unique([restaurantId, slotKey])
 }
@@ -95,10 +104,20 @@ model Table {
   orderingEnabled Boolean     @default(false)
   orderingOpenedAt DateTime?
   maxSessions  Int            @default(2)
+  positionX    Float?
+  positionY    Float?
+  width        Float?         @default(96)
+  height       Float?         @default(96)
+  section      String?
+  assignedServerId String?
+  assignedServer   User?      @relation("TableServer", fields: [assignedServerId], references: [id], onDelete: SetNull)
+  seatedAt     DateTime?
+  guestCount   Int?
   restaurantId String
   restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   orders       Order[]
   sessions     TableSession[]
+  payments     Payment[]
   sourceSwitchRequests TableSwitchRequest[] @relation("SourceTableSwitchRequests")
   targetSwitchRequests TableSwitchRequest[] @relation("TargetTableSwitchRequests")
 
@@ -190,9 +209,56 @@ model Order {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   date           String
+  payments       Payment[]
 
   @@index([restaurantId, date])
   @@index([tableId])
+}
+
+model KitchenStation {
+  id            String     @id @default(cuid())
+  name          String
+  slug          String
+  color         String     @default("#3b82f6")
+  categorySlugs String
+  sortOrder     Int        @default(0)
+  restaurantId  String
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, slug])
+}
+
+model Payment {
+  id                String              @id @default(cuid())
+  restaurantId      String
+  restaurant        Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tableId           String
+  table             Table               @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  orderId           String?
+  order             Order?              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount            Float
+  method            PaymentMethod       @default(UPI)
+  note              String?
+  collectedByUserId String?
+  collectedByName   String?
+  createdAt         DateTime            @default(now())
+  allocations       PaymentAllocation[]
+
+  @@index([restaurantId, createdAt])
+  @@index([orderId])
+  @@index([tableId])
+}
+
+model PaymentAllocation {
+  id          String    @id @default(cuid())
+  paymentId   String
+  payment     Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  orderItemId String
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  quantity    Int
+  amount      Float
+
+  @@index([orderItemId])
 }
 
 model OrderItem {
@@ -212,6 +278,7 @@ model OrderItem {
   menuItem        MenuItem        @relation(fields: [menuItemId], references: [id])
   unitPrice       Float
   itemName        String
+  paymentAllocations PaymentAllocation[]
 }
 
 enum RewardStatus {

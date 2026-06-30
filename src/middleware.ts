@@ -90,7 +90,33 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === "/" && session) {
+    const role = session.role as string;
+    if (role === "COOK") {
+      return NextResponse.redirect(new URL("/kitchen", request.url));
+    }
     return NextResponse.redirect(new URL("/staff/dashboard", request.url));
+  }
+
+  if (pathname.startsWith("/kitchen")) {
+    if (!session) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    const role = session.role as string;
+    if (role !== "OWNER" && role !== "MANAGER" && role !== "COOK") {
+      return NextResponse.redirect(new URL("/staff/dashboard", request.url));
+    }
+    return NextResponse.next();
+  }
+
+  if (pathname.startsWith("/staff/floor")) {
+    if (!session) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    const role = session.role as string;
+    if (role !== "OWNER" && role !== "MANAGER" && role !== "SERVER") {
+      return NextResponse.redirect(new URL("/staff/dashboard", request.url));
+    }
+    return NextResponse.next();
   }
 
   if (pathname.startsWith("/order/")) {

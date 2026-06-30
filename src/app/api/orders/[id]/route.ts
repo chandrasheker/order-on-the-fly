@@ -7,10 +7,10 @@ import {
   serveTimelineUpdate,
   syncOrderStatus,
 } from "@/lib/order-service";
-import { clearPaymentAlerts, requestOrderPayment } from "@/lib/payment-service";
+import { requestOrderPayment } from "@/lib/payment-service";
+import { recordFullOrderPayment, recordOrderPayment } from "@/lib/payment-allocation-service";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
-import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
 
 export async function PATCH(
@@ -18,7 +18,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { action, itemId, tableToken } = await req.json();
+  const { action, itemId, tableToken, amount, method, itemIds, note } = await req.json();
   logApiRequest("orders/[id]", "PATCH", { orderId: id, action, itemId });
 
   const order = await prisma.order.findUnique({
@@ -126,6 +126,7 @@ export async function PATCH(
     "ready-item",
     "serve-all",
     "mark-paid",
+    "record-payment",
   ] as const;
 
   if (staffActions.includes(action as (typeof staffActions)[number])) {
@@ -141,21 +142,57 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    if (order.paidAt) {
-      return NextResponse.json({ error: "Order already marked paid" }, { status: 400 });
+
+    const result = await recordFullOrderPayment({
+      orderId: id,
+      method: method ?? "UPI",
+      collectedByUserId: session.id,
+      collectedByName: session.name,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    await prisma.order.update({
-      where: { id },
-      data: { paidAt: new Date() },
-    });
-
-    await clearPaymentAlerts(id);
-
-    await maybeAutoCloseTableAfterPayment(order.tableId);
-
     logInfo("api:orders/[id]", "Order marked paid", { orderId: id });
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, summary: result.summary, fullyPaid: result.fullyPaid });
+  }
+
+  if (action === "record-payment") {
+    if (order.status !== "SERVED") {
+      return NextResponse.json(
+        { error: "Order must be fully served before recording payment" },
+        { status: 400 }
+      );
+    }
+
+    const payAmount = typeof amount === "number" ? amount : parseFloat(String(amount));
+    if (!payAmount || payAmount <= 0) {
+      return NextResponse.json({ error: "Valid payment amount required" }, { status: 400 });
+    }
+
+    const result = await recordOrderPayment({
+      orderId: id,
+      amount: payAmount,
+      method: method ?? "UPI",
+      note,
+      itemIds: Array.isArray(itemIds) ? itemIds : undefined,
+      collectedByUserId: session.id,
+      collectedByName: session.name,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+
+    logInfo("api:orders/[id]", "Partial payment recorded", {
+      orderId: id,
+      amount: payAmount,
+      fullyPaid: result.fullyPaid,
+    });
+    return NextResponse.json({
+      success: true,
+      summary: result.summary,
+      fullyPaid: result.fullyPaid,
+    });
   }
 
   if (action === "serve-item" && itemId) {

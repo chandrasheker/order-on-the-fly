@@ -10,6 +10,7 @@ import { todayDateString, sumOrderRevenue, sumPaidOrderRevenue } from "@/lib/uti
 import { getTabsForRole } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { logApiRequest, logInfo } from "@/lib/logger";
+import { getOrderPaymentSummary } from "@/lib/payment-allocation-service";
 
 export async function GET() {
   logApiRequest("staff/dashboard", "GET");
@@ -55,7 +56,7 @@ export async function GET() {
     0
   );
 
-  const withTotal = <T extends { items: Array<{ unitPrice: number; quantity: number; status: string }>; paidAt?: Date | null }>(
+  const withTotal = <T extends { id: string; items: Array<{ unitPrice: number; quantity: number; status: string }>; paidAt?: Date | null }>(
     list: T[]
   ) =>
     list.map((o) => ({
@@ -63,6 +64,15 @@ export async function GET() {
       total: sumOrderRevenue(o.items),
       paidTotal: sumPaidOrderRevenue(o, o.items),
     }));
+
+  const pendingWithPayments = (
+    await Promise.all(
+      withTotal(pendingOrders).map(async (order) => ({
+        ...order,
+        paymentSummary: await getOrderPaymentSummary(order.id),
+      })),
+    )
+  ).filter((order) => (order.paymentSummary?.remaining ?? order.total ?? 0) > 0);
 
   logInfo("api:staff/dashboard", "Dashboard loaded", {
     restaurantId: session.restaurantId,
@@ -74,7 +84,7 @@ export async function GET() {
 
   return NextResponse.json({
     orders,
-    pendingOrders: withTotal(pendingOrders),
+    pendingOrders: pendingWithPayments,
     completedOrders: withTotal(completedOrders),
     alerts,
     permissions: {
