@@ -132,7 +132,7 @@ Previously listed as "coming soon" — all six modules above are **live** when t
 ## How toggling works (technical)
 
 1. Super admin saves toggles → `Restaurant.featureFlags` JSON in SQLite/Postgres.
-2. Server reads flags via `getRestaurantFeatureFlags()` (10s in-memory cache per restaurant).
+2. Server reads flags via `getRestaurantFeatureFlags()` (~60s in-memory cache per restaurant).
 3. Disabled premium APIs return `403` with `code: FEATURE_DISABLED`.
 4. Staff UI hides buttons/routes for disabled modules.
 5. Cache invalidates immediately on save — effective within one cache window, no deploy.
