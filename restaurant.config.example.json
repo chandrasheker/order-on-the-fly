@@ -1,0 +1,121 @@
+{
+  "app": {
+    "name": "TableTap",
+    "url": "http://localhost:3000"
+  },
+  "restaurant": {
+    "name": "Varanasi Restaurant",
+    "slug": "varanasi",
+    "logoUrl": null,
+    "backgroundImageUrl": "/restaurants/varanasi-hotel-background.jpg",
+    "tableCount": 10,
+    "defaultMaxSessions": 2,
+    "rewards": {
+      "thresholdTea": 250,
+      "thresholdBeverage": 500,
+      "teaLabel": "Free Masala Chai (next visit)",
+      "beverageLabel": "Free Beverage (next visit)"
+    }
+  },
+  "platformAdmin": {
+    "name": "Platform Admin",
+    "email": "admin@varanasi.com",
+    "password": "admin@varanasi"
+  },
+  "staff": {
+    "domain": "varanasi.com",
+    "defaultPassword": "admin123",
+    "owners": [
+      { "name": "Rajesh Kumar", "email": "owner@varanasi.com", "password": "admin123" }
+    ],
+    "managers": [
+      { "name": "Priya Sharma", "email": "manager1@varanasi.com", "password": "admin123" },
+      { "name": "Manager 2" }
+    ],
+    "cooks": [
+      { "name": "Chef Anand", "email": "cook1@varanasi.com", "password": "admin123" },
+      { "name": "Cook 2" },
+      { "name": "Cook 3" }
+    ],
+    "servers": [
+      { "name": "Arun Patel", "email": "server1@varanasi.com", "password": "admin123" },
+      { "name": "Server 2" },
+      { "name": "Server 3" },
+      { "name": "Server 4" }
+    ]
+  },
+  "menu": [
+    { "name": "Today's Special", "icon": "⭐", "items": [] },
+    {
+      "name": "Beverages",
+      "icon": "🥤",
+      "items": [
+        { "name": "Mineral Water", "description": "Chilled 500ml bottle", "price": 30, "prepTimeMinutes": 1, "isVeg": true },
+        { "name": "Fresh Lime Soda", "description": "Sweet or salted", "price": 60, "prepTimeMinutes": 3, "isVeg": true },
+        { "name": "Mango Lassi", "description": "Thick & creamy", "price": 80, "prepTimeMinutes": 3, "isVeg": true },
+        { "name": "Cold Coffee", "description": "Blended with ice cream", "price": 90, "prepTimeMinutes": 4, "isVeg": true }
+      ]
+    },
+    {
+      "name": "Tea & Coffee",
+      "icon": "☕",
+      "items": [
+        { "name": "Masala Chai", "description": "Spiced Indian tea", "price": 40, "prepTimeMinutes": 5, "isVeg": true },
+        { "name": "Filter Coffee", "description": "South Indian style", "price": 50, "prepTimeMinutes": 5, "isVeg": true },
+        { "name": "Green Tea", "description": "Light & refreshing", "price": 45, "prepTimeMinutes": 4, "isVeg": true },
+        { "name": "Ginger Tea", "description": "Warming & aromatic", "price": 45, "prepTimeMinutes": 5, "isVeg": true }
+      ]
+    },
+    {
+      "name": "Tiffins",
+      "icon": "🥞",
+      "items": [
+        { "name": "Plain Dosa", "description": "Crispy rice crepe", "price": 80, "prepTimeMinutes": 10, "isVeg": true },
+        { "name": "Masala Dosa", "description": "Stuffed with potato masala", "price": 120, "prepTimeMinutes": 12, "isVeg": true },
+        { "name": "Idli (2 pcs)", "description": "Steamed rice cakes with chutney", "price": 60, "prepTimeMinutes": 8, "isVeg": true },
+        { "name": "Medu Vada", "description": "Crispy lentil donuts", "price": 70, "prepTimeMinutes": 10, "isVeg": true },
+        { "name": "Pongal", "description": "Comfort rice & lentil bowl", "price": 90, "prepTimeMinutes": 10, "isVeg": true }
+      ]
+    },
+    {
+      "name": "Snacks",
+      "icon": "🍟",
+      "items": [
+        { "name": "Samosa (2 pcs)", "description": "Crispy potato filled", "price": 50, "prepTimeMinutes": 5, "isVeg": true },
+        { "name": "Pakora Platter", "description": "Mixed vegetable fritters", "price": 90, "prepTimeMinutes": 8, "isVeg": true },
+        { "name": "French Fries", "description": "Golden & crispy", "price": 100, "prepTimeMinutes": 7, "isVeg": true },
+        { "name": "Paneer Tikka", "description": "Grilled cottage cheese", "price": 180, "prepTimeMinutes": 12, "isVeg": true }
+      ]
+    },
+    {
+      "name": "Lunch Specials",
+      "icon": "🍛",
+      "items": [
+        { "name": "Veg Fried Rice", "description": "Wok-tossed with veggies", "price": 150, "prepTimeMinutes": 12, "isVeg": true },
+        { "name": "Chicken Fried Rice", "description": "Classic Indo-Chinese", "price": 200, "prepTimeMinutes": 15, "isVeg": false },
+        { "name": "Veg Thali", "description": "Complete meal platter", "price": 220, "prepTimeMinutes": 15, "isVeg": true },
+        { "name": "South Indian Meals", "description": "Rice, sambar, rasam & more", "price": 180, "prepTimeMinutes": 12, "isVeg": true }
+      ]
+    },
+    {
+      "name": "Biryani & Mains",
+      "icon": "🍗",
+      "items": [
+        { "name": "Veg Biryani", "description": "Fragrant basmati with veggies", "price": 180, "prepTimeMinutes": 18, "isVeg": true },
+        { "name": "Chicken Biryani", "description": "Hyderabadi style dum biryani", "price": 280, "prepTimeMinutes": 20, "isVeg": false, "isSpicy": true },
+        { "name": "Mutton Biryani", "description": "Slow-cooked tender mutton", "price": 350, "prepTimeMinutes": 25, "isVeg": false, "isSpicy": true },
+        { "name": "Butter Chicken", "description": "Creamy tomato gravy", "price": 320, "prepTimeMinutes": 18, "isVeg": false },
+        { "name": "Paneer Butter Masala", "description": "Rich & creamy curry", "price": 240, "prepTimeMinutes": 15, "isVeg": true }
+      ]
+    },
+    {
+      "name": "Desserts",
+      "icon": "🍰",
+      "items": [
+        { "name": "Gulab Jamun", "description": "Warm milk dumplings", "price": 60, "prepTimeMinutes": 3, "isVeg": true },
+        { "name": "Ice Cream Scoop", "description": "Choice of flavors", "price": 70, "prepTimeMinutes": 2, "isVeg": true },
+        { "name": "Payasam", "description": "Traditional sweet pudding", "price": 80, "prepTimeMinutes": 4, "isVeg": true }
+      ]
+    }
+  ]
+}
