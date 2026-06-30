@@ -5,7 +5,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Minus, ShoppingBag, Flame, ChevronLeft, ChevronRight, ChevronDown, Search, X } from "lucide-react";
 import { formatCurrency, getPrepTimeLabel, cn } from "@/lib/utils";
 import { Button, Badge, Input } from "@/components/ui";
-import { useCartStore } from "@/store/cart";
+import { useCartStore, type CartItem } from "@/store/cart";
+
+interface MenuCartControls {
+  items: CartItem[];
+  addItem: (item: Omit<CartItem, "quantity">) => void;
+  updateQuantity: (menuItemId: string, quantity: number) => void;
+  total: () => number;
+  maxPrepTime: () => number;
+}
 
 interface MenuItem {
   id: string;
@@ -102,11 +110,15 @@ export function MenuView({
   onOrder,
   ordering,
   canOrder = true,
+  cart,
+  orderButtonLabel,
 }: {
   categories: Category[];
   onOrder: () => void;
   ordering: boolean;
   canOrder?: boolean;
+  cart?: MenuCartControls;
+  orderButtonLabel?: string;
 }) {
   const [activeCategory, setActiveCategory] = useState(categories[0]?.slug || "");
   const [searchQuery, setSearchQuery] = useState("");
@@ -117,7 +129,8 @@ export function MenuView({
   const [canScrollRight, setCanScrollRight] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
-  const { items, addItem, updateQuantity, total, maxPrepTime } = useCartStore();
+  const customerCart = useCartStore();
+  const { items, addItem, updateQuantity, total, maxPrepTime } = cart ?? customerCart;
   const cartCount = items.reduce((s, i) => s + i.quantity, 0);
 
   const updateScrollHints = useCallback(() => {
@@ -438,7 +451,8 @@ export function MenuView({
               >
                 <span className="flex items-center gap-2">
                   <ShoppingBag className="w-5 h-5" />
-                  {cartCount} item{cartCount > 1 ? "s" : ""} · ~{maxPrepTime()} min
+                  {orderButtonLabel ??
+                    `${cartCount} item${cartCount > 1 ? "s" : ""} · ~${maxPrepTime()} min`}
                 </span>
                 <span className="font-bold">{formatCurrency(total())}</span>
               </Button>

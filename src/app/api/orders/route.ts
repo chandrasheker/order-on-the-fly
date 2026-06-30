@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getNextOrderNumber } from "@/lib/order-service";
-import { isTablePaymentBlocked } from "@/lib/payment-service";
-import { todayDateString } from "@/lib/utils";
+import { createOrderForTable, OrderCreationError } from "@/lib/order-service";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
+import { isTablePaymentBlocked } from "@/lib/payment-service";
+import { todayDateString } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
   logApiRequest("orders", "POST");
@@ -28,17 +28,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Table not found" }, { status: 404 });
     }
 
-    if (await isTablePaymentBlocked(table.id)) {
-      return NextResponse.json(
-        {
-          error:
-            "Please complete payment for your current bill before placing a new order. Ask staff if you need help.",
-          code: "TABLE_PAYMENT_BLOCKED",
-        },
-        { status: 403 }
-      );
-    }
-
     const { validateTableSession } = await import("@/lib/table-session-service");
     const sessionValid = await validateTableSession(table.id, sessionKey);
     if (!sessionValid) {
@@ -46,7 +35,7 @@ export async function POST(req: NextRequest) {
         {
           error: `This table allows ${table.maxSessions} active ordering session(s). Please scan again when a slot opens.`,
         },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -58,61 +47,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const menuItems = await prisma.menuItem.findMany({
-      where: {
-        id: { in: items.map((i: { menuItemId: string }) => i.menuItemId) },
-        isAvailable: true,
-      },
+    const { order, total } = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: table.restaurantId,
+      customerName,
+      items: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
+        menuItemId: item.menuItemId,
+        quantity: item.quantity,
+        notes: item.notes,
+      })),
     });
-
-    if (menuItems.length !== items.length) {
-      return NextResponse.json(
-        { error: "Some items are unavailable" },
-        { status: 400 }
-      );
-    }
-
-    const orderNumber = await getNextOrderNumber(table.restaurantId);
-    const now = new Date();
-
-    const orderItemsData = items.map(
-      (item: { menuItemId: string; quantity: number; notes?: string }) => {
-        const menuItem = menuItems.find((m) => m.id === item.menuItemId)!;
-        const expectedReadyAt = new Date(
-          now.getTime() + menuItem.prepTimeMinutes * 60 * 1000
-        );
-        return {
-          menuItemId: menuItem.id,
-          quantity: item.quantity,
-          prepTimeMinutes: menuItem.prepTimeMinutes,
-          expectedReadyAt,
-          unitPrice: menuItem.price,
-          itemName: menuItem.name,
-          notes: item.notes,
-        };
-      }
-    );
-
-    const order = await prisma.order.create({
-      data: {
-        orderNumber,
-        customerName: customerName || null,
-        tableId: table.id,
-        restaurantId: table.restaurantId,
-        date: todayDateString(),
-        status: "PENDING",
-        items: { create: orderItemsData },
-      },
-      include: {
-        items: true,
-        table: true,
-      },
-    });
-
-    const total = order.items.reduce(
-      (sum, i) => sum + i.unitPrice * i.quantity,
-      0
-    );
 
     logInfo("api:orders", "Order created", {
       orderId: order.id,
@@ -124,6 +68,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ order: { ...order, total } }, { status: 201 });
   } catch (error) {
+    if (error instanceof OrderCreationError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status },
+      );
+    }
     logApiError("orders", "POST", error);
     return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
   }

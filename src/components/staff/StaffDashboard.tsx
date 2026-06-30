@@ -23,6 +23,7 @@ import {
   Wallet,
   CircleDollarSign,
   ArrowRightLeft,
+  Phone,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
@@ -32,6 +33,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
+import { OfflineOrderPanel } from "@/components/staff/OfflineOrderPanel";
 import { canManageTableOrdering } from "@/lib/staff-permissions";
 
 interface OrderItem {
@@ -576,6 +578,27 @@ export function StaffDashboard() {
                 </div>
               </button>
             )}
+
+            {showTab("offline") && (
+              <button
+                type="button"
+                onClick={() => setViewMode("offline")}
+                className={cn(
+                  "text-left rounded-2xl border p-4 transition-all col-span-2 md:col-span-1",
+                  viewMode === "offline"
+                    ? "border-violet-500/50 bg-violet-500/10"
+                    : "border-violet-500/20 bg-violet-500/5 hover:border-violet-500/40"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <Phone className="w-5 h-5 text-violet-400" />
+                  <div>
+                    <p className="text-xs text-zinc-500">Offline Order</p>
+                    <p className="text-sm font-semibold text-violet-200">Take order for guest</p>
+                  </div>
+                </div>
+              </button>
+            )}
           </div>
         )}
 
@@ -602,6 +625,14 @@ export function StaffDashboard() {
               <Card className="p-12 text-center">
                 <ChefHat className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
                 <p className="text-zinc-400 mb-2">No active orders right now.</p>
+                {showTab("offline") && (
+                  <button
+                    onClick={() => setViewMode("offline")}
+                    className="text-sm text-violet-400 hover:text-violet-300 mr-4"
+                  >
+                    Take an offline order →
+                  </button>
+                )}
                 <button
                   onClick={() => setViewMode("pending")}
                   className="text-sm text-yellow-400 hover:text-yellow-300"
@@ -796,6 +827,10 @@ export function StaffDashboard() {
               </div>
             )}
           </>
+        )}
+
+        {viewMode === "offline" && (
+          <OfflineOrderPanel onOrderPlaced={fetchData} />
         )}
 
         {viewMode === "alerts" && (
