@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createToken, verifyPassword } from "@/lib/auth";
+import { createToken, verifyPassword, STAFF_SESSION_COOKIE } from "@/lib/auth";
 import { getStaffHomePath } from "@/lib/feature-flags";
 import { logApiError, logApiRequest, logInfo, logWarn } from "@/lib/logger";
+import { getRestaurantAccessState, accessBlockMessage } from "@/lib/access-control-service";
+import { recordLoginAudit, requestClientMeta } from "@/lib/login-audit-service";
+import { startStaffSession } from "@/lib/staff-session-service";
 
 export async function POST(req: NextRequest) {
   logApiRequest("auth/login", "POST");
+  const client = requestClientMeta(req);
+
   try {
     const { email: bodyEmail, password: bodyPassword } = await req.json();
     const email = String(bodyEmail).trim().toLowerCase();
@@ -26,15 +31,64 @@ export async function POST(req: NextRequest) {
         logWarn("auth/login", "Login failed: database not seeded");
         return NextResponse.json(
           { error: "Login unavailable. Please contact your administrator." },
-          { status: 503 }
+          { status: 503 },
         );
       }
+      await recordLoginAudit({
+        kind: "STAFF",
+        success: false,
+        email,
+        userId: user?.id,
+        tenantId: user?.tenantId,
+        restaurantId: user?.restaurantId,
+        role: user?.role,
+        failureReason: "Invalid credentials",
+        ...client,
+      });
       logWarn("auth/login", "Invalid credentials", {
         email,
         userExists: Boolean(user),
       });
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
+
+    const access = await getRestaurantAccessState(user.restaurantId);
+    if (!access.ok) {
+      await recordLoginAudit({
+        kind: "STAFF",
+        success: false,
+        email,
+        userId: user.id,
+        tenantId: user.tenantId,
+        restaurantId: user.restaurantId,
+        role: user.role,
+        failureReason: access.reason,
+        ...client,
+      });
+      return NextResponse.json(
+        { error: accessBlockMessage(access.reason), code: access.reason },
+        { status: 403 },
+      );
+    }
+
+    const staffSession = await startStaffSession({
+      userId: user.id,
+      restaurantId: user.restaurantId,
+      tenantId: user.tenantId,
+      role: user.role,
+      ...client,
+    });
+
+    await recordLoginAudit({
+      kind: "STAFF",
+      success: true,
+      email,
+      userId: user.id,
+      tenantId: user.tenantId,
+      restaurantId: user.restaurantId,
+      role: user.role,
+      ...client,
+    });
 
     logInfo("auth/login", "Login successful", {
       userId: user.id,
@@ -50,13 +104,14 @@ export async function POST(req: NextRequest) {
       restaurantId: user.restaurantId,
       restaurantName: user.restaurant.name,
       restaurantSlug: user.restaurant.slug,
+      staffSessionId: staffSession.id,
     };
 
     const token = await createToken(session);
     const homePath = await getStaffHomePath(user.restaurantId, user.role);
 
     const response = NextResponse.json({ user: session, homePath });
-    response.cookies.set("tabletap_session", token, {
+    response.cookies.set(STAFF_SESSION_COOKIE, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",

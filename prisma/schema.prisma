@@ -204,6 +204,7 @@ model Restaurant {
   smsAlertsEnabled      Boolean        @default(true)
   tenantId              String?
   tenant                Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  isEnabled             Boolean        @default(true)
   createdAt             DateTime       @default(now())
   branches              Branch[]
   users                 User[]
@@ -236,6 +237,7 @@ model Restaurant {
   floors                Floor[]
   printJobs             PrintJob[]
   paymentReconciliations PaymentReconciliation[]
+  staffSessions          StaffSession[]
 }
 
 model User {
@@ -254,6 +256,7 @@ model User {
   restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   assignedTables Table[]    @relation("TableServer")
   shiftClocks    ShiftClock[]
+  staffSessions  StaffSession[]
   createdAt      DateTime   @default(now())
 
   @@unique([restaurantId, slotKey])
@@ -265,6 +268,46 @@ model PlatformAdmin {
   passwordHash String
   name         String   @default("Platform Admin")
   createdAt    DateTime @default(now())
+}
+
+model StaffSession {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tenantId     String?
+  role         Role
+  loginAt      DateTime   @default(now())
+  lastSeenAt   DateTime   @default(now())
+  logoutAt     DateTime?
+  ipAddress    String?
+  userAgent    String?
+
+  @@index([restaurantId, logoutAt, lastSeenAt])
+  @@index([tenantId, logoutAt, lastSeenAt])
+  @@index([userId, logoutAt])
+}
+
+model LoginAuditLog {
+  id              String   @id @default(cuid())
+  kind            String
+  success         Boolean
+  email           String
+  userId          String?
+  platformAdminId String?
+  tenantId        String?
+  restaurantId    String?
+  role            String?
+  failureReason   String?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([restaurantId, createdAt])
+  @@index([kind, createdAt])
+  @@index([email, createdAt])
 }
 
 model Table {
@@ -860,6 +903,7 @@ model Tenant {
   externalBillingId  String?
   demoPackUsedAt     DateTime?
   demoExpiresAt      DateTime?
+  isEnabled          Boolean            @default(true)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   restaurants        Restaurant[]

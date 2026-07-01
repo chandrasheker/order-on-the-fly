@@ -16,6 +16,7 @@ export interface SessionUser {
   restaurantId: string;
   restaurantName: string;
   restaurantSlug: string;
+  staffSessionId?: string;
 }
 
 export interface PlatformAdminSession {
@@ -95,6 +96,15 @@ export async function getSession(): Promise<SessionUser | null> {
 
   if (!user?.restaurant) return null;
 
+  const { getRestaurantAccessState } = await import("@/lib/access-control-service");
+  const access = await getRestaurantAccessState(user.restaurant.id);
+  if (!access.ok) return null;
+
+  if (payload.staffSessionId) {
+    const { touchStaffSession } = await import("@/lib/staff-session-service");
+    void touchStaffSession(payload.staffSessionId);
+  }
+
   return {
     id: user.id,
     email: user.email,
@@ -103,6 +113,7 @@ export async function getSession(): Promise<SessionUser | null> {
     restaurantId: user.restaurant.id,
     restaurantName: user.restaurant.name,
     restaurantSlug: user.restaurant.slug,
+    staffSessionId: payload.staffSessionId,
   };
 }
 

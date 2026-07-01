@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Spinner } from "@/components/ui";
-import { Crown, LayoutGrid, Users } from "lucide-react";
+import { Spinner, Button } from "@/components/ui";
+import { Crown, LayoutGrid, Shield, Users } from "lucide-react";
 import { PlatformShell } from "@/components/platform/PlatformShell";
 import { PlatformStaffSetupPanel } from "@/components/platform/PlatformStaffSetupPanel";
 import { PlatformFeaturesPanel } from "@/components/platform/PlatformFeaturesPanel";
 import { PlatformTenantOverview } from "@/components/platform/PlatformTenantOverview";
+import { PlatformLoginLogsPanel } from "@/components/platform/PlatformLoginLogsPanel";
 import { cn } from "@/lib/utils";
 
 type TenantDetail = {
@@ -18,21 +19,24 @@ type TenantDetail = {
   plan: string;
   subscriptionStatus: string;
   billingEmail: string | null;
+  isEnabled: boolean;
   restaurants: Array<{
     id: string;
     name: string;
     slug: string;
+    isEnabled?: boolean;
     branches: Array<{ id: string; name: string; slug: string; floors: Array<{ name: string }> }>;
     _count: { users: number; orders: number; tables: number };
   }>;
 };
 
-type TenantTab = "overview" | "staff" | "features";
+type TenantTab = "overview" | "staff" | "features" | "logs";
 
 const TABS: { id: TenantTab; label: string; icon: typeof LayoutGrid }[] = [
   { id: "overview", label: "Overview", icon: LayoutGrid },
   { id: "staff", label: "Staff setup", icon: Users },
   { id: "features", label: "Premium features", icon: Crown },
+  { id: "logs", label: "Login logs", icon: Shield },
 ];
 
 export function PlatformTenantWorkspace() {
@@ -48,6 +52,7 @@ export function PlatformTenantWorkspace() {
   const [admin, setAdmin] = useState<{ name: string; email: string } | null>(null);
   const [tenant, setTenant] = useState<TenantDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [togglingTenant, setTogglingTenant] = useState(false);
 
   const load = useCallback(async () => {
     const meRes = await fetch("/api/platform/auth/me");
@@ -67,7 +72,7 @@ export function PlatformTenantWorkspace() {
         return;
       }
       found.restaurants = [...found.restaurants].sort((a, b) => a.name.localeCompare(b.name));
-      setTenant(found);
+      setTenant({ ...found, isEnabled: found.isEnabled ?? true });
     }
     setLoading(false);
   }, [router, tenantId]);
@@ -75,6 +80,22 @@ export function PlatformTenantWorkspace() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const toggleTenant = async (enabled: boolean) => {
+    if (!tenant) return;
+    setTogglingTenant(true);
+    await fetch("/api/platform/tenants", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "set_tenant_enabled",
+        tenantId: tenant.id,
+        isEnabled: enabled,
+      }),
+    });
+    setTogglingTenant(false);
+    await load();
+  };
 
   if (loading || !tenant) {
     return (
@@ -88,18 +109,29 @@ export function PlatformTenantWorkspace() {
     <PlatformShell
       admin={admin}
       title={tenant.name}
-      subtitle={`${tenant.plan} · ${tenant.subscriptionStatus} · ${tenant.restaurants.length} restaurant${tenant.restaurants.length === 1 ? "" : "s"}`}
+      subtitle={`${tenant.plan} · ${tenant.subscriptionStatus} · ${tenant.restaurants.length} restaurant${tenant.restaurants.length === 1 ? "" : "s"}${!tenant.isEnabled ? " · DISABLED" : ""}`}
       breadcrumb={[
         { label: "All tenants", href: "/platform" },
         { label: tenant.name },
       ]}
       actions={
-        <Link
-          href={`/platform/billing?tenantId=${tenant.id}`}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border bg-white/5 border-white/10 text-zinc-300 hover:text-white"
-        >
-          Billing
-        </Link>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={tenant.isEnabled ? "secondary" : "success"}
+            disabled={togglingTenant}
+            onClick={() => void toggleTenant(!tenant.isEnabled)}
+          >
+            {togglingTenant ? "…" : tenant.isEnabled ? "Disable tenant" : "Enable tenant"}
+          </Button>
+          <Link
+            href={`/platform/billing?tenantId=${tenant.id}`}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border bg-white/5 border-white/10 text-zinc-300 hover:text-white"
+          >
+            Billing
+          </Link>
+        </div>
       }
     >
       <div className="space-y-6">
@@ -114,7 +146,9 @@ export function PlatformTenantWorkspace() {
                 tab === id
                   ? id === "features"
                     ? "bg-amber-500/20 border-amber-500/40 text-amber-200"
-                    : "bg-violet-500/20 border-violet-500/40 text-violet-200"
+                    : id === "logs"
+                      ? "bg-cyan-500/20 border-cyan-500/40 text-cyan-200"
+                      : "bg-violet-500/20 border-violet-500/40 text-violet-200"
                   : "bg-white/5 border-white/10 text-zinc-400 hover:text-white",
               )}
             >
@@ -127,14 +161,24 @@ export function PlatformTenantWorkspace() {
           <PlatformTenantOverview
             tenantId={tenant.id}
             tenantName={tenant.name}
+            tenantEnabled={tenant.isEnabled}
             restaurants={tenant.restaurants}
             onRestaurantsChange={() => void load()}
+            onTenantToggle={toggleTenant}
+            togglingTenant={togglingTenant}
           />
         )}
 
         {tab === "staff" && <PlatformStaffSetupPanel tenantId={tenant.id} />}
 
         {tab === "features" && <PlatformFeaturesPanel tenantId={tenant.id} />}
+
+        {tab === "logs" && (
+          <PlatformLoginLogsPanel
+            tenantId={tenant.id}
+            restaurants={tenant.restaurants.map((r) => ({ id: r.id, name: r.name }))}
+          />
+        )}
       </div>
     </PlatformShell>
   );

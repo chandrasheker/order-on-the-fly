@@ -36,6 +36,17 @@ export async function GET(
       return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
     }
 
+    const { getRestaurantAccessState, accessBlockMessage } = await import(
+      "@/lib/access-control-service"
+    );
+    const access = await getRestaurantAccessState(restaurant.id);
+    if (!access.ok) {
+      return NextResponse.json(
+        { error: accessBlockMessage(access.reason), code: access.reason },
+        { status: 403 },
+      );
+    }
+
     const table = await prisma.table.findFirst({
       where: { qrToken: token, restaurantId: restaurant.id, isActive: true },
     });

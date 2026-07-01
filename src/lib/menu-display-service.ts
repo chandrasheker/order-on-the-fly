@@ -14,6 +14,10 @@ export async function getRestaurantDisplayMenu(slug: string) {
 
   if (!restaurant) return null;
 
+  const { getRestaurantAccessState } = await import("@/lib/access-control-service");
+  const access = await getRestaurantAccessState(restaurant.id);
+  if (!access.ok) return null;
+
   const categories = await prisma.menuCategory.findMany({
     where: { restaurantId: restaurant.id, isEnabled: true },
     orderBy: { sortOrder: "asc" },

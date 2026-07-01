@@ -14,6 +14,7 @@ type TenantSummary = {
   plan: string;
   subscriptionStatus: string;
   billingEmail: string | null;
+  isEnabled?: boolean;
   restaurants: Array<{ id: string; name: string; slug: string }>;
 };
 
@@ -133,6 +134,11 @@ export default function PlatformHomePage() {
                         <Badge className="bg-white/5 text-zinc-400 border-white/10">
                           {tenant.subscriptionStatus}
                         </Badge>
+                        {tenant.isEnabled === false && (
+                          <Badge className="bg-red-500/15 text-red-400 border-red-500/30">
+                            Disabled
+                          </Badge>
+                        )}
                         <span className="text-xs text-zinc-500">
                           {tenant.restaurants.length} restaurant
                           {tenant.restaurants.length === 1 ? "" : "s"}
