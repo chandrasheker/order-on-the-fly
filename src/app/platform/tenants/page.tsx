@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Building2, Plus, Layers } from "lucide-react";
+import { ArrowLeft, Building2, Plus, Layers, ChevronDown, ChevronUp } from "lucide-react";
 import { Button, Card, Input, Spinner } from "@/components/ui";
+import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
+import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 
 type TenantRow = {
   id: string;
@@ -84,6 +86,20 @@ export default function PlatformTenantsPage() {
 
   const stats = overview?.stats as Record<string, number> | undefined;
 
+  const selectedTenantData = tenants.find((t) => t.id === selectedTenant);
+  const tenantRestaurants = selectedTenantData?.restaurants ?? [];
+  const {
+    search,
+    setSearch,
+    filtered: filteredRestaurants,
+    isExpanded,
+    toggleExpanded,
+    expandAll,
+    collapseAll,
+    total,
+    showing,
+  } = useRestaurantSearch(tenantRestaurants);
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
       <header className="border-b border-white/10 px-4 py-4 max-w-5xl mx-auto flex items-center gap-3">
@@ -131,28 +147,72 @@ export default function PlatformTenantsPage() {
           .map((tenant) => (
             <div key={tenant.id} className="space-y-4">
               <Card className="p-5">
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-4">
                   <Building2 className="w-5 h-5 text-violet-400" />
                   <h2 className="font-semibold">{tenant.name}</h2>
                   <span className="text-xs text-zinc-500 ml-2">{tenant.plan} · {tenant.subscriptionStatus}</span>
                 </div>
-                <div className="space-y-3">
-                  {tenant.restaurants.map((r) => (
-                    <div key={r.id} className="rounded-xl border border-white/10 p-4">
-                      <p className="font-medium">{r.name} <span className="text-zinc-500 text-sm">/{r.slug}</span></p>
-                      <p className="text-xs text-zinc-500 mt-1">
+
+                {tenant.restaurants.length > 0 && (
+                  <div className="mb-4">
+                    <PlatformRestaurantToolbar
+                      search={search}
+                      onSearchChange={setSearch}
+                      showing={showing}
+                      total={total}
+                      onExpandAll={expandAll}
+                      onCollapseAll={collapseAll}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {filteredRestaurants.length === 0 && search.trim() && (
+                    <p className="text-sm text-center text-zinc-500 py-6">No restaurants match your search.</p>
+                  )}
+                  {filteredRestaurants.map((r) => {
+                    const open = isExpanded(r.id);
+                    return (
+                    <div key={r.id} className="rounded-xl border border-white/10 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(r.id)}
+                        className="w-full p-4 flex items-center justify-between gap-3 text-left hover:bg-white/[0.02] transition-colors"
+                        aria-expanded={open}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {open ? (
+                            <ChevronUp className="w-4 h-4 text-zinc-400 shrink-0" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{r.name}</p>
+                            <p className="text-xs text-zinc-500">/{r.slug}</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-zinc-500 shrink-0">
+                          {r._count.tables} tables · {r._count.users} staff
+                        </p>
+                      </button>
+                      {open && (
+                      <div className="px-4 pb-4 pt-0 border-t border-white/5 space-y-2">
+                      <p className="text-xs text-zinc-500 pt-3">
                         {r._count.tables} tables · {r._count.users} staff · {r._count.orders} orders
                       </p>
-                      <p className="text-xs text-emerald-400 mt-1">
+                      <p className="text-xs text-emerald-400">
                         Guest: /order/{r.slug}/{r.slug}-table-1/check-in
                       </p>
                       {r.branches.map((b) => (
-                        <p key={b.id} className="text-xs text-zinc-400 mt-1 flex items-center gap-1">
+                        <p key={b.id} className="text-xs text-zinc-400 flex items-center gap-1">
                           <Layers className="w-3 h-3" /> {b.name} — {b.floors.map((f) => f.name).join(", ")}
                         </p>
                       ))}
+                      </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </Card>
 

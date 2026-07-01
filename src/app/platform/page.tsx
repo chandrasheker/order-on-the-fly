@@ -4,10 +4,12 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, Card, Input, Spinner, Badge } from "@/components/ui";
-import { LogOut, Shield, Save, Download, Users, Crown } from "lucide-react";
+import { LogOut, Shield, Save, Download, Users, Crown, ChevronDown, ChevronUp } from "lucide-react";
 import type { Role } from "@/generated/prisma/client";
 import { DEFAULT_SLOT_COUNTS } from "@/lib/staff-permissions";
 import { PlatformFeaturesPanel } from "@/components/platform/PlatformFeaturesPanel";
+import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
+import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 import { cn } from "@/lib/utils";
 
 type PlatformTab = "staff" | "features";
@@ -77,6 +79,18 @@ export default function PlatformUsersPage() {
   const [countsDraft, setCountsDraft] = useState<Record<string, RestaurantConfig["counts"]>>({});
   const [slotDrafts, setSlotDrafts] = useState<Record<string, Record<string, SlotRow>>>({});
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  const {
+    search,
+    setSearch,
+    filtered: filteredRestaurants,
+    isExpanded,
+    toggleExpanded,
+    expandAll,
+    collapseAll,
+    total,
+    showing,
+  } = useRestaurantSearch(restaurants);
 
   const load = useCallback(async () => {
     const [meRes, configRes] = await Promise.all([
@@ -263,23 +277,52 @@ export default function PlatformUsersPage() {
           </p>
         )}
 
-        {restaurants.map((restaurant) => {
+        {restaurants.length > 0 && (
+          <PlatformRestaurantToolbar
+            search={search}
+            onSearchChange={setSearch}
+            showing={showing}
+            total={total}
+            onExpandAll={expandAll}
+            onCollapseAll={collapseAll}
+          />
+        )}
+
+        {filteredRestaurants.length === 0 && search.trim() && (
+          <p className="text-sm text-center text-zinc-500 py-8">No restaurants match your search.</p>
+        )}
+
+        {filteredRestaurants.map((restaurant) => {
           const counts = countsDraft[restaurant.id] ?? restaurant.counts;
           const slots = Object.values(slotDrafts[restaurant.id] ?? {});
+          const open = isExpanded(restaurant.id);
 
           return (
-            <Card key={restaurant.id} className="p-5 space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-violet-400" />
-                  <h2 className="text-lg font-semibold">{restaurant.name}</h2>
+            <Card key={restaurant.id} className="overflow-hidden">
+              <button
+                type="button"
+                onClick={() => toggleExpanded(restaurant.id)}
+                className="w-full p-5 flex flex-wrap items-center justify-between gap-3 text-left hover:bg-white/[0.02] transition-colors"
+                aria-expanded={open}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {open ? (
+                    <ChevronUp className="w-5 h-5 text-zinc-400 shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-zinc-400 shrink-0" />
+                  )}
+                  <Users className="w-5 h-5 text-violet-400 shrink-0" />
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold truncate">{restaurant.name}</h2>
+                    <p className="text-xs text-zinc-500">{restaurant.slug}</p>
+                  </div>
                   {restaurant.staffConfigured && (
-                    <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+                    <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shrink-0">
                       Configured
                     </Badge>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -295,8 +338,10 @@ export default function PlatformUsersPage() {
                     Reset &amp; export
                   </Button>
                 </div>
-              </div>
+              </button>
 
+              {open && (
+              <div className="px-5 pb-5 space-y-5 border-t border-white/5 pt-5">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {(
                   [
@@ -415,6 +460,8 @@ export default function PlatformUsersPage() {
                 passwords without changing them. Use &quot;Reset &amp; export&quot; only if you need
                 new random passwords.
               </p>
+              </div>
+              )}
             </Card>
           );
         })}
