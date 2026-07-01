@@ -55,7 +55,7 @@ export async function transitionOrderItem(params: {
   const now = new Date();
   const data: Record<string, unknown> = { status: to };
 
-  if (params.transition === "start-preparing") {
+  if (params.transition === "start-preparing" || (params.transition === "mark-ready" && from === "PENDING")) {
     data.preparedByUserId = params.actorUserId ?? null;
     data.preparedByName = params.actorName ?? null;
   }

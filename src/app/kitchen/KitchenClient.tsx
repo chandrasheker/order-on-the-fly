@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  ArrowLeft,
   ChefHat,
   LogOut,
   RefreshCw,
@@ -97,7 +98,7 @@ export default function KitchenClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, itemId }),
     });
-    load();
+    await loadKitchen();
   };
 
   const logout = async () => {
@@ -124,10 +125,17 @@ export default function KitchenClient() {
       <header className="sticky top-0 z-20 border-b border-white/10 bg-app-shell/95 backdrop-blur-xl px-4 py-3">
         <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
+            <Link
+              href="/staff/dashboard"
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300"
+              title="Back to dashboard"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
             <ChefHat className="w-6 h-6 text-orange-400" />
             <div>
               <h1 className="text-lg font-bold">Kitchen Display</h1>
-              <p className="text-xs text-zinc-500">Station routing · live tickets</p>
+              <p className="text-xs text-zinc-500">Filtered by your menu categories · live tickets</p>
             </div>
           </div>
           <div className="header-trailing-actions flex flex-wrap items-center gap-2">

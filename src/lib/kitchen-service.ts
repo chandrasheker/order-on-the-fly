@@ -34,6 +34,50 @@ export const DEFAULT_KITCHEN_STATIONS = [
   },
 ] as const;
 
+const STATION_COLORS = ["#ef4444", "#f97316", "#3b82f6", "#06b6d4", "#8b5cf6", "#22c55e", "#eab308"];
+
+export async function syncKitchenStationsFromMenu(restaurantId: string) {
+  const categories = await prisma.menuCategory.findMany({
+    where: { restaurantId },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  if (categories.length === 0) {
+    await ensureKitchenStations(restaurantId);
+    return;
+  }
+
+  const categorySlugs = new Set(categories.map((c) => c.slug));
+  const existing = await prisma.kitchenStation.findMany({ where: { restaurantId } });
+
+  for (let i = 0; i < categories.length; i++) {
+    const cat = categories[i];
+    await prisma.kitchenStation.upsert({
+      where: { restaurantId_slug: { restaurantId, slug: cat.slug } },
+      create: {
+        restaurantId,
+        name: cat.name,
+        slug: cat.slug,
+        color: STATION_COLORS[i % STATION_COLORS.length],
+        categorySlugs: JSON.stringify([cat.slug]),
+        sortOrder: cat.sortOrder ?? i,
+      },
+      update: {
+        name: cat.name,
+        color: STATION_COLORS[i % STATION_COLORS.length],
+        categorySlugs: JSON.stringify([cat.slug]),
+        sortOrder: cat.sortOrder ?? i,
+      },
+    });
+  }
+
+  for (const station of existing) {
+    if (!categorySlugs.has(station.slug)) {
+      await prisma.kitchenStation.delete({ where: { id: station.id } });
+    }
+  }
+}
+
 export function parseCategorySlugs(raw: string): string[] {
   try {
     const parsed = JSON.parse(raw);
@@ -60,7 +104,7 @@ export async function ensureKitchenStations(restaurantId: string) {
 }
 
 export async function getKitchenStations(restaurantId: string) {
-  await ensureKitchenStations(restaurantId);
+  await syncKitchenStationsFromMenu(restaurantId);
   const stations = await prisma.kitchenStation.findMany({
     where: { restaurantId },
     orderBy: { sortOrder: "asc" },

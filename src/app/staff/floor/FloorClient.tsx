@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { Button, Badge, Spinner } from "@/components/ui";
+import { Button, Badge, Spinner, Input, Select } from "@/components/ui";
 import { cn, formatCurrency } from "@/lib/utils";
 
 type FloorTable = {
@@ -26,6 +26,7 @@ type FloorTable = {
   guestCount: number | null;
   seatedAt: string | null;
   elapsedMinutes: number | null;
+  occupancyMinutes: number | null;
   assignedServer: { id: string; name: string } | null;
   state: string;
   stats: {
@@ -40,6 +41,8 @@ type FloorTable = {
 
 type Server = { id: string; name: string };
 
+type StateLegend = Record<string, { label: string; description: string }>;
+
 const STATE_STYLES: Record<string, string> = {
   available: "border-zinc-600/40 bg-zinc-800/40 text-zinc-400",
   seated: "border-blue-500/40 bg-blue-500/10 text-blue-300",
@@ -53,9 +56,23 @@ const STATE_STYLES: Record<string, string> = {
 export default function FloorPlanPage() {
   const [tables, setTables] = useState<FloorTable[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
+  const [stateLegend, setStateLegend] = useState<StateLegend>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<FloorTable | null>(null);
+  const [guestDraft, setGuestDraft] = useState("");
+  const [savingGuests, setSavingGuests] = useState(false);
+
+  const applyFloorData = useCallback((data: { tables?: FloorTable[]; servers?: Server[]; stateLegend?: StateLegend }) => {
+    const nextTables = Array.isArray(data.tables) ? data.tables : [];
+    setTables(nextTables);
+    setServers(Array.isArray(data.servers) ? data.servers : []);
+    if (data.stateLegend) setStateLegend(data.stateLegend);
+    setSelected((prev) => {
+      if (!prev) return null;
+      return nextTables.find((t) => t.id === prev.id) ?? null;
+    });
+  }, []);
 
   const loadFloor = useCallback(async () => {
     try {
@@ -72,15 +89,14 @@ export default function FloorPlanPage() {
         return;
       }
       const data = await floorRes.json();
-      setTables(Array.isArray(data.tables) ? data.tables : []);
-      setServers(Array.isArray(data.servers) ? data.servers : []);
+      applyFloorData(data);
       setError("");
     } catch {
       setError("Network error while loading the floor plan. Please try again.");
       setTables([]);
       setServers([]);
     }
-  }, []);
+  }, [applyFloorData]);
 
   const load = useCallback(async () => {
     try {
@@ -106,7 +122,28 @@ export default function FloorPlanPage() {
     };
   }, [load, loadFloor]);
 
+  useEffect(() => {
+    setGuestDraft(selected?.guestCount != null ? String(selected.guestCount) : "");
+  }, [selected?.id, selected?.guestCount]);
+
   const patchTable = async (tableId: string, body: Record<string, unknown>) => {
+    setSelected((prev) => {
+      if (!prev || prev.id !== tableId) return prev;
+      const next = { ...prev };
+      if (body.assignedServerId !== undefined) {
+        if (body.assignedServerId === null) {
+          next.assignedServer = null;
+        } else {
+          const server = servers.find((s) => s.id === body.assignedServerId);
+          next.assignedServer = server ? { id: server.id, name: server.name } : prev.assignedServer;
+        }
+      }
+      if (body.guestCount !== undefined) {
+        next.guestCount = body.guestCount as number | null;
+      }
+      return next;
+    });
+
     const res = await fetch("/api/floor", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -116,7 +153,24 @@ export default function FloorPlanPage() {
       const json = await res.json().catch(() => ({}));
       alert(json.error || "Could not update table");
     }
-    load();
+    await loadFloor();
+  };
+
+  const saveGuestCount = async () => {
+    if (!selected) return;
+    const raw = guestDraft.trim();
+    if (!raw) {
+      await patchTable(selected.id, { guestCount: null });
+      return;
+    }
+    const count = parseInt(raw, 10);
+    if (Number.isNaN(count) || count < 1 || count > 20) {
+      alert("Guest count must be between 1 and 20");
+      return;
+    }
+    setSavingGuests(true);
+    await patchTable(selected.id, { guestCount: count });
+    setSavingGuests(false);
   };
 
   if (loading) {
@@ -134,11 +188,6 @@ export default function FloorPlanPage() {
           <LayoutGrid className="w-10 h-10 text-red-400 mx-auto" />
           <h1 className="text-xl font-bold">Could not load floor plan</h1>
           <p className="text-sm text-[color:var(--muted)]">{error}</p>
-          <p className="text-xs text-[color:var(--muted)]">
-            If this is a fresh install, run <code className="text-orange-300">npm run db:setup</code>{" "}
-            and ensure <code className="text-orange-300">floor_plan</code> is enabled in platform
-            admin.
-          </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button variant="secondary" onClick={() => void load()}>
               <RefreshCw className="w-4 h-4" /> Retry
@@ -176,10 +225,10 @@ export default function FloorPlanPage() {
             <h1 className="font-bold flex items-center gap-2">
               <LayoutGrid className="w-5 h-5 text-violet-400" /> Floor plan
             </h1>
-            <p className="text-xs text-zinc-500">Table timers · server assignment · live bill</p>
+            <p className="text-xs text-zinc-500">Server assignment · guest count · live bill</p>
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={load} className="header-trailing-actions">
+        <Button variant="secondary" size="sm" onClick={() => void loadFloor()} className="header-trailing-actions">
           <RefreshCw className="w-4 h-4" />
         </Button>
       </header>
@@ -209,8 +258,8 @@ export default function FloorPlanPage() {
                 }}
               >
                 <div className="font-black text-xl leading-none">T{table.number}</div>
-                {table.elapsedMinutes !== null && (
-                  <div className="text-[10px] flex items-center gap-0.5 mt-1 opacity-80">
+                {table.assignedServer && table.elapsedMinutes != null && table.elapsedMinutes > 0 && (
+                  <div className="text-[10px] flex items-center gap-0.5 mt-1 opacity-80" title="Time since server assigned">
                     <Clock className="w-3 h-3" />
                     {table.elapsedMinutes}m
                   </div>
@@ -227,12 +276,21 @@ export default function FloorPlanPage() {
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-2 mt-4 text-xs text-zinc-500">
-            {Object.entries(STATE_STYLES).map(([state]) => (
-              <span key={state} className="capitalize">
-                {state.replace("_", " ")}
-              </span>
-            ))}
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-xs font-semibold text-zinc-400 mb-3 uppercase tracking-wide">Table status legend</p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {Object.entries(STATE_STYLES).map(([state, style]) => {
+                const meta = stateLegend[state];
+                return (
+                  <div key={state} className="flex items-start gap-2 text-xs">
+                    <span className={cn("shrink-0 px-2 py-0.5 rounded-md border capitalize", style)}>
+                      {meta?.label ?? state}
+                    </span>
+                    <span className="text-zinc-500">{meta?.description ?? ""}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -243,9 +301,13 @@ export default function FloorPlanPage() {
               <Badge className={STATE_STYLES[selected.state]}>{selected.state}</Badge>
             </div>
 
-            {selected.elapsedMinutes !== null && (
+            {selected.assignedServer && selected.elapsedMinutes != null && selected.elapsedMinutes > 0 && (
               <p className="text-sm text-zinc-400 flex items-center gap-2">
-                <Clock className="w-4 h-4" /> Seated {selected.elapsedMinutes} minutes
+                <Clock className="w-4 h-4" />
+                Server assigned · {selected.elapsedMinutes} min
+                {selected.stats.orderCount === 0 && selected.elapsedMinutes >= 5 && (
+                  <span className="text-amber-400 text-xs">(alert sent)</span>
+                )}
               </p>
             )}
 
@@ -275,14 +337,14 @@ export default function FloorPlanPage() {
               <label className="text-xs text-zinc-500 flex items-center gap-1 mb-1">
                 <User className="w-3 h-3" /> Assigned server
               </label>
-              <select
-                className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm"
+              <Select
                 value={selected.assignedServer?.id ?? ""}
-                onChange={(e) =>
-                  patchTable(selected.id, {
-                    assignedServerId: e.target.value || null,
-                  })
-                }
+                onChange={(e) => {
+                  const value = e.target.value;
+                  void patchTable(selected.id, {
+                    assignedServerId: value === "" ? null : value,
+                  });
+                }}
               >
                 <option value="">Unassigned</option>
                 {servers.map((s) => (
@@ -290,38 +352,42 @@ export default function FloorPlanPage() {
                     {s.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>
               <label className="text-xs text-zinc-500 flex items-center gap-1 mb-1">
                 <Users className="w-3 h-3" /> Guests
               </label>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm"
-                value={selected.guestCount ?? ""}
-                placeholder="Guest count"
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  if (!raw) {
-                    patchTable(selected.id, { guestCount: null });
-                    return;
-                  }
-                  const count = parseInt(raw, 10);
-                  if (Number.isNaN(count)) return;
-                  patchTable(selected.id, { guestCount: count });
-                }}
-              />
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={guestDraft}
+                  placeholder="How many guests?"
+                  onChange={(e) => setGuestDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void saveGuestCount();
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={savingGuests}
+                  onClick={() => void saveGuestCount()}
+                >
+                  {savingGuests ? "…" : "Save"}
+                </Button>
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => patchTable(selected.id, { seated: true })}
+                onClick={() => void patchTable(selected.id, { seated: true })}
               >
                 Seat / open table
               </Button>
@@ -329,7 +395,7 @@ export default function FloorPlanPage() {
                 variant="secondary"
                 size="sm"
                 onClick={() => {
-                  patchTable(selected.id, { clear: true });
+                  void patchTable(selected.id, { clear: true });
                   setSelected(null);
                 }}
               >
