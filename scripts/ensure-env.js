@@ -27,3 +27,22 @@ if (!fs.existsSync(envPath)) {
     console.log("Created default .env file");
   }
 }
+
+function ensureDevVapidKeys() {
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) return;
+  let webpush;
+  try {
+    webpush = require("web-push");
+  } catch {
+    return;
+  }
+  const keys = webpush.generateVAPIDKeys();
+  let env = fs.readFileSync(envPath, "utf8");
+  if (!/^VAPID_PUBLIC_KEY=/m.test(env)) {
+    env += `\nVAPID_PUBLIC_KEY="${keys.publicKey}"\nVAPID_PRIVATE_KEY="${keys.privateKey}"\nVAPID_SUBJECT="mailto:admin@tabletap.app"\n`;
+    fs.writeFileSync(envPath, env);
+    console.log("Added dev VAPID keys to .env");
+  }
+}
+
+ensureDevVapidKeys();
