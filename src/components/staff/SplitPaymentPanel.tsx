@@ -5,6 +5,7 @@ import { Button } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import { CircleDollarSign, Split, ChevronDown, ChevronUp } from "lucide-react";
 import type { ReceiptPayload } from "@/lib/receipt-service";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type PaymentItem = {
   id: string;
@@ -83,6 +84,8 @@ export function SplitPaymentPanel({
       const json = await res.json().catch(() => ({}));
       setSelectedItems(new Set());
       await onPaymentComplete(res, json);
+    } catch (error) {
+      swallowPollingFetchError(error);
     } finally {
       setBusy(false);
     }

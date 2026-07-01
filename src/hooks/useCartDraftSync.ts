@@ -75,10 +75,14 @@ export async function clearRemoteCartDraft(params: {
   tableToken?: string;
   sessionKey?: string;
 }) {
-  await fetch("/api/tables/cart-draft", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(params),
-  });
+  try {
+    await fetch("/api/tables/cart-draft", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(params),
+    });
+  } catch {
+    /* ignore network errors */
+  }
 }

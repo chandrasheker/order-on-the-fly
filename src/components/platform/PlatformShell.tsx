@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
 import { ChevronRight, LogOut, Shield } from "lucide-react";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 interface PlatformShellProps {
   admin: { name: string; email: string } | null;
@@ -25,7 +26,11 @@ export function PlatformShell({
   const router = useRouter();
 
   const logout = async () => {
-    await fetch("/api/platform/auth/logout", { method: "POST" });
+    try {
+      await fetch("/api/platform/auth/logout", { method: "POST" });
+    } catch (error) {
+      swallowPollingFetchError(error);
+    }
     router.push("/platform/login");
   };
 

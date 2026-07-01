@@ -19,20 +19,25 @@ export function LoginForm() {
     setLoading(true);
     setError("");
 
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (res.ok) {
-      const data = await res.json();
-      router.push(data.homePath ?? getHomeForRole(data.user.role));
-    } else {
-      const data = await res.json();
-      setError(data.error || "Invalid email or password");
+      if (res.ok) {
+        const data = await res.json();
+        router.push(data.homePath ?? getHomeForRole(data.user.role));
+      } else {
+        const data = await res.json();
+        setError(data.error || "Invalid email or password");
+      }
+    } catch {
+      setError("Network error — check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

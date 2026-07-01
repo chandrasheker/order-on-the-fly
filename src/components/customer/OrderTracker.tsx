@@ -22,6 +22,7 @@ import {
   Ban,
   CircleDollarSign,
 } from "lucide-react";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 interface OrderItem {
   id: string;
@@ -83,17 +84,26 @@ export function OrderTracker({
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await onRefresh();
-    setRefreshing(false);
+    try {
+      await onRefresh();
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const triggerAlarm = async (orderId: string) => {
-    await fetch(`/api/orders/${orderId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "alarm" }),
-    });
-    setAlarmSent(true);
+    try {
+      await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "alarm" }),
+      });
+      setAlarmSent(true);
+    } catch (error) {
+      swallowPollingFetchError(error);
+    }
   };
 
   const openPayModal = (order: Order) => {
@@ -114,6 +124,8 @@ export function OrderTracker({
         onPaymentRequested?.();
         await onRefresh();
       }
+    } catch (error) {
+      swallowPollingFetchError(error);
     } finally {
       setPayingId(null);
     }
@@ -134,6 +146,8 @@ export function OrderTracker({
       if (res.ok) {
         await onRefresh();
       }
+    } catch (error) {
+      swallowPollingFetchError(error);
     } finally {
       setDismissingOosId(null);
     }

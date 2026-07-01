@@ -81,6 +81,8 @@ export default function RealtimeAdminPage() {
       if (kitchenRes.ok) setKitchen((await kitchenRes.json()).state ?? null);
       if (gwRes.ok) setGateway((await gwRes.json()).settings ?? null);
       if (alertRes.ok) setAlertSettings((await alertRes.json()).settings ?? null);
+    } catch {
+      /* ignore network errors */
     } finally {
       setLoading(false);
     }

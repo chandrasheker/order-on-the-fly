@@ -34,12 +34,17 @@ export default function OperationsPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const loadFlags = useCallback(async () => {
-    const res = await fetch("/api/features");
-    if (res.ok) {
-      const data = await res.json();
-      setEnabled(data.enabled ?? {});
+    try {
+      const res = await fetch("/api/features");
+      if (res.ok) {
+        const data = await res.json();
+        setEnabled(data.enabled ?? {});
+      }
+    } catch {
+      /* ignore network errors */
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -403,7 +408,8 @@ function GuestsPanel({ onMessage }: { onMessage: (m: string) => void }) {
   useEffect(() => {
     void fetch("/api/guests")
       .then((r) => r.json())
-      .then((d) => setGuests(d.guests ?? []));
+      .then((d) => setGuests(d.guests ?? []))
+      .catch(() => undefined);
   }, []);
 
   return (
@@ -432,7 +438,8 @@ function AuditPanel() {
   useEffect(() => {
     void fetch("/api/audit")
       .then((r) => r.json())
-      .then((d) => setLogs(d.logs ?? []));
+      .then((d) => setLogs(d.logs ?? []))
+      .catch(() => undefined);
   }, []);
 
   return (

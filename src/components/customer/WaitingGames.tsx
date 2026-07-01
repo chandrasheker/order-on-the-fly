@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Card, Button, Input } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import { REWARD_DISCLAIMER } from "@/lib/reward-constants";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 interface RewardSettings {
   rewardThresholdTea: number;
@@ -71,22 +72,27 @@ function RewardClaimModal({
   const claim = async () => {
     if (!name.trim()) return;
     setSaving(true);
-    const res = await fetch("/api/rewards", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tableToken,
-        orderId: lastOrder.id,
-        customerName: name.trim(),
-        rewardType,
-        orderTotal: lastOrder.total,
-      }),
-    });
-    setSaving(false);
-    if (res.ok) {
-      const data = await res.json();
-      setReward(data.reward);
-      onClaimed();
+    try {
+      const res = await fetch("/api/rewards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tableToken,
+          orderId: lastOrder.id,
+          customerName: name.trim(),
+          rewardType,
+          orderTotal: lastOrder.total,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReward(data.reward);
+        onClaimed();
+      }
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -196,6 +202,8 @@ function SpinWheel({
           });
         }
       }
+    } catch (error) {
+      swallowPollingFetchError(error);
     } finally {
       setStatusLoading(false);
     }

@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Card, Spinner } from "@/components/ui";
 import { PlatformShell } from "@/components/platform/PlatformShell";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type TenantBillingState = {
   demoPackUsedAt: string | null;
@@ -64,35 +65,40 @@ function PlatformBillingContent() {
   const [error, setError] = useState("");
 
   const loadTenants = useCallback(async () => {
-    const me = await fetch("/api/platform/auth/me");
-    if (!me.ok) {
-      router.push("/platform/login");
-      return;
-    }
-    const meJson = await me.json();
-    setAdmin(meJson.admin);
-
-    const listRes = await fetch("/api/platform/tenants");
-    if (listRes.ok) {
-      const json = await listRes.json();
-      const ids = (json.tenants ?? []).map((t: { id: string }) => t.id);
-      const details = await Promise.all(
-        ids.map(async (id: string) => {
-          const r = await fetch(`/api/platform/billing?tenantId=${id}`);
-          return r.ok ? (await r.json()).tenant : null;
-        }),
-      );
-      const rows = (details.filter(Boolean) as TenantBilling[]).sort((a, b) =>
-        a.name.localeCompare(b.name),
-      );
-      setTenants(rows);
-      if (presetTenantId && rows.some((t) => t.id === presetTenantId)) {
-        setSelectedId(presetTenantId);
-      } else if (rows[0]) {
-        setSelectedId(rows[0].id);
+    try {
+      const me = await fetch("/api/platform/auth/me");
+      if (!me.ok) {
+        router.push("/platform/login");
+        return;
       }
+      const meJson = await me.json();
+      setAdmin(meJson.admin);
+
+      const listRes = await fetch("/api/platform/tenants");
+      if (listRes.ok) {
+        const json = await listRes.json();
+        const ids = (json.tenants ?? []).map((t: { id: string }) => t.id);
+        const details = await Promise.all(
+          ids.map(async (id: string) => {
+            const r = await fetch(`/api/platform/billing?tenantId=${id}`);
+            return r.ok ? (await r.json()).tenant : null;
+          }),
+        );
+        const rows = (details.filter(Boolean) as TenantBilling[]).sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+        setTenants(rows);
+        if (presetTenantId && rows.some((t) => t.id === presetTenantId)) {
+          setSelectedId(presetTenantId);
+        } else if (rows[0]) {
+          setSelectedId(rows[0].id);
+        }
+      }
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [router, presetTenantId]);
 
   useEffect(() => {
@@ -103,38 +109,50 @@ function PlatformBillingContent() {
     setUpgrading(true);
     setMessage("");
     setError("");
-    const res = await fetch("/api/platform/billing", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenantId: selectedId, plan, action: "set_plan" }),
-    });
-    const json = await res.json();
-    setUpgrading(false);
-    if (!res.ok) {
-      setError(json.error || "Upgrade failed");
-      return;
+    try {
+      const res = await fetch("/api/platform/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId: selectedId, plan, action: "set_plan" }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error || "Upgrade failed");
+        return;
+      }
+      setMessage(`Plan updated to ${plan}. Features for all restaurants under this tenant now match ${plan}.`);
+      await loadTenants();
+    } catch (error) {
+      swallowPollingFetchError(error);
+      setError("Network error — try again.");
+    } finally {
+      setUpgrading(false);
     }
-    setMessage(`Plan updated to ${plan}. Features for all restaurants under this tenant now match ${plan}.`);
-    await loadTenants();
   };
 
   const activateDemo = async () => {
     setActivatingDemo(true);
     setMessage("");
     setError("");
-    const res = await fetch("/api/platform/billing", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenantId: selectedId, action: "activate_demo" }),
-    });
-    const json = await res.json();
-    setActivatingDemo(false);
-    if (!res.ok) {
-      setError(json.error || "Could not activate demo pack");
-      return;
+    try {
+      const res = await fetch("/api/platform/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId: selectedId, action: "activate_demo" }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error || "Could not activate demo pack");
+        return;
+      }
+      setMessage("7-day demo pack activated. Premium features are enabled until the demo ends.");
+      await loadTenants();
+    } catch (error) {
+      swallowPollingFetchError(error);
+      setError("Network error — try again.");
+    } finally {
+      setActivatingDemo(false);
     }
-    setMessage("7-day demo pack activated. Premium features are enabled until the demo ends.");
-    await loadTenants();
   };
 
   const tenant = tenants.find((t) => t.id === selectedId);

@@ -11,6 +11,7 @@ import { PlatformFeaturesPanel } from "@/components/platform/PlatformFeaturesPan
 import { PlatformTenantOverview } from "@/components/platform/PlatformTenantOverview";
 import { PlatformLoginLogsPanel } from "@/components/platform/PlatformLoginLogsPanel";
 import { cn } from "@/lib/utils";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type TenantDetail = {
   id: string;
@@ -55,26 +56,31 @@ export function PlatformTenantWorkspace() {
   const [togglingTenant, setTogglingTenant] = useState(false);
 
   const load = useCallback(async () => {
-    const meRes = await fetch("/api/platform/auth/me");
-    if (!meRes.ok) {
-      router.push("/platform/login");
-      return;
-    }
-    const me = await meRes.json();
-    setAdmin(me.admin);
-
-    const res = await fetch("/api/platform/tenants");
-    if (res.ok) {
-      const json = await res.json();
-      const found = (json.tenants ?? []).find((t: TenantDetail) => t.id === tenantId);
-      if (!found) {
-        router.push("/platform");
+    try {
+      const meRes = await fetch("/api/platform/auth/me");
+      if (!meRes.ok) {
+        router.push("/platform/login");
         return;
       }
-      found.restaurants = [...found.restaurants].sort((a, b) => a.name.localeCompare(b.name));
-      setTenant({ ...found, isEnabled: found.isEnabled ?? true });
+      const me = await meRes.json();
+      setAdmin(me.admin);
+
+      const res = await fetch("/api/platform/tenants");
+      if (res.ok) {
+        const json = await res.json();
+        const found = (json.tenants ?? []).find((t: TenantDetail) => t.id === tenantId);
+        if (!found) {
+          router.push("/platform");
+          return;
+        }
+        found.restaurants = [...found.restaurants].sort((a, b) => a.name.localeCompare(b.name));
+        setTenant({ ...found, isEnabled: found.isEnabled ?? true });
+      }
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [router, tenantId]);
 
   useEffect(() => {
@@ -84,17 +90,22 @@ export function PlatformTenantWorkspace() {
   const toggleTenant = async (enabled: boolean) => {
     if (!tenant) return;
     setTogglingTenant(true);
-    await fetch("/api/platform/tenants", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "set_tenant_enabled",
-        tenantId: tenant.id,
-        isEnabled: enabled,
-      }),
-    });
-    setTogglingTenant(false);
-    await load();
+    try {
+      await fetch("/api/platform/tenants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_tenant_enabled",
+          tenantId: tenant.id,
+          isEnabled: enabled,
+        }),
+      });
+      await load();
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setTogglingTenant(false);
+    }
   };
 
   if (loading || !tenant) {

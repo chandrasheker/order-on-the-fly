@@ -10,6 +10,7 @@ import { useStaffCartStore } from "@/store/staff-cart";
 import { useOfflineOrderSync } from "@/hooks/useOfflineOrderSync";
 import { useCartDraftSync, clearRemoteCartDraft } from "@/hooks/useCartDraftSync";
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type OrderMode = "walkin" | "takeaway" | "delivery";
 
@@ -103,12 +104,17 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
   const readyForMenu = meta.needsTable ? Boolean(tableId) : true;
 
   const loadTables = useCallback(async () => {
-    const res = await fetch("/api/tables/manage");
-    if (res.ok) {
-      const json = await res.json();
-      setTables(json.tables ?? []);
+    try {
+      const res = await fetch("/api/tables/manage");
+      if (res.ok) {
+        const json = await res.json();
+        setTables(json.tables ?? []);
+      }
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setLoadingTables(false);
     }
-    setLoadingTables(false);
   }, []);
 
   const { online, pendingCount, queueOrder, syncPending, cachedMenu, storeMenu } =

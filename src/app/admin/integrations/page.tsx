@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Plug, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button, Card, Input, Spinner, Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type Connection = {
   platform: "SWIGGY" | "ZOMATO";
@@ -51,29 +52,31 @@ export default function IntegrationsPage() {
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/integrations/aggregators");
-    if (!res.ok) {
+    try {
+      const res = await fetch("/api/integrations/aggregators");
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = data.connections as Connection[];
+      setConnections(list);
+      setDrafts(
+        Object.fromEntries(
+          list.map((c) => [
+            c.platform,
+            {
+              outletId: c.outletId,
+              apiKey: "",
+              apiSecret: "",
+              autoMenuSync: c.autoMenuSync ?? true,
+              pushStatusUpdates: c.pushStatusUpdates ?? true,
+            },
+          ]),
+        ),
+      );
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
       setLoading(false);
-      return;
     }
-    const data = await res.json();
-    const list = data.connections as Connection[];
-    setConnections(list);
-    setDrafts(
-      Object.fromEntries(
-        list.map((c) => [
-          c.platform,
-          {
-            outletId: c.outletId,
-            apiKey: "",
-            apiSecret: "",
-            autoMenuSync: c.autoMenuSync ?? true,
-            pushStatusUpdates: c.pushStatusUpdates ?? true,
-          },
-        ])
-      )
-    );
-    setLoading(false);
   }, []);
 
   useEffect(() => {

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Badge, Card, Input, Spinner } from "@/components/ui";
 import { Building2, ChevronRight, Plus, Search } from "lucide-react";
 import { PlatformShell } from "@/components/platform/PlatformShell";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type TenantSummary = {
   id: string;
@@ -26,22 +27,27 @@ export default function PlatformHomePage() {
   const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
-    const meRes = await fetch("/api/platform/auth/me");
-    if (!meRes.ok) {
-      router.push("/platform/login");
-      return;
-    }
-    const me = await meRes.json();
-    setAdmin(me.admin);
+    try {
+      const meRes = await fetch("/api/platform/auth/me");
+      if (!meRes.ok) {
+        router.push("/platform/login");
+        return;
+      }
+      const me = await meRes.json();
+      setAdmin(me.admin);
 
-    const res = await fetch("/api/platform/tenants");
-    if (res.ok) {
-      const json = await res.json();
-      const list = (json.tenants ?? []) as TenantSummary[];
-      list.sort((a, b) => a.name.localeCompare(b.name));
-      setTenants(list);
+      const res = await fetch("/api/platform/tenants");
+      if (res.ok) {
+        const json = await res.json();
+        const list = (json.tenants ?? []) as TenantSummary[];
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        setTenants(list);
+      }
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [router]);
 
   useEffect(() => {

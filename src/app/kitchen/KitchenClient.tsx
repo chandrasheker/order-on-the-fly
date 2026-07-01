@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Badge, Spinner } from "@/components/ui";
 import { cn, formatCountdown } from "@/lib/utils";
+import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
 
 type KitchenItem = {
   id: string;
@@ -73,11 +74,16 @@ export default function KitchenClient() {
   const [role, setRole] = useState<string>("COOK");
 
   const loadKitchen = useCallback(async () => {
-    const dataRes = await fetch("/api/kitchen/orders?station=all");
-    if (dataRes.ok) {
-      const data = await dataRes.json();
-      setStations(data.stations ?? []);
-      setTickets(data.tickets ?? []);
+    if (isClientOffline()) return;
+    try {
+      const dataRes = await fetch("/api/kitchen/orders?station=all", { cache: "no-store" });
+      if (dataRes.ok) {
+        const data = await dataRes.json();
+        setStations(data.stations ?? []);
+        setTickets(data.tickets ?? []);
+      }
+    } catch (error) {
+      swallowPollingFetchError(error);
     }
   }, []);
 
@@ -103,13 +109,18 @@ export default function KitchenClient() {
   );
 
   const load = useCallback(async () => {
-    const [meRes] = await Promise.all([fetch("/api/auth/me")]);
-    if (meRes.ok) {
-      const me = await meRes.json();
-      setRole(me.user?.role ?? "COOK");
+    try {
+      const meRes = await fetch("/api/auth/me");
+      if (meRes.ok) {
+        const me = await meRes.json();
+        setRole(me.user?.role ?? "COOK");
+      }
+      await loadKitchen();
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setLoading(false);
     }
-    await loadKitchen();
-    setLoading(false);
   }, [loadKitchen]);
 
   useEffect(() => {
@@ -131,16 +142,24 @@ export default function KitchenClient() {
   }, [load, loadKitchen]);
 
   const updateItem = async (orderId: string, itemId: string, action: string) => {
-    await fetch(`/api/orders/${orderId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, itemId }),
-    });
-    await loadKitchen();
+    try {
+      await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, itemId }),
+      });
+      await loadKitchen();
+    } catch (error) {
+      swallowPollingFetchError(error);
+    }
   };
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      swallowPollingFetchError(error);
+    }
     router.push("/");
   };
 

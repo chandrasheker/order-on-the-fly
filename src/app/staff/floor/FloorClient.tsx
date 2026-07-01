@@ -14,6 +14,7 @@ import {
 import Link from "next/link";
 import { Button, Badge, Spinner, Input, Select } from "@/components/ui";
 import { cn, formatCurrency } from "@/lib/utils";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type FloorTable = {
   id: string;
@@ -145,16 +146,20 @@ export default function FloorPlanPage() {
       return next;
     });
 
-    const res = await fetch("/api/floor", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tableId, ...body }),
-    });
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}));
-      alert(json.error || "Could not update table");
+    try {
+      const res = await fetch("/api/floor", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tableId, ...body }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        alert(json.error || "Could not update table");
+      }
+      await loadFloor();
+    } catch (error) {
+      swallowPollingFetchError(error);
     }
-    await loadFloor();
   };
 
   const saveGuestCount = async () => {

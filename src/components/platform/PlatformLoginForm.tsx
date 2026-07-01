@@ -19,19 +19,24 @@ export function PlatformLoginForm() {
     setLoading(true);
     setError("");
 
-    const res = await fetch("/api/platform/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const res = await fetch("/api/platform/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (res.ok) {
-      router.push("/platform");
-    } else {
-      const data = await res.json();
-      setError(data.error || "Invalid email or password");
+      if (res.ok) {
+        router.push("/platform");
+      } else {
+        const data = await res.json();
+        setError(data.error || "Invalid email or password");
+      }
+    } catch {
+      setError("Network error — check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

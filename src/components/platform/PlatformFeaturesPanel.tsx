@@ -6,6 +6,7 @@ import { Crown, Save, Sparkles, CheckSquare, Square, ChevronDown, ChevronUp } fr
 import type { FeatureKey } from "@/lib/feature-catalog";
 import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type FeatureRow = {
   key: FeatureKey;
@@ -44,23 +45,25 @@ export function PlatformFeaturesPanel({ tenantId }: { tenantId: string }) {
   } = useRestaurantSearch(restaurants);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/platform/features?tenantId=${encodeURIComponent(tenantId)}`);
-    if (!res.ok) {
+    try {
+      const res = await fetch(`/api/platform/features?tenantId=${encodeURIComponent(tenantId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = data.restaurants as RestaurantFeatures[];
+      setRestaurants(list);
+      const next: typeof drafts = {};
+      for (const r of list) {
+        next[r.id] = Object.fromEntries(r.features.map((f) => [f.key, f.enabled])) as Record<
+          FeatureKey,
+          boolean
+        >;
+      }
+      setDrafts(next);
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
       setLoading(false);
-      return;
     }
-    const data = await res.json();
-    const list = data.restaurants as RestaurantFeatures[];
-    setRestaurants(list);
-    const next: typeof drafts = {};
-    for (const r of list) {
-      next[r.id] = Object.fromEntries(r.features.map((f) => [f.key, f.enabled])) as Record<
-        FeatureKey,
-        boolean
-      >;
-    }
-    setDrafts(next);
-    setLoading(false);
   }, [tenantId]);
 
   useEffect(() => {
@@ -91,20 +94,26 @@ export function PlatformFeaturesPanel({ tenantId }: { tenantId: string }) {
   const save = async (restaurantId: string) => {
     setSavingId(restaurantId);
     setMessage(null);
-    const res = await fetch("/api/platform/features", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ restaurantId, updates: drafts[restaurantId] }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setMessage({ type: "ok", text: data.message });
-      await load();
-    } else {
-      const data = await res.json();
-      setMessage({ type: "err", text: data.error || "Save failed" });
+    try {
+      const res = await fetch("/api/platform/features", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId, updates: drafts[restaurantId] }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessage({ type: "ok", text: data.message });
+        await load();
+      } else {
+        const data = await res.json();
+        setMessage({ type: "err", text: data.error || "Save failed" });
+      }
+    } catch (error) {
+      swallowPollingFetchError(error);
+      setMessage({ type: "err", text: "Network error — try again." });
+    } finally {
+      setSavingId(null);
     }
-    setSavingId(null);
   };
 
   if (loading) {

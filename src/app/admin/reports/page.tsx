@@ -59,25 +59,30 @@ export default function ReportsPage() {
   const [canDownload, setCanDownload] = useState(false);
 
   useEffect(() => {
-    fetch("/api/auth/me")
+    void fetch("/api/auth/me")
       .then((r) => r.json())
       .then((data) => {
         const role = data.user?.role;
         setCanDownload(role === "OWNER" || role === "MANAGER");
-      });
+      })
+      .catch(() => undefined);
   }, []);
 
   const fetchReport = (d: string) => {
     setLoading(true);
     fetch(`/api/reports?date=${d}`)
       .then((r) => {
-        if (!r.ok) { router.push("/"); return null; }
+        if (!r.ok) {
+          router.push("/");
+          return null;
+        }
         return r.json();
       })
       .then((data) => {
         if (data) setReport(data);
-        setLoading(false);
-      });
+      })
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { fetchReport(date); }, [date]);
