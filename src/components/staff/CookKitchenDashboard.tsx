@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChefHat, LogOut, RefreshCw, Volume2 } from "lucide-react";
+import { ChefHat, LogOut, RefreshCw, Volume2, AlertTriangle } from "lucide-react";
 import { Button, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
 import { useKitchenTicketAlerts } from "@/hooks/useKitchenTicketAlerts";
-import { useStaffNotifications } from "@/hooks/useStaffNotifications";
+import { useStaffNotifications, type StaffAlertItem } from "@/hooks/useStaffNotifications";
 import {
   KitchenTicketBoard,
   type KitchenBoardTicket,
@@ -44,11 +44,28 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
     () => loadSavedCategoryFilter(),
   );
   const [tickets, setTickets] = useState<KitchenBoardTicket[]>([]);
+  const [alerts, setAlerts] = useState<StaffAlertItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
 
   const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
-    useStaffNotifications([], user.id);
+    useStaffNotifications(alerts, user.id);
+
+  const loadAlerts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/alerts", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      const kitchenAlerts = (data.alerts ?? []).filter(
+        (alert: StaffAlertItem & { isRead?: boolean }) =>
+          !alert.isRead &&
+          (alert.type === "OVERDUE" || alert.type === "ALARM" || alert.type === "NEW_KITCHEN_ITEM"),
+      );
+      setAlerts(kitchenAlerts);
+    } catch (error) {
+      swallowPollingFetchError(error);
+    }
+  }, []);
 
   useKitchenTicketAlerts(tickets, selectedCategorySlugs);
 
@@ -61,10 +78,11 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
         setStations(data.stations ?? []);
         setTickets(data.tickets ?? []);
       }
+      await loadAlerts();
     } catch (error) {
       swallowPollingFetchError(error);
     }
-  }, [kdsEnabled]);
+  }, [kdsEnabled, loadAlerts]);
 
   useEffect(() => {
     void loadKitchen().finally(() => setLoading(false));
@@ -138,6 +156,18 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
     0,
   );
 
+  const overdueCount = tickets.reduce(
+    (sum, ticket) =>
+      sum +
+      ticket.items.filter(
+        (item) =>
+          item.isOverdue &&
+          ["PENDING", "PREPARING", "READY"].includes(item.status) &&
+          matchesCategoryFilter(item.categorySlug),
+      ).length,
+    0,
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-app-shell flex items-center justify-center">
@@ -158,9 +188,24 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
               <h1 className="text-xl font-bold truncate">{user.restaurantName}</h1>
               <p className="text-sm text-zinc-400 truncate">
                 {user.name} · Kitchen ·{" "}
-                <span className="text-orange-300 font-medium">{openCount} open ticket{openCount === 1 ? "" : "s"}</span>
+                <span className="text-orange-300 font-medium">{openCount} open</span>
+                {overdueCount > 0 && (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <span className="text-red-300 font-semibold">
+                      {overdueCount} overdue
+                    </span>
+                  </>
+                )}
               </p>
             </div>
+            {overdueCount > 0 && (
+              <div className="hidden sm:flex items-center gap-2 rounded-xl border border-red-500/50 bg-red-500/15 px-3 py-2 shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-300 animate-pulse" />
+                <span className="text-sm font-bold text-red-200">{overdueCount} OVERDUE</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {!alertsEnabled && (
@@ -184,11 +229,20 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
           </div>
         </div>
 
+        {overdueCount > 0 && (
+          <div className="border-t border-red-500/40 bg-red-500/15 px-4 py-3">
+            <p className="max-w-[1600px] mx-auto text-sm text-red-100 flex items-center gap-2 font-medium">
+              <AlertTriangle className="w-5 h-5 text-red-300 shrink-0 animate-pulse" />
+              {overdueCount} ticket{overdueCount === 1 ? "" : "s"} past prep time — red cards are sorted to the top. Hit START or READY now.
+            </p>
+          </div>
+        )}
+
         {showEnableBanner && (
           <div className="border-t border-orange-500/30 bg-orange-500/10 px-4 py-3">
             <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-orange-100">
-                Turn on sound alerts so you hear new tickets for your station.
+                Turn on sound alerts to hear new tickets and overdue chimes for your station.
               </p>
               <Button size="sm" onClick={() => void enableAlerts()} disabled={enabling}>
                 <Volume2 className="w-4 h-4" />
