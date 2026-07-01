@@ -80,21 +80,30 @@ export function PlatformTenantOverview({
     showing,
   } = useRestaurantSearch(mergedRestaurants);
 
-  const loadOverview = useCallback(() => {
-    void fetch(`/api/platform/tenants/${tenantId}/overview`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setOverview);
+  const loadOverview = useCallback(async (options?: { signal?: AbortSignal }) => {
+    try {
+      const response = await fetch(`/api/platform/tenants/${tenantId}/overview`, {
+        signal: options?.signal,
+      });
+      if (!response.ok) return;
+      setOverview(await response.json());
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      // Ignore transient network failures (navigation, offline, dev reload).
+    }
   }, [tenantId]);
 
   useEffect(() => {
-    loadOverview();
-    const interval = setInterval(loadOverview, 30_000);
-    return () => clearInterval(interval);
-  }, [loadOverview]);
-
-  useEffect(() => {
-    loadOverview();
-  }, [tenantEnabled, loadOverview]);
+    const controller = new AbortController();
+    void loadOverview({ signal: controller.signal });
+    const interval = setInterval(() => {
+      void loadOverview({ signal: controller.signal });
+    }, 30_000);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
+  }, [loadOverview, tenantEnabled]);
 
   const submitRestaurant = async () => {
     setMessage("");
@@ -115,7 +124,7 @@ export function PlatformTenantOverview({
     setMessage(`Added ${json.restaurant.name}`);
     setAddRestaurant({ name: "", slug: "", ownerEmail: "", ownerName: "Owner" });
     onRestaurantsChange();
-    loadOverview();
+    void loadOverview();
   };
 
   const toggleRestaurant = async (restaurant: TenantRestaurant) => {
@@ -131,7 +140,7 @@ export function PlatformTenantOverview({
     });
     setTogglingRestaurantId(null);
     onRestaurantsChange();
-    loadOverview();
+    void loadOverview();
   };
 
   const stats = overview?.stats;
