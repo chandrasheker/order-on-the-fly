@@ -1,8 +1,15 @@
-# TableTap — Smart Restaurant Ordering SaaS
+# TableTap — Restaurant Operating System
 
-QR-powered table ordering for restaurants. Customers scan, order, and play games while waiting. Staff manage orders with live timers and alerts. **Full-service:** kitchen KDS, floor plan, takeaway, Swiggy/Zomato sync, thermal receipts, and premium feature toggles.
+QR-powered ordering, staff workflows, kitchen KDS, billing, printing, inventory, analytics, and integrations — unified under a **tenant hierarchy**.
 
 TableTap is **fully generic** — launch it for any restaurant by editing one config file.
+
+## Architecture (Restaurant OS)
+
+| Doc | Contents |
+|-----|----------|
+| **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Tenant → Restaurant → Branch → Floor → Table, domain modules, event bus, state machine |
+| **[TESTING.md](./TESTING.md)** | Validation commands for every phase (A–F) |
 
 ## Documentation (start here)
 
@@ -19,8 +26,11 @@ TableTap is **fully generic** — launch it for any restaurant by editing one co
 
 ```bash
 npm install
+npm run db:setup    # migrate + hierarchy backfill
 npm run dev
 ```
+
+Background worker (jobs + print retry): `npm run worker` in a second terminal.
 
 Open `http://localhost:3000` and sign in with the demo staff credentials.
 

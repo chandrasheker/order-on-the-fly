@@ -135,6 +135,19 @@ enum JobStatus {
   FAILED
 }
 
+enum PrintJobStatus {
+  PENDING
+  SENT
+  ACKED
+  FAILED
+}
+
+enum ReconciliationStatus {
+  OPEN
+  BALANCED
+  VARIANCE
+}
+
 enum PlatformEventType {
   ORDER_CREATED
   ORDER_UPDATED
@@ -218,6 +231,9 @@ model Restaurant {
   ingredients           Ingredient[]
   apiKeys               ApiKey[]
   demandForecasts       DemandForecast[]
+  floors                Floor[]
+  printJobs             PrintJob[]
+  paymentReconciliations PaymentReconciliation[]
 }
 
 model User {
@@ -229,6 +245,8 @@ model User {
   slotKey      String?
   plainPassword String?
   restaurantId String
+  tenantId     String?
+  tenant       Tenant?    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   branchId     String?
   branch       Branch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
   restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
@@ -267,8 +285,12 @@ model Table {
   seatedAt     DateTime?
   guestCount   Int?
   restaurantId String
+  tenantId     String?
+  tenant       Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   branchId     String?
   branch       Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  floorId      String?
+  floor        Floor?         @relation(fields: [floorId], references: [id], onDelete: SetNull)
   restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   orders       Order[]
   sessions     TableSession[]
@@ -370,10 +392,15 @@ model Order {
   tableId        String
   table          Table       @relation(fields: [tableId], references: [id])
   restaurantId   String
+  tenantId       String?
+  tenant         Tenant?     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   branchId       String?
   branch         Branch?     @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  floorId        String?
+  floor          Floor?      @relation(fields: [floorId], references: [id], onDelete: SetNull)
   restaurant     Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   items          OrderItem[]
+  printJobs      PrintJob[]
   alarmTriggered Boolean     @default(false)
   rewardSpun     Boolean     @default(false)
   paidAt         DateTime?
@@ -439,6 +466,10 @@ model KitchenStation {
 model Payment {
   id                String              @id @default(cuid())
   restaurantId      String
+  tenantId          String?
+  tenant            Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  branchId          String?
+  branch            Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
   restaurant        Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   tableId           String
   table             Table               @relation(fields: [tableId], references: [id], onDelete: Cascade)
@@ -550,6 +581,10 @@ model Alert {
   orderItemId  String?
   tableNumber  Int
   restaurantId String
+  tenantId     String?
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  branchId     String?
+  branch       Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   isRead       Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -802,6 +837,16 @@ model Tenant {
   updatedAt          DateTime           @updatedAt
   restaurants        Restaurant[]
   subscriptions      TenantSubscription[]
+  branches           Branch[]
+  floors             Floor[]
+  users              User[]
+  tables             Table[]
+  orders             Order[]
+  payments           Payment[]
+  alerts             Alert[]
+  platformEvents     PlatformEvent[]
+  printJobs          PrintJob[]
+  paymentReconciliations PaymentReconciliation[]
 }
 
 model TenantSubscription {
@@ -821,6 +866,8 @@ model TenantSubscription {
 model Branch {
   id              String           @id @default(cuid())
   restaurantId    String
+  tenantId        String?
+  tenant          Tenant?          @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   restaurant      Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   name            String
   slug            String
@@ -828,15 +875,38 @@ model Branch {
   address         String?
   timezone        String           @default("Asia/Kolkata")
   createdAt       DateTime         @default(now())
+  floors          Floor[]
   tables          Table[]
   orders          Order[]
   kitchenStations KitchenStation[]
   reservations    Reservation[]
   shiftClocks     ShiftClock[]
   users           User[]
+  payments        Payment[]
+  alerts          Alert[]
 
   @@unique([restaurantId, slug])
   @@index([restaurantId, isDefault])
+}
+
+model Floor {
+  id           String     @id @default(cuid())
+  branchId     String
+  branch       Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  restaurantId String
+  tenantId     String?
+  tenant       Tenant?    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  slug         String
+  sortOrder    Int        @default(0)
+  isDefault    Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  tables       Table[]
+  orders       Order[]
+
+  @@unique([branchId, slug])
+  @@index([restaurantId, branchId])
 }
 
 model BackgroundJob {
@@ -850,18 +920,24 @@ model BackgroundJob {
   processedAt  DateTime?
   error        String?
   restaurantId String?
+  tenantId     String?
+  branchId     String?
   restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
   createdAt    DateTime  @default(now())
 
   @@index([status, scheduledAt])
   @@index([restaurantId, createdAt])
+  @@index([tenantId, createdAt])
 }
 
 model PlatformEvent {
   id           String            @id @default(cuid())
   restaurantId String
+  tenantId     String?
+  tenant       Tenant?           @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   restaurant   Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   branchId     String?
+  floorId      String?
   type         PlatformEventType
   entityId     String?
   payload      String?
@@ -869,6 +945,51 @@ model PlatformEvent {
 
   @@index([restaurantId, type, createdAt])
   @@index([restaurantId, createdAt])
+  @@index([tenantId, createdAt])
+}
+
+model PrintJob {
+  id           String         @id @default(cuid())
+  restaurantId String
+  tenantId     String?
+  tenant       Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  branchId     String?
+  orderId      String?
+  order        Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  kind         String         @default("kitchen_chit")
+  payload      String
+  status       PrintJobStatus @default(PENDING)
+  ackToken     String         @unique @default(cuid())
+  attempts     Int            @default(0)
+  maxAttempts  Int            @default(5)
+  lastError    String?
+  sentAt       DateTime?
+  ackedAt      DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([restaurantId, status])
+  @@index([status, createdAt])
+}
+
+model PaymentReconciliation {
+  id             String               @id @default(cuid())
+  restaurantId   String
+  tenantId       String?
+  tenant         Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  restaurant     Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  periodDate     String
+  expectedTotal  Float                @default(0)
+  receivedTotal  Float                @default(0)
+  variance       Float                @default(0)
+  status         ReconciliationStatus @default(OPEN)
+  details        String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([restaurantId, periodDate])
+  @@index([tenantId, periodDate])
 }
 
 model Ingredient {

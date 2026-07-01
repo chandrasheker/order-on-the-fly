@@ -7,6 +7,7 @@ import {
   serveTimelineUpdate,
   syncOrderStatus,
 } from "@/lib/order-service";
+import { transitionOrderItemDirect, InvalidOrderTransitionError } from "@/domains/orders/transitions";
 import { requestOrderPayment } from "@/lib/payment-service";
 import { recordFullOrderPayment, recordOrderPayment, orderItemHasPayment, finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
 import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
@@ -337,28 +338,40 @@ export async function PATCH(
   }
 
   if (action === "prepare-item" && itemId) {
-    await prisma.orderItem.update({
-      where: { id: itemId },
-      data: {
-        status: "PREPARING",
-        preparedByUserId: session.id,
-        preparedByName: session.name,
-      },
-    });
-    await prisma.order.update({ where: { id }, data: { status: "PREPARING" } });
+    try {
+      await transitionOrderItemDirect({
+        orderId: id,
+        itemId,
+        toStatus: "PREPARING",
+        actorUserId: session.id,
+        actorName: session.name,
+        restaurantId: session.restaurantId,
+      });
+    } catch (err) {
+      if (err instanceof InvalidOrderTransitionError) {
+        return NextResponse.json({ error: err.message, code: "INVALID_TRANSITION" }, { status: 409 });
+      }
+      throw err;
+    }
     return NextResponse.json({ success: true });
   }
 
   if (action === "ready-item" && itemId) {
-    await prisma.orderItem.update({
-      where: { id: itemId },
-      data: {
-        status: "READY",
-        readyByUserId: session.id,
-        readyByName: session.name,
-      },
-    });
-    await syncOrderStatus(id);
+    try {
+      await transitionOrderItemDirect({
+        orderId: id,
+        itemId,
+        toStatus: "READY",
+        actorUserId: session.id,
+        actorName: session.name,
+        restaurantId: session.restaurantId,
+      });
+    } catch (err) {
+      if (err instanceof InvalidOrderTransitionError) {
+        return NextResponse.json({ error: err.message, code: "INVALID_TRANSITION" }, { status: 409 });
+      }
+      throw err;
+    }
     return NextResponse.json({ success: true });
   }
 

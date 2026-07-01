@@ -145,8 +145,9 @@ if (needsSeed(sqlite.db)) {
 
 try {
   runTsx("scripts/backfill-tenant-branches.ts");
+  runTsx("scripts/backfill-hierarchy.ts");
 } catch (err) {
-  logError("init-db", "Tenant/branch backfill warning", { error: err.message });
+  logError("init-db", "Tenant/branch/floor backfill warning", { error: err.message });
 }
 
 logInfo("init-db", "Database ready", { login: OWNER_EMAIL });

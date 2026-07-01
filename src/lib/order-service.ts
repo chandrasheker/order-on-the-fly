@@ -16,8 +16,8 @@ import {
   formatModifiersNotes,
 } from "@/lib/modifier-service";
 import { resolvePromotionForOrder } from "@/lib/promotion-service";
-import { resolveBranchIdForTable } from "@/lib/branch-service";
-import { emitOrderCreated } from "@/lib/event-bus";
+import { resolveHierarchyForTable } from "@/domains/tables/floor-hierarchy";
+import { emitOrderCreated } from "@/platform/event-bus";
 import { enqueueJob } from "@/lib/job-queue";
 import type { OrderChannel } from "@/generated/prisma/client";
 
@@ -343,7 +343,7 @@ export async function createOrderForTable(params: {
     };
   });
 
-  const branchId = await resolveBranchIdForTable(table.id);
+  const hierarchy = await resolveHierarchyForTable(table.id);
 
   const order = await prisma.order.create({
     data: {
@@ -355,7 +355,9 @@ export async function createOrderForTable(params: {
       orderNotes: orderNotes?.trim() || null,
       tableId: table.id,
       restaurantId: table.restaurantId,
-      branchId,
+      tenantId: hierarchy.tenantId,
+      branchId: hierarchy.branchId,
+      floorId: hierarchy.floorId,
       date: todayDateString(),
       status: "PENDING",
       placedByUserId: placedByUserId ?? null,
@@ -399,7 +401,9 @@ export async function createOrderForTable(params: {
 
   void emitOrderCreated({
     restaurantId: table.restaurantId,
-    branchId,
+    tenantId: hierarchy.tenantId,
+    branchId: hierarchy.branchId,
+    floorId: hierarchy.floorId,
     orderId: order.id,
     orderNumber: order.orderNumber,
     total,

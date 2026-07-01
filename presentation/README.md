@@ -14,9 +14,9 @@ Screenshots (when captured) live in [`screenshots/`](./screenshots/).
 
 ## What's in the deck
 
-1. Hero — complete restaurant platform
+1. Hero — **Restaurant Operating System** (not just QR menus)
 2. Owner pain points
-3. Platform overview (QR + KDS + aggregators)
+3. Platform overview — tenant hierarchy, QR + KDS + aggregators
 4. Guest experience (check-in, menu, rewards)
 5. Security (anti remote misuse)
 6. Staff dashboard
@@ -76,7 +76,8 @@ The presentation script:
 
 Hand off these guides after the meeting:
 
-- [BRINGUP_TROUBLESHOOTING.md](../BRINGUP_TROUBLESHOOTING.md) — git clone to running app, known errors
+- [ARCHITECTURE.md](../ARCHITECTURE.md) — Restaurant OS architecture (tenant hierarchy, event bus)
+- [TESTING.md](../TESTING.md) — validation checklist for deployments
 - [SETUP_GUIDE.md](../SETUP_GUIDE.md) — complete technical setup
 - [RESTAURANT_SETUP.md](../RESTAURANT_SETUP.md) — config file & wizard
 - [AGGREGATOR_SETUP.md](../AGGREGATOR_SETUP.md) — Swiggy/Zomato onboarding
