@@ -210,6 +210,7 @@ export function StaffDashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>("active");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
   const [features, setFeatures] = useState<RestaurantFeatures>({});
+  const [restaurantLogoUrl, setRestaurantLogoUrl] = useState<string | null>(null);
 
   const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
     useStaffNotifications(alerts, user?.id);
@@ -253,6 +254,7 @@ export function StaffDashboard() {
       setTableSwitchRequests(data.tableSwitchRequests ?? []);
       setStats(data.stats);
       setFeatures(data.features ?? {});
+      setRestaurantLogoUrl(data.restaurant?.logoUrl ?? null);
       dashFailCountRef.current = 0;
     } catch (error) {
       if (isNetworkFetchError(error)) return;
@@ -447,6 +449,7 @@ export function StaffDashboard() {
           name: user.name,
           restaurantName: user.restaurantName,
         }}
+        restaurantLogoUrl={restaurantLogoUrl}
         kdsEnabled={Boolean(features.kds)}
       />
     );

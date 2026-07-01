@@ -18,6 +18,7 @@ import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
 import { useKitchenTicketAlerts } from "@/hooks/useKitchenTicketAlerts";
 import { useStaffNotifications, type StaffAlertItem } from "@/hooks/useStaffNotifications";
 import type { KitchenBoardTicket } from "@/components/kitchen/KitchenTicketBoard";
+import { SiteFooter } from "@/components/SiteFooter";
 
 type Station = {
   id: string;
@@ -79,10 +80,15 @@ function loadSavedCategoryFilter(): Set<string> {
 
 type CookKitchenDashboardProps = {
   user: { id: string; name: string; restaurantName: string };
+  restaurantLogoUrl?: string | null;
   kdsEnabled: boolean;
 };
 
-export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardProps) {
+export function CookKitchenDashboard({
+  user,
+  restaurantLogoUrl,
+  kdsEnabled,
+}: CookKitchenDashboardProps) {
   const [stations, setStations] = useState<Station[]>([]);
   const [selectedCategorySlugs, setSelectedCategorySlugs] = useState<Set<string>>(
     () => loadSavedCategoryFilter(),
@@ -262,7 +268,17 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
     <div className="fixed inset-0 z-[60] w-full flex flex-col overflow-hidden bg-app-shell text-foreground touch-manipulation">
       {/* Top bar — fixed height */}
       <header className="shrink-0 border-b border-white/10 px-2 sm:px-3 py-2 flex items-center gap-2">
-        <ChefHat className="w-6 h-6 text-orange-400 shrink-0" />
+        {restaurantLogoUrl ? (
+          <img
+            src={restaurantLogoUrl}
+            alt=""
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg object-contain bg-white/5 border border-white/10 shrink-0"
+          />
+        ) : (
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-center justify-center shrink-0">
+            <ChefHat className="w-6 h-6 text-orange-400" />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold truncate leading-tight">{user.restaurantName}</p>
           <p className="text-[11px] text-zinc-500 truncate">
@@ -398,13 +414,15 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
         )}
       </main>
 
-      {/* Ready strip — fixed footer */}
+      {/* Ready strip */}
       {readyLabels.length > 0 && (
-        <footer className="shrink-0 border-t border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5">
+        <div className="shrink-0 border-t border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5">
           <p className="text-[11px] text-emerald-400/80 font-medium mb-0.5">Ready for server</p>
           <p className="text-xs text-emerald-200 truncate">{readyLabels.join(" · ")}</p>
-        </footer>
+        </div>
       )}
+
+      <SiteFooter embedded />
     </div>
   );
 }

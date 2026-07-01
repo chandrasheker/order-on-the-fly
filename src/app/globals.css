@@ -125,12 +125,13 @@ select option {
   color: var(--foreground);
 }
 
-/* Cook kiosk — one fixed screen, no site chrome or scrolling */
+/* Cook kiosk — one fixed screen; site footer is embedded in the cook UI */
 body.cook-kiosk {
   overflow: hidden;
 }
 
-body.cook-kiosk footer,
+body.cook-kiosk > .site-footer-global,
+body.cook-kiosk footer.site-footer-global,
 body.cook-kiosk .fixed-theme-toggle {
   display: none !important;
 }
