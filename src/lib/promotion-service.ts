@@ -153,7 +153,11 @@ export async function resolvePromotionForOrder(params: {
   restaurantId: string;
   promoCode?: string | null;
   lines: CartLineForPromo[];
-}) {
+}): Promise<{
+  promo: Awaited<ReturnType<typeof listActivePromotions>>[number] | null;
+  discount: number;
+  error?: string;
+}> {
   if (!(await isFeatureEnabled(params.restaurantId, "promotions_engine"))) {
     return { promo: null, discount: 0 };
   }
@@ -165,7 +169,9 @@ export async function resolvePromotionForOrder(params: {
     promo =
       active.find((p) => p.code?.toUpperCase() === params.promoCode!.trim().toUpperCase()) ??
       null;
-    if (!promo) throw new Error("Invalid or expired promo code");
+    if (!promo) {
+      return { promo: null, discount: 0, error: "Invalid or expired promo code" };
+    }
   } else {
     promo = active.find((p) => !p.code) ?? null;
   }

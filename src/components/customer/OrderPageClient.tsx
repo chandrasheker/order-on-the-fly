@@ -86,7 +86,7 @@ export function OrderPageClient({ slug, token }: Props) {
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuAbortRef = useRef<AbortController | null>(null);
   const ordersAbortRef = useRef<AbortController | null>(null);
-  const { customerName, setCustomerName, items, promoCode, clearCart } = useCartStore();
+  const { customerName, setCustomerName, items, promoCode, setPromoCode, clearCart } = useCartStore();
   const tableSession = useTableSession(token, slug);
 
   useCartDraftSync({
@@ -256,6 +256,9 @@ export function OrderPageClient({ slug, token }: Props) {
         fetchOrders();
       } else {
         const err = await res.json();
+        if (err.code === "INVALID_PROMO") {
+          setPromoCode("");
+        }
         setOrderError(err.error || "Could not place order");
       }
     } catch {

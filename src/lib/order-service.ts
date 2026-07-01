@@ -317,11 +317,14 @@ export async function createOrderForTable(params: {
     lineTotal: line.unitPrice * line.quantity,
   }));
 
-  const { promo, discount: promoDiscountRaw } = await resolvePromotionForOrder({
+  const { promo, discount: promoDiscountRaw, error: promoError } = await resolvePromotionForOrder({
     restaurantId,
     promoCode,
     lines: promoLines,
   });
+  if (promoError) {
+    throw new OrderCreationError(promoError, 400, "INVALID_PROMO");
+  }
   const promoDiscount = promoDiscountRaw + comboDiscount;
 
   const orderItemsData = pricedLines.map((line) => {
