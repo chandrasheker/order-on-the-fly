@@ -117,6 +117,10 @@ export async function middleware(request: NextRequest) {
       }
       return NextResponse.next();
     }
+    // Legacy list route — tenant picker lives at /platform
+    if (pathname === "/platform/tenants") {
+      return NextResponse.redirect(new URL("/platform", request.url));
+    }
     if (!platformAdmin) {
       return NextResponse.redirect(new URL("/platform/login", request.url));
     }
