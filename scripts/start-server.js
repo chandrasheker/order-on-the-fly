@@ -74,13 +74,13 @@ async function main() {
   }
 
   if (production) {
-    run("npm run build", "Building production bundle");
+    run("node scripts/build-sequential.js", "Building production bundle (low-memory sequential)");
   }
 
   const nextArgs = production ? ["next", "start"] : ["next", "dev"];
-  logInfo("start-server", `Launching: npx ${nextArgs.join(" ")}`);
+  logInfo("start-server", `Launching: node scripts/run-with-mem.js npx ${nextArgs.join(" ")}`);
 
-  const child = spawn("npx", nextArgs, {
+  const child = spawn("node", ["scripts/run-with-mem.js", "npx", ...nextArgs], {
     stdio: "inherit",
     shell: true,
     env: process.env,

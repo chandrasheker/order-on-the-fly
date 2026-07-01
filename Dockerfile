@@ -18,6 +18,9 @@ WORKDIR /app
 COPY . .
 
 # Docker builds target PostgreSQL. Local development still uses prisma/schema.prisma (SQLite).
+ENV LOW_MEMORY=1
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_MAX_OLD_SPACE_SIZE=640
 ENV PRISMA_SCHEMA=prisma/schema.postgres.prisma
 ENV PRISMA_MIGRATIONS=prisma/migrations-postgres
 ENV DATABASE_URL=postgresql://tabletap:tabletap_password@postgres:5432/tabletap
