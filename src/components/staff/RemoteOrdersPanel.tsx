@@ -8,6 +8,7 @@ import { TableOrderHistory } from "@/components/staff/TableOrderHistory";
 import { Input, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useStaffCartStore } from "@/store/staff-cart";
+import { useOfflineOrderSync } from "@/hooks/useOfflineOrderSync";
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 
 type OrderMode = "walkin" | "takeaway" | "delivery";
@@ -144,6 +145,8 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
     setSuccess("");
   };
 
+  const { online, pendingCount, queueOrder, syncPending } = useOfflineOrderSync(true);
+
   const cartControls = useMemo(
     () => ({ items, addItem, updateQuantity, total, maxPrepTime }),
     [items, addItem, updateQuantity, total, maxPrepTime],
@@ -170,18 +173,28 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
       };
 
       let res: Response;
-      if (meta.channel) {
-        res = await fetch("/api/orders/staff", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, channel: meta.channel, openTable: false }),
-        });
-      } else {
-        res = await fetch("/api/orders/staff", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, tableId, openTable: true }),
-        });
+      try {
+        if (meta.channel) {
+          res = await fetch("/api/orders/staff", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...payload, channel: meta.channel, openTable: false }),
+          });
+        } else {
+          res = await fetch("/api/orders/staff", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...payload, tableId, openTable: true }),
+          });
+        }
+      } catch {
+        if (!online && tableId) {
+          await queueOrder({ tableId, customerName: payload.customerName, items: payload.items });
+          setSuccess("Offline — order queued and will sync when connection returns.");
+          clearCart();
+          return;
+        }
+        throw new Error("Network error — could not reach server");
       }
 
       const json = await res.json().catch(() => ({}));
@@ -253,6 +266,18 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
 
   return (
     <div className="space-y-5 pb-28">
+      {(!online || pendingCount > 0) && (
+        <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-200 flex items-center justify-between gap-3">
+          <span>
+            {!online ? "Offline mode — orders queue locally." : `${pendingCount} order(s) waiting to sync.`}
+          </span>
+          {online && pendingCount > 0 && (
+            <button type="button" className="underline" onClick={() => void syncPending()}>
+              Sync now
+            </button>
+          )}
+        </div>
+      )}
       <div className="sticky top-[4.5rem] z-20 -mx-1 px-1 py-3 bg-app-shell/95 backdrop-blur-md border-b border-[color:var(--surface-border)] space-y-3">
         <ModePicker modes={modes} mode={mode} onChange={resetMode} compact />
 

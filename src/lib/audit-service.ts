@@ -11,6 +11,9 @@ export async function recordAuditLog(params: {
   entityId?: string;
   reason?: string;
   payload?: unknown;
+  oldValue?: unknown;
+  newValue?: unknown;
+  branchId?: string | null;
   actorUserId?: string;
   actorName?: string;
   approvedByUserId?: string;
@@ -26,6 +29,9 @@ export async function recordAuditLog(params: {
       entityId: params.entityId,
       reason: params.reason,
       payload: params.payload ? JSON.stringify(params.payload) : null,
+      oldValue: params.oldValue !== undefined ? JSON.stringify(params.oldValue) : null,
+      newValue: params.newValue !== undefined ? JSON.stringify(params.newValue) : null,
+      branchId: params.branchId ?? null,
       actorUserId: params.actorUserId,
       actorName: params.actorName,
       approvedByUserId: params.approvedByUserId,

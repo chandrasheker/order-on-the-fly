@@ -143,6 +143,12 @@ if (needsSeed(sqlite.db)) {
   logInfo("init-db", "Seed skipped; owner account already exists");
 }
 
+try {
+  runTsx("scripts/backfill-tenant-branches.ts");
+} catch (err) {
+  logError("init-db", "Tenant/branch backfill warning", { error: err.message });
+}
+
 logInfo("init-db", "Database ready", { login: OWNER_EMAIL });
 console.log("Database ready.");
 console.log(`Staff login (${config.restaurant.name}): ${config.primaryOwner.email}`);

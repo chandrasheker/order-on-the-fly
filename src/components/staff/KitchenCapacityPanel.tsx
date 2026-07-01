@@ -20,12 +20,16 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
 
   const load = useCallback(async () => {
     if (!enabled) return;
-    const res = await fetch("/api/realtime/kitchen");
-    if (res.ok) {
-      const json = await res.json();
-      setState(json.state);
-      setMessage(json.state.message ?? "");
-      setThreshold(json.state.autoPauseThreshold ?? 0);
+    try {
+      const res = await fetch("/api/realtime/kitchen");
+      if (res.ok) {
+        const json = await res.json();
+        setState(json.state);
+        setMessage(json.state.message ?? "");
+        setThreshold(json.state.autoPauseThreshold ?? 0);
+      }
+    } catch {
+      /* ignore transient network errors during dev reload or polling */
     }
   }, [enabled]);
 

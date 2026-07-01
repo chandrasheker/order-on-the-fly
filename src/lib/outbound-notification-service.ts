@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { logInfo, logWarn } from "@/lib/logger";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { enqueueJob } from "@/lib/job-queue";
 
 export type RealtimeEventType =
   | "NEW_ORDER"
@@ -28,30 +29,27 @@ export async function dispatchRealtimeNotifications(params: {
 
   const pushOn = await isFeatureEnabled(restaurantId, "push_alerts");
   if (pushOn && restaurant.pushAlertsEnabled) {
-    const { sendPushToRestaurant } = await import("@/lib/push-notification-service");
-    void sendPushToRestaurant(restaurantId, { title, body, tag: type, urgent });
+    void enqueueJob({
+      type: "push_notification",
+      restaurantId,
+      payload: { restaurantId, title, body, tag: type, urgent },
+    });
   }
 
   if (restaurant.smsAlertsEnabled && process.env.SMS_WEBHOOK_URL) {
     const staffPhone = process.env.STAFF_ALERT_PHONE;
     if (staffPhone) {
-      try {
-        await fetch(process.env.SMS_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: staffPhone,
-            message: `[${type}] ${title}: ${body}`,
-            restaurantSlug: restaurant.slug,
-            tableNumber,
-          }),
-        });
-        logInfo("realtime:sms", "Staff SMS dispatched", { type, restaurantId });
-      } catch (err) {
-        logWarn("realtime:sms", "SMS dispatch failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+      void enqueueJob({
+        type: "sms_notification",
+        restaurantId,
+        payload: {
+          to: staffPhone,
+          message: `[${type}] ${title}: ${body}`,
+          restaurantSlug: restaurant.slug,
+          tableNumber,
+        },
+      });
+      logInfo("realtime:sms", "Staff SMS queued", { type, restaurantId });
     }
   }
 }

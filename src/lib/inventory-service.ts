@@ -66,6 +66,8 @@ export async function adjustMenuItemStock(params: {
       actionType: "STOCK_ADJUST",
       entityId: params.itemId,
       reason: `Stock set to ${qty}`,
+      oldValue: { stockQuantity: item.stockQuantity, isAvailable: item.isAvailable },
+      newValue: { stockQuantity: qty, isAvailable: updated.isAvailable },
       payload: { itemName: item.name, stockQuantity: qty },
       actorUserId: params.actorUserId,
       actorName: params.actorName,

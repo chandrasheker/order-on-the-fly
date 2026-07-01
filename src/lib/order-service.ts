@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { isOrderItemOpen, todayDateString, sumOrderRevenue, formatCurrency } from "@/lib/utils";
+import { isOrderItemOpen, todayDateString, sumOrderRevenue } from "@/lib/utils";
 import { maybeAutoPauseKitchen } from "@/lib/kitchen-capacity-service";
 import { clearPaymentAlerts } from "@/lib/payment-service";
 import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
@@ -16,7 +16,9 @@ import {
   formatModifiersNotes,
 } from "@/lib/modifier-service";
 import { resolvePromotionForOrder } from "@/lib/promotion-service";
-import { dispatchRealtimeNotifications } from "@/lib/outbound-notification-service";
+import { resolveBranchIdForTable } from "@/lib/branch-service";
+import { emitOrderCreated } from "@/lib/event-bus";
+import { enqueueJob } from "@/lib/job-queue";
 import type { OrderChannel } from "@/generated/prisma/client";
 
 export async function clearAlertsForOrderItem(orderItemId: string) {
@@ -341,6 +343,8 @@ export async function createOrderForTable(params: {
     };
   });
 
+  const branchId = await resolveBranchIdForTable(table.id);
+
   const order = await prisma.order.create({
     data: {
       orderNumber,
@@ -351,6 +355,7 @@ export async function createOrderForTable(params: {
       orderNotes: orderNotes?.trim() || null,
       tableId: table.id,
       restaurantId: table.restaurantId,
+      branchId,
       date: todayDateString(),
       status: "PENDING",
       placedByUserId: placedByUserId ?? null,
@@ -376,6 +381,15 @@ export async function createOrderForTable(params: {
     allItems.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity }))
   );
 
+  void enqueueJob({
+    type: "recipe_deduct",
+    restaurantId: table.restaurantId,
+    payload: {
+      restaurantId: table.restaurantId,
+      items: allItems.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
+    },
+  });
+
   void touchGuestProfile({
     restaurantId: table.restaurantId,
     phone: customerPhone,
@@ -383,13 +397,13 @@ export async function createOrderForTable(params: {
     orderTotal: total,
   });
 
-  void dispatchRealtimeNotifications({
+  void emitOrderCreated({
     restaurantId: table.restaurantId,
-    type: "NEW_ORDER",
-    title: `New order #${order.orderNumber}`,
-    body: `Table ${table.number} — ${formatCurrency(total)}`,
+    branchId,
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    total,
     tableNumber: table.number,
-    urgent: true,
   });
 
   return { order, total };

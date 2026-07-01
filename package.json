@@ -20,6 +20,8 @@
     "config:validate": "node -e \"require('./scripts/restaurant-config').loadRestaurantConfig() && console.log('Restaurant config is valid')\"",
     "presentation": "node scripts/build-owner-presentation.mjs",
     "crash-dump": "node scripts/crash-dump.js --reason manual",
+    "printer:agent": "node services/printer-agent/index.mjs",
+    "jobs:process": "curl -s -X POST http://localhost:3000/api/jobs/process",
     "postinstall": "prisma generate"
   },
   "prisma": {
@@ -35,6 +37,7 @@
     "date-fns": "^4.4.0",
     "dotenv": "^17.4.2",
     "framer-motion": "^12.42.0",
+    "ioredis": "^5.11.1",
     "jose": "^6.2.3",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.21.0",

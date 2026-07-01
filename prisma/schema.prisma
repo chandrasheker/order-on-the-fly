@@ -115,6 +115,44 @@ enum PaymentGatewayProvider {
   PAYTM
 }
 
+enum TenantPlan {
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum PlatformEventType {
+  ORDER_CREATED
+  ORDER_UPDATED
+  ORDER_PAID
+  PAYMENT_RECEIVED
+  INVENTORY_CHANGED
+  KITCHEN_PAUSED
+  GUEST_SERVICE
+  MENU_UPDATED
+  STAFF_ACTION
+}
+
+enum IngredientUnit {
+  GRAM
+  ML
+  PIECE
+}
+
 model Restaurant {
   id                    String         @id @default(cuid())
   name                  String
@@ -149,7 +187,10 @@ model Restaurant {
   paymentWebhookSecret  String?
   pushAlertsEnabled     Boolean        @default(true)
   smsAlertsEnabled      Boolean        @default(true)
+  tenantId              String?
+  tenant                Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   createdAt             DateTime       @default(now())
+  branches              Branch[]
   users                 User[]
   tables                Table[]
   tableSwitchRequests   TableSwitchRequest[]
@@ -172,6 +213,11 @@ model Restaurant {
   guestServiceRequests  GuestServiceRequest[]
   pushSubscriptions     PushSubscription[]
   paymentWebhookEvents  PaymentWebhookEvent[]
+  backgroundJobs        BackgroundJob[]
+  platformEvents        PlatformEvent[]
+  ingredients           Ingredient[]
+  apiKeys               ApiKey[]
+  demandForecasts       DemandForecast[]
 }
 
 model User {
@@ -183,6 +229,8 @@ model User {
   slotKey      String?
   plainPassword String?
   restaurantId String
+  branchId     String?
+  branch       Branch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
   restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   assignedTables Table[]    @relation("TableServer")
   shiftClocks    ShiftClock[]
@@ -219,6 +267,8 @@ model Table {
   seatedAt     DateTime?
   guestCount   Int?
   restaurantId String
+  branchId     String?
+  branch       Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
   restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   orders       Order[]
   sessions     TableSession[]
@@ -303,6 +353,7 @@ model MenuItem {
   orderItems      OrderItem[]
   modifierGroups  MenuItemModifierGroup[]
   comboMealItems  ComboMealItem[]
+  recipeLines     RecipeLine[]
 }
 
 model Order {
@@ -319,6 +370,8 @@ model Order {
   tableId        String
   table          Table       @relation(fields: [tableId], references: [id])
   restaurantId   String
+  branchId       String?
+  branch         Branch?     @relation(fields: [branchId], references: [id], onDelete: SetNull)
   restaurant     Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   items          OrderItem[]
   alarmTriggered Boolean     @default(false)
@@ -376,6 +429,8 @@ model KitchenStation {
   categorySlugs String
   sortOrder     Int        @default(0)
   restaurantId  String
+  branchId      String?
+  branch        Branch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
   restaurant    Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   @@unique([restaurantId, slug])
@@ -505,6 +560,8 @@ model Alert {
 model Reservation {
   id           String            @id @default(cuid())
   restaurantId String
+  branchId     String?
+  branch       Branch?           @relation(fields: [branchId], references: [id], onDelete: SetNull)
   restaurant   Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   guestName    String
   guestPhone   String
@@ -526,6 +583,8 @@ model Reservation {
 model ShiftClock {
   id           String     @id @default(cuid())
   restaurantId String
+  branchId     String?
+  branch       Branch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   userId       String
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -562,6 +621,9 @@ model AuditLog {
   entityId         String?
   reason           String?
   payload          String?
+  oldValue         String?
+  newValue         String?
+  branchId         String?
   actorUserId      String?
   actorName        String?
   approvedByUserId String?
@@ -726,4 +788,142 @@ model PaymentWebhookEvent {
 
   @@unique([provider, externalId])
   @@index([restaurantId, createdAt])
+}
+
+model Tenant {
+  id                 String             @id @default(cuid())
+  name               String
+  slug               String             @unique
+  plan               TenantPlan         @default(STARTER)
+  subscriptionStatus SubscriptionStatus @default(TRIAL)
+  billingEmail       String?
+  externalBillingId  String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  restaurants        Restaurant[]
+  subscriptions      TenantSubscription[]
+}
+
+model TenantSubscription {
+  id               String             @id @default(cuid())
+  tenantId         String
+  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan             TenantPlan
+  status           SubscriptionStatus @default(TRIAL)
+  currentPeriodEnd DateTime?
+  metadata         String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([tenantId, status])
+}
+
+model Branch {
+  id              String           @id @default(cuid())
+  restaurantId    String
+  restaurant      Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name            String
+  slug            String
+  isDefault       Boolean          @default(false)
+  address         String?
+  timezone        String           @default("Asia/Kolkata")
+  createdAt       DateTime         @default(now())
+  tables          Table[]
+  orders          Order[]
+  kitchenStations KitchenStation[]
+  reservations    Reservation[]
+  shiftClocks     ShiftClock[]
+  users           User[]
+
+  @@unique([restaurantId, slug])
+  @@index([restaurantId, isDefault])
+}
+
+model BackgroundJob {
+  id           String    @id @default(cuid())
+  type         String
+  payload      String
+  status       JobStatus @default(PENDING)
+  attempts     Int       @default(0)
+  maxAttempts  Int       @default(5)
+  scheduledAt  DateTime  @default(now())
+  processedAt  DateTime?
+  error        String?
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now())
+
+  @@index([status, scheduledAt])
+  @@index([restaurantId, createdAt])
+}
+
+model PlatformEvent {
+  id           String            @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  branchId     String?
+  type         PlatformEventType
+  entityId     String?
+  payload      String?
+  createdAt    DateTime          @default(now())
+
+  @@index([restaurantId, type, createdAt])
+  @@index([restaurantId, createdAt])
+}
+
+model Ingredient {
+  id                String         @id @default(cuid())
+  restaurantId      String
+  restaurant        Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name              String
+  unit              IngredientUnit @default(GRAM)
+  stockQuantity     Float          @default(0)
+  lowStockThreshold Float          @default(0)
+  recipeLines       RecipeLine[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([restaurantId, name])
+}
+
+model RecipeLine {
+  id           String     @id @default(cuid())
+  menuItemId   String
+  menuItem     MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity     Float
+
+  @@unique([menuItemId, ingredientId])
+}
+
+model ApiKey {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  keyHash      String     @unique
+  keyPrefix    String
+  scopes       String     @default("[\"orders:read\"]")
+  lastUsedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId, revokedAt])
+}
+
+model DemandForecast {
+  id                String     @id @default(cuid())
+  restaurantId      String
+  restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  menuItemId        String
+  menuItemName      String
+  date              String
+  predictedQuantity Float
+  confidence        Float      @default(0.5)
+  modelVersion      String     @default("v1-sma")
+  createdAt         DateTime   @default(now())
+
+  @@unique([restaurantId, menuItemId, date])
+  @@index([restaurantId, date])
 }

@@ -31,6 +31,8 @@ async function getPlatformAdminSession(request: NextRequest) {
 }
 
 function isPublicApi(pathname: string, request: NextRequest) {
+  if (pathname === "/api/health") return true;
+  if (pathname.startsWith("/api/v1/")) return true;
   if (/^\/api\/payment\/qr\/[^/]+$/.test(pathname)) return true;
   if (pathname === "/api/auth/login") return true;
   if (pathname === "/api/auth/me") return true;
@@ -62,8 +64,48 @@ function isPublicApi(pathname: string, request: NextRequest) {
   return false;
 }
 
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimitMemory(key: string, limit: number, windowMs: number) {
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+  if (!bucket || bucket.resetAt <= now) {
+    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  bucket.count += 1;
+  return bucket.count <= limit;
+}
+
+function withSecurityHeaders(response: NextResponse) {
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (pathname === "/api/auth/login" && request.method === "POST") {
+    const ip = request.headers.get("x-forwarded-for") ?? "local";
+    if (!checkRateLimitMemory(`login:${ip}`, 20, 60_000)) {
+      return withSecurityHeaders(
+        NextResponse.json({ error: "Too many login attempts" }, { status: 429 }),
+      );
+    }
+  }
+
+  if (pathname === "/api/orders" && request.method === "POST") {
+    const ip = request.headers.get("x-forwarded-for") ?? "local";
+    if (!checkRateLimitMemory(`order:${ip}`, 60, 60_000)) {
+      return withSecurityHeaders(
+        NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 }),
+      );
+    }
+  }
+
   const session = await getStaffSession(request);
   const platformAdmin = await getPlatformAdminSession(request);
 
@@ -155,7 +197,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  return withSecurityHeaders(NextResponse.next());
 }
 
 export const config = {

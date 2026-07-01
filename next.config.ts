@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
     "@prisma/adapter-better-sqlite3",
     "pg",
     "@prisma/adapter-pg",
+    "ioredis",
+    "web-push",
   ],
 };
 
