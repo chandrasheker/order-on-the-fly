@@ -7,6 +7,7 @@ import type { Role } from "@/generated/prisma/client";
 import { DEFAULT_SLOT_COUNTS } from "@/lib/staff-permissions";
 import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 interface SlotRow {
   slotKey: string;
@@ -85,26 +86,31 @@ export function PlatformStaffSetupPanel({ tenantId }: { tenantId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(
-      `/api/platform/staff-config?tenantId=${encodeURIComponent(tenantId)}`,
-    );
-    if (res.ok) {
-      const data = await res.json();
-      const list = data.restaurants as RestaurantConfig[];
-      setRestaurants(list);
+    try {
+      const res = await fetch(
+        `/api/platform/staff-config?tenantId=${encodeURIComponent(tenantId)}`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const list = data.restaurants as RestaurantConfig[];
+        setRestaurants(list);
 
-      const nextCounts: typeof countsDraft = {};
-      const nextSlots: typeof slotDrafts = {};
-      for (const r of list) {
-        nextCounts[r.id] = r.counts;
-        nextSlots[r.id] = Object.fromEntries(
-          buildSlotsFromCounts(r, {}).map((s) => [s.slotKey, s]),
-        );
+        const nextCounts: typeof countsDraft = {};
+        const nextSlots: typeof slotDrafts = {};
+        for (const r of list) {
+          nextCounts[r.id] = r.counts;
+          nextSlots[r.id] = Object.fromEntries(
+            buildSlotsFromCounts(r, {}).map((s) => [s.slotKey, s]),
+          );
+        }
+        setCountsDraft(nextCounts);
+        setSlotDrafts(nextSlots);
       }
-      setCountsDraft(nextCounts);
-      setSlotDrafts(nextSlots);
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [tenantId]);
 
   useEffect(() => {

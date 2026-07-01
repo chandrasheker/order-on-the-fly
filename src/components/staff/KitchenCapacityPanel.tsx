@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Pause, Play, ChefHat, ChevronDown, ChevronUp } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 interface KitchenState {
   paused: boolean;
@@ -57,6 +58,8 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
         const json = await res.json();
         setState(json.state);
       }
+    } catch (error) {
+      swallowPollingFetchError(error);
     } finally {
       setSaving(false);
     }

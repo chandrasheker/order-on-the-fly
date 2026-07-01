@@ -156,27 +156,32 @@ export default function MenuManagePage() {
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
 
   const fetchMenu = useCallback(async () => {
-    const [menuRes, settingsRes, meRes] = await Promise.all([
-      fetch("/api/menu/manage"),
-      fetch("/api/rewards/settings"),
-      fetch("/api/auth/me"),
-    ]);
-    if (!menuRes.ok) {
-      router.push("/");
-      return;
+    try {
+      const [menuRes, settingsRes, meRes] = await Promise.all([
+        fetch("/api/menu/manage"),
+        fetch("/api/rewards/settings"),
+        fetch("/api/auth/me"),
+      ]);
+      if (!menuRes.ok) {
+        router.push("/");
+        return;
+      }
+      const menuData = await menuRes.json();
+      setCategories(menuData.categories ?? []);
+      if (settingsRes.ok) {
+        const s = await settingsRes.json();
+        setRewardSettings(s.settings);
+      }
+      if (meRes.ok) {
+        const me = await meRes.json();
+        setRestaurantSlug(me.user?.restaurantSlug ?? "");
+        setRestaurantName(me.user?.restaurantName ?? "");
+      }
+    } catch {
+      /* ignore network errors */
+    } finally {
+      setLoading(false);
     }
-    const menuData = await menuRes.json();
-    setCategories(menuData.categories ?? []);
-    if (settingsRes.ok) {
-      const s = await settingsRes.json();
-      setRewardSettings(s.settings);
-    }
-    if (meRes.ok) {
-      const me = await meRes.json();
-      setRestaurantSlug(me.user?.restaurantSlug ?? "");
-      setRestaurantName(me.user?.restaurantName ?? "");
-    }
-    setLoading(false);
   }, [router]);
 
   useEffect(() => {

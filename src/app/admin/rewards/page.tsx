@@ -50,12 +50,16 @@ export default function RewardsPage() {
   }, [filter]);
 
   const redeem = async (id: string) => {
-    await fetch(`/api/rewards/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "redeem" }),
-    });
-    fetchRewards();
+    try {
+      await fetch(`/api/rewards/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "redeem" }),
+      });
+      fetchRewards();
+    } catch {
+      /* ignore network errors */
+    }
   };
 
   if (loading) {

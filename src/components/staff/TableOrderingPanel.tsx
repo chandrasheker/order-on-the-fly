@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 import { DoorOpen, DoorClosed, ChevronDown, ChevronUp } from "lucide-react";
 
 type TableRow = {
@@ -47,6 +48,8 @@ export function TableOrderingPanel() {
         body: JSON.stringify({ tableId: table.id, orderingEnabled: !table.orderingEnabled }),
       });
       await load();
+    } catch (error) {
+      swallowPollingFetchError(error);
     } finally {
       setBusyId(null);
     }

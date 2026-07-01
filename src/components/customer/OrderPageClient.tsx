@@ -21,6 +21,7 @@ import { KitchenPausedBanner } from "@/components/customer/KitchenPausedBanner";
 import { PromoCodeInput } from "@/components/customer/PromoCodeInput";
 import { ComboMealsSection } from "@/components/customer/ComboMealsSection";
 import { CustomerPageBackground } from "@/components/customer/CustomerPageBackground";
+import { isClientOffline, isNetworkFetchError } from "@/lib/client-fetch";
 
 interface Props {
   slug: string;
@@ -83,6 +84,8 @@ export function OrderPageClient({ slug, token }: Props) {
   const [showThankYou, setShowThankYou] = useState(false);
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const menuAbortRef = useRef<AbortController | null>(null);
+  const ordersAbortRef = useRef<AbortController | null>(null);
   const { customerName, setCustomerName, items, promoCode, clearCart } = useCartStore();
   const tableSession = useTableSession(token, slug);
 
@@ -96,37 +99,64 @@ export function OrderPageClient({ slug, token }: Props) {
   });
 
   const fetchMenu = useCallback(async () => {
-    const res = await fetch(`/api/menu/${slug}/${token}`);
-    if (res.ok) {
-      const json = await res.json();
-      setData({
-        restaurant: json.restaurant,
-        table: json.table,
-        categories: json.categories,
-        features: json.features,
-        kitchenPaused: json.kitchenPaused,
-        kitchenPauseMessage: json.kitchenPauseMessage,
-        combos: json.combos,
-      });
-      setTabPaymentPending(Boolean(json.tabPaymentPending ?? json.paymentBlocked));
+    if (isClientOffline()) {
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    menuAbortRef.current?.abort();
+    const controller = new AbortController();
+    menuAbortRef.current = controller;
+
+    try {
+      const res = await fetch(`/api/menu/${slug}/${token}`, {
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setData({
+          restaurant: json.restaurant,
+          table: json.table,
+          categories: json.categories,
+          features: json.features,
+          kitchenPaused: json.kitchenPaused,
+          kitchenPauseMessage: json.kitchenPauseMessage,
+          combos: json.combos,
+        });
+        setTabPaymentPending(Boolean(json.tabPaymentPending ?? json.paymentBlocked));
+      }
+    } catch (error) {
+      if (isNetworkFetchError(error)) return;
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
   }, [slug, token]);
 
   const fetchOrders = useCallback(async () => {
     if (!tableSession.sessionKey) return;
-    const res = await fetch(
-      `/api/orders?tableToken=${encodeURIComponent(token)}&sessionKey=${encodeURIComponent(tableSession.sessionKey)}`,
-      { credentials: "include" },
-    );
-    if (res.ok) {
-      const json = await res.json();
-      setOrders(json.orders ?? []);
-      if (json.tabPaymentPending !== undefined || json.paymentBlocked !== undefined) {
-        setTabPaymentPending(Boolean(json.tabPaymentPending ?? json.paymentBlocked));
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+
+    ordersAbortRef.current?.abort();
+    const controller = new AbortController();
+    ordersAbortRef.current = controller;
+
+    try {
+      const res = await fetch(
+        `/api/orders?tableToken=${encodeURIComponent(token)}&sessionKey=${encodeURIComponent(tableSession.sessionKey)}`,
+        { credentials: "include", signal: controller.signal, cache: "no-store" },
+      );
+      if (res.ok) {
+        const json = await res.json();
+        setOrders(json.orders ?? []);
+        if (json.tabPaymentPending !== undefined || json.paymentBlocked !== undefined) {
+          setTabPaymentPending(Boolean(json.tabPaymentPending ?? json.paymentBlocked));
+        }
+      } else if (res.status === 403) {
+        setOrders([]);
       }
-    } else if (res.status === 403) {
-      setOrders([]);
+    } catch (error) {
+      if (isNetworkFetchError(error)) return;
     }
   }, [token, tableSession.sessionKey]);
 
@@ -184,6 +214,8 @@ export function OrderPageClient({ slug, token }: Props) {
   useEffect(() => {
     return () => {
       if (thankYouTimerRef.current) clearTimeout(thankYouTimerRef.current);
+      menuAbortRef.current?.abort();
+      ordersAbortRef.current?.abort();
     };
   }, []);
 
@@ -226,6 +258,8 @@ export function OrderPageClient({ slug, token }: Props) {
         const err = await res.json();
         setOrderError(err.error || "Could not place order");
       }
+    } catch {
+      setOrderError("Network error — check your connection and try again.");
     } finally {
       setOrdering(false);
     }

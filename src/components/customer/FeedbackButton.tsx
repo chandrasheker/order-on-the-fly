@@ -25,26 +25,31 @@ export function FeedbackButton({
   const submit = async () => {
     if (stars < 1) return;
     setSubmitting(true);
-    const res = await fetch("/api/feedback", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tableToken,
-        stars,
-        message,
-        customerName: name,
-        orderId,
-      }),
-    });
-    setSubmitting(false);
-    if (res.ok) {
-      setDone(true);
-      setTimeout(() => {
-        setOpen(false);
-        setDone(false);
-        setStars(0);
-        setMessage("");
-      }, 2000);
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tableToken,
+          stars,
+          message,
+          customerName: name,
+          orderId,
+        }),
+      });
+      if (res.ok) {
+        setDone(true);
+        setTimeout(() => {
+          setOpen(false);
+          setDone(false);
+          setStars(0);
+          setMessage("");
+        }, 2000);
+      }
+    } catch {
+      /* ignore network errors */
+    } finally {
+      setSubmitting(false);
     }
   };
 

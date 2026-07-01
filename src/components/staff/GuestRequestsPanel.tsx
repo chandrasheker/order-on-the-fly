@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Bell, Check, CheckCheck } from "lucide-react";
 import { Button, Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 interface GuestRequest {
   id: string;
@@ -55,6 +56,8 @@ export function GuestRequestsPanel({ enabled }: { enabled: boolean }) {
         body: JSON.stringify({ id, status }),
       });
       await fetchRequests();
+    } catch (error) {
+      swallowPollingFetchError(error);
     } finally {
       setLoading(false);
     }

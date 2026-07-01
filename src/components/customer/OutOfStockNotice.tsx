@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { isOrderFullyOutOfStock, orderUnavailableItems } from "@/lib/utils";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type OrderItem = {
   id: string;
@@ -46,6 +47,8 @@ export function OutOfStockNotice({ orders, tableToken, onDismissed }: Props) {
       if (res.ok) {
         onDismissed();
       }
+    } catch (error) {
+      swallowPollingFetchError(error);
     } finally {
       setDismissingId(null);
     }

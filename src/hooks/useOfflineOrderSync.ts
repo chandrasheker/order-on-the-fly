@@ -132,6 +132,8 @@ export function useOfflineOrderSync(enabled = true, restaurantId?: string) {
         if (res.ok) await removePending(row.clientId);
       }
       await refreshCount();
+    } catch {
+      /* ignore network errors during offline sync */
     } finally {
       setSyncing(false);
     }
@@ -149,7 +151,7 @@ export function useOfflineOrderSync(enabled = true, restaurantId?: string) {
     window.addEventListener("offline", onOffline);
     void refreshCount();
     if (restaurantId) {
-      void loadCachedStaffMenu(restaurantId).then(setCachedMenu);
+      void loadCachedStaffMenu(restaurantId).then(setCachedMenu).catch(() => undefined);
     }
     return () => {
       window.removeEventListener("online", onOnline);

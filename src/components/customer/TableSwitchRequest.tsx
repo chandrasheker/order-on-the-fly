@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRightLeft } from "lucide-react";
 import { Button, Input } from "@/components/ui";
+import { isClientOffline, isNetworkFetchError } from "@/lib/client-fetch";
 
 type SwitchRequest = {
   id: string;
@@ -34,24 +35,38 @@ export function TableSwitchRequest({
   const [request, setRequest] = useState<SwitchRequest | null>(null);
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const statusAbortRef = useRef<AbortController | null>(null);
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     if (!sessionKey) return;
-    const res = await fetch(
-      `/api/table-switch?tableToken=${encodeURIComponent(tableToken)}&sessionKey=${encodeURIComponent(sessionKey)}`,
-      { credentials: "include" },
-    );
-    if (!res.ok) return;
-    const json = await res.json();
-    setRequest(json.request ?? null);
-  };
+    if (isClientOffline()) return;
+
+    statusAbortRef.current?.abort();
+    const controller = new AbortController();
+    statusAbortRef.current = controller;
+
+    try {
+      const res = await fetch(
+        `/api/table-switch?tableToken=${encodeURIComponent(tableToken)}&sessionKey=${encodeURIComponent(sessionKey)}`,
+        { credentials: "include", signal: controller.signal, cache: "no-store" },
+      );
+      if (!res.ok) return;
+      const json = await res.json();
+      setRequest(json.request ?? null);
+    } catch (error) {
+      if (isNetworkFetchError(error)) return;
+    }
+  }, [sessionKey, tableToken]);
 
   useEffect(() => {
     if (!enabled || !sessionKey) return;
     void fetchStatus();
     const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, [enabled, sessionKey, tableToken]);
+    return () => {
+      clearInterval(interval);
+      statusAbortRef.current?.abort();
+    };
+  }, [enabled, sessionKey, fetchStatus]);
 
   useEffect(() => {
     if (request?.status !== "APPROVED") return;
@@ -83,6 +98,8 @@ export function TableSwitchRequest({
       setMessage("Request sent. Staff will approve the table switch.");
       setTargetTableNumber("");
       setNote("");
+    } catch {
+      setMessage("Could not reach the server. Check your connection and try again.");
     } finally {
       setSubmitting(false);
     }

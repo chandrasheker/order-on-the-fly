@@ -5,6 +5,7 @@ import { Building2, Plus, ChevronDown, ChevronUp, Layers, Users } from "lucide-r
 import { Button, Card, Input, Badge } from "@/components/ui";
 import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
+import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
 
 type ActiveSessions = {
   total: number;
@@ -80,58 +81,76 @@ export function PlatformTenantOverview({
     showing,
   } = useRestaurantSearch(mergedRestaurants);
 
-  const loadOverview = useCallback(() => {
-    void fetch(`/api/platform/tenants/${tenantId}/overview`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setOverview);
+  const loadOverview = useCallback(async () => {
+    if (isClientOffline()) return;
+    try {
+      const res = await fetch(`/api/platform/tenants/${tenantId}/overview`, {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        setOverview(await res.json());
+      }
+    } catch (error) {
+      swallowPollingFetchError(error);
+    }
   }, [tenantId]);
 
   useEffect(() => {
-    loadOverview();
-    const interval = setInterval(loadOverview, 30_000);
+    void loadOverview();
+    const interval = setInterval(() => void loadOverview(), 30_000);
     return () => clearInterval(interval);
   }, [loadOverview]);
 
   useEffect(() => {
-    loadOverview();
+    void loadOverview();
   }, [tenantEnabled, loadOverview]);
 
   const submitRestaurant = async () => {
     setMessage("");
-    const res = await fetch("/api/platform/tenants", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "add_restaurant",
-        tenantId,
-        ...addRestaurant,
-      }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setMessage(json.error || "Failed");
-      return;
+    try {
+      const res = await fetch("/api/platform/tenants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "add_restaurant",
+          tenantId,
+          ...addRestaurant,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setMessage(json.error || "Failed");
+        return;
+      }
+      setMessage(`Added ${json.restaurant.name}`);
+      setAddRestaurant({ name: "", slug: "", ownerEmail: "", ownerName: "Owner" });
+      onRestaurantsChange();
+      void loadOverview();
+    } catch (error) {
+      swallowPollingFetchError(error);
+      setMessage("Network error — try again.");
     }
-    setMessage(`Added ${json.restaurant.name}`);
-    setAddRestaurant({ name: "", slug: "", ownerEmail: "", ownerName: "Owner" });
-    onRestaurantsChange();
-    loadOverview();
   };
 
   const toggleRestaurant = async (restaurant: TenantRestaurant) => {
     setTogglingRestaurantId(restaurant.id);
-    await fetch("/api/platform/tenants", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "set_restaurant_enabled",
-        restaurantId: restaurant.id,
-        isEnabled: !(restaurant.isEnabled ?? true),
-      }),
-    });
-    setTogglingRestaurantId(null);
-    onRestaurantsChange();
-    loadOverview();
+    try {
+      await fetch("/api/platform/tenants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_restaurant_enabled",
+          restaurantId: restaurant.id,
+          isEnabled: !(restaurant.isEnabled ?? true),
+        }),
+      });
+      onRestaurantsChange();
+      void loadOverview();
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setTogglingRestaurantId(null);
+    }
   };
 
   const stats = overview?.stats;

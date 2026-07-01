@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Card, Select } from "@/components/ui";
 import { RefreshCw, Shield } from "lucide-react";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type LoginLog = {
   id: string;
@@ -33,15 +34,20 @@ export function PlatformLoginLogsPanel({
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ tenantId, limit: "150" });
-    if (restaurantFilter) params.set("restaurantId", restaurantFilter);
-    if (kindFilter) params.set("kind", kindFilter);
-    const res = await fetch(`/api/platform/login-logs?${params}`);
-    if (res.ok) {
-      const json = await res.json();
-      setLogs(json.logs ?? []);
+    try {
+      const params = new URLSearchParams({ tenantId, limit: "150" });
+      if (restaurantFilter) params.set("restaurantId", restaurantFilter);
+      if (kindFilter) params.set("kind", kindFilter);
+      const res = await fetch(`/api/platform/login-logs?${params}`);
+      if (res.ok) {
+        const json = await res.json();
+        setLogs(json.logs ?? []);
+      }
+    } catch (error) {
+      swallowPollingFetchError(error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [tenantId, restaurantFilter, kindFilter]);
 
   useEffect(() => {

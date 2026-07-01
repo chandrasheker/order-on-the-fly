@@ -54,6 +54,7 @@ import { GuestRequestsPanel } from "@/components/staff/GuestRequestsPanel";
 import { KitchenCapacityPanel } from "@/components/staff/KitchenCapacityPanel";
 import { useStaffPush } from "@/hooks/useStaffPush";
 import type { ReceiptPayload } from "@/lib/receipt-service";
+import { isClientOffline, isNetworkFetchError, swallowPollingFetchError } from "@/lib/client-fetch";
 
 interface OrderItem {
   id: string;
@@ -220,7 +221,7 @@ export function StaffDashboard() {
   }, []);
 
   const fetchDashboard = useCallback(async () => {
-    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    if (isClientOffline()) return;
 
     dashAbortRef.current?.abort();
     const controller = new AbortController();
@@ -249,7 +250,7 @@ export function StaffDashboard() {
       setFeatures(data.features ?? {});
       dashFailCountRef.current = 0;
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (isNetworkFetchError(error)) return;
       dashFailCountRef.current += 1;
       if (dashFailCountRef.current <= 2) {
         console.warn("Dashboard refresh unavailable — will retry automatically");
@@ -282,7 +283,7 @@ export function StaffDashboard() {
     void fetchData();
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.hidden) return;
-      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      if (isClientOffline()) return;
       void fetchDashboard();
     }, 8000);
     const onVisible = () => {
@@ -300,12 +301,16 @@ export function StaffDashboard() {
   }, [fetchData, fetchDashboard]);
 
   const updateItem = async (orderId: string, itemId: string, action: string) => {
-    await fetch(`/api/orders/${orderId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, itemId: itemId || undefined }),
-    });
-    fetchData();
+    try {
+      await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, itemId: itemId || undefined }),
+      });
+      await fetchData();
+    } catch (error) {
+      swallowPollingFetchError(error);
+    }
   };
 
   const handleTableSwitch = async (requestId: string, action: "approve" | "reject") => {
@@ -321,6 +326,8 @@ export function StaffDashboard() {
         alert(json.error || "Could not update table switch request");
       }
       await fetchData();
+    } catch (error) {
+      swallowPollingFetchError(error);
     } finally {
       setHandlingSwitchId(null);
     }
@@ -378,12 +385,16 @@ export function StaffDashboard() {
   };
 
   const dismissAlert = async (alertId: string) => {
-    await fetch("/api/alerts", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ alertIds: [alertId] }),
-    });
-    fetchData();
+    try {
+      await fetch("/api/alerts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alertIds: [alertId] }),
+      });
+      await fetchData();
+    } catch (error) {
+      swallowPollingFetchError(error);
+    }
   };
 
   const openAlertsView = () => {
@@ -391,16 +402,24 @@ export function StaffDashboard() {
   };
 
   const dismissAlerts = async () => {
-    await fetch("/api/alerts", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ markAllRead: true }),
-    });
-    fetchData();
+    try {
+      await fetch("/api/alerts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markAllRead: true }),
+      });
+      await fetchData();
+    } catch (error) {
+      swallowPollingFetchError(error);
+    }
   };
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      swallowPollingFetchError(error);
+    }
     router.push("/");
   };
 
@@ -1461,13 +1480,17 @@ function TableTabPendingCard({
           size="sm"
           className="w-full bg-emerald-600 hover:bg-emerald-500"
           onClick={async () => {
-            const res = await fetch(`/api/orders/${anchor.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "mark-paid", method: "UPI", payTab: true }),
-            });
-            const json = await res.json().catch(() => ({}));
-            await onPaymentComplete(res, json);
+            try {
+              const res = await fetch(`/api/orders/${anchor.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "mark-paid", method: "UPI", payTab: true }),
+              });
+              const json = await res.json().catch(() => ({}));
+              await onPaymentComplete(res, json);
+            } catch (error) {
+              swallowPollingFetchError(error);
+            }
           }}
         >
           Mark entire table paid
@@ -1556,13 +1579,17 @@ function PendingPaymentCard({
           size="sm"
           className="w-full bg-emerald-600 hover:bg-emerald-500"
           onClick={async () => {
-            const res = await fetch(`/api/orders/${order.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "mark-paid", method: "UPI" }),
-            });
-            const json = await res.json().catch(() => ({}));
-            await onPaymentComplete(res, json);
+            try {
+              const res = await fetch(`/api/orders/${order.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "mark-paid", method: "UPI" }),
+              });
+              const json = await res.json().catch(() => ({}));
+              await onPaymentComplete(res, json);
+            } catch (error) {
+              swallowPollingFetchError(error);
+            }
           }}
         >
           <CircleDollarSign className="w-4 h-4" /> Pay full {formatCurrency(total)}

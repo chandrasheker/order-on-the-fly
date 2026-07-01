@@ -7,6 +7,7 @@ import {
   TableOrderList,
   type TableHistoryOrder,
 } from "@/components/staff/table-order-history-shared";
+import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type TableOrderHistoryProps = {
   tableId: string;
@@ -26,6 +27,8 @@ export function TableOrderHistory({ tableId, refreshKey = 0 }: TableOrderHistory
         const json = await res.json();
         setOrders(json.orders ?? []);
       }
+    } catch (error) {
+      swallowPollingFetchError(error);
     } finally {
       setLoading(false);
     }

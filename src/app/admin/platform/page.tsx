@@ -21,19 +21,24 @@ export default function PlatformAdminPage() {
 
   const load = async () => {
     setLoading(true);
-    const [a, f, k, r, b] = await Promise.all([
-      fetch("/api/analytics").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/forecasts").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/api-keys").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/recipes").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/branches").then((r) => (r.ok ? r.json() : null)),
-    ]);
-    setAnalytics(a);
-    setForecasts(f);
-    setKeys(k?.keys ?? []);
-    setIngredients(r?.ingredients ?? []);
-    setBranches(b?.branches ?? []);
-    setLoading(false);
+    try {
+      const [a, f, k, r, b] = await Promise.all([
+        fetch("/api/analytics").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/forecasts").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/api-keys").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/recipes").then((r) => (r.ok ? r.json() : null)),
+        fetch("/api/branches").then((r) => (r.ok ? r.json() : null)),
+      ]);
+      setAnalytics(a);
+      setForecasts(f);
+      setKeys(k?.keys ?? []);
+      setIngredients(r?.ingredients ?? []);
+      setBranches(b?.branches ?? []);
+    } catch {
+      /* ignore network errors */
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
