@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import type { TenantPlan } from "@/generated/prisma/client";
 import { slugify } from "@/lib/utils";
+import { ensureStarterMenuCategories } from "@/lib/menu-setup-service";
 
 export type SignupTenantInput = {
   tenantName: string;
@@ -32,7 +33,7 @@ export async function signupTenantWithRestaurant(input: SignupTenantInput) {
   const plan = input.plan ?? "STARTER";
   const passwordHash = await bcrypt.hash(input.ownerPassword, 10);
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const tenant = await tx.tenant.create({
       data: {
         name: input.tenantName,
@@ -112,6 +113,9 @@ export async function signupTenantWithRestaurant(input: SignupTenantInput) {
 
     return { tenant, restaurant, branch, floor, owner };
   });
+
+  await ensureStarterMenuCategories(result.restaurant.id);
+  return result;
 }
 
 export async function addRestaurantToTenant(
@@ -138,7 +142,7 @@ export async function addRestaurantToTenant(
   const password = input.ownerPassword || "changeme123";
   const passwordHash = await bcrypt.hash(password, 10);
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const restaurant = await tx.restaurant.create({
       data: {
         name: input.name,
@@ -195,6 +199,9 @@ export async function addRestaurantToTenant(
 
     return { restaurant, branch, floor };
   });
+
+  await ensureStarterMenuCategories(result.restaurant.id);
+  return result;
 }
 
 export async function addBranchToRestaurant(
