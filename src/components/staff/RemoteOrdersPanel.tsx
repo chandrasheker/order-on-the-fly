@@ -9,7 +9,7 @@ import { Input, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useStaffCartStore } from "@/store/staff-cart";
 import { useOfflineOrderSync } from "@/hooks/useOfflineOrderSync";
-import { useCartDraftSync } from "@/hooks/useCartDraftSync";
+import { useCartDraftSync, clearRemoteCartDraft } from "@/hooks/useCartDraftSync";
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 
 type OrderMode = "walkin" | "takeaway" | "delivery";
@@ -158,6 +158,15 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
     clearCart();
     setCustomerPhone("");
     setOrderNotes("");
+    setError("");
+    setSuccess("");
+  };
+
+  const handleClearCart = () => {
+    clearCart();
+    if (tableId && mode === "walkin") {
+      void clearRemoteCartDraft({ source: "STAFF", tableId });
+    }
     setError("");
     setSuccess("");
   };
@@ -373,6 +382,7 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
           onUpdateQuantity={updateQuantity}
           onUpdateNotes={updateNotes}
           onPlaceOrder={() => void placeOrder()}
+          onClearCart={handleClearCart}
         />
       )}
 
