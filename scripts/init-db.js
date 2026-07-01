@@ -2,15 +2,16 @@ const { execSync, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { logInfo, logError } = require("./logger");
-const { loadRestaurantConfig } = require("./restaurant-config");
+const { loadDeploymentConfig } = require("./restaurant-config");
 
 require("dotenv/config");
 require("./ensure-env.js");
 
 const ROOT = process.cwd();
-const config = loadRestaurantConfig();
-const OWNER_EMAIL = config.primaryOwner.email;
-const OWNER_PASSWORD = config.primaryOwner.password;
+const deployment = loadDeploymentConfig();
+const config = deployment;
+const OWNER_EMAIL = deployment.primaryOwner?.email;
+const OWNER_PASSWORD = deployment.primaryOwner?.password;
 
 function resolveDbPath() {
   const raw = process.env.DATABASE_URL || "file:./dev.db";
@@ -135,8 +136,14 @@ if (!sqlite || !tableExists(sqlite.db, "Table")) {
 
 if (needsSeed(sqlite.db)) {
   sqlite.db.close();
-  logInfo("init-db", "Seeding restaurant data", { restaurant: config.restaurant.name });
-  console.log(`Seeding restaurant data (${config.restaurant.name})...`);
+  logInfo("init-db", "Seeding deployment", {
+    mode: deployment.mode,
+    tenant: deployment.tenant.name,
+    restaurants: deployment.restaurants.length,
+  });
+  console.log(
+    `Seeding ${deployment.restaurants.length} restaurant(s) for tenant ${deployment.tenant.name}...`,
+  );
   runTsx("prisma/seed.ts");
 } else {
   sqlite.db.close();
@@ -152,6 +159,9 @@ try {
 
 logInfo("init-db", "Database ready", { login: OWNER_EMAIL });
 console.log("Database ready.");
-console.log(`Staff login (${config.restaurant.name}): ${config.primaryOwner.email}`);
-console.log(`Platform admin login: ${config.platformAdmin.email}`);
-console.log("Open / for staff sign-in, or /platform/login for platform admin.");
+console.log(`Tenant: ${deployment.tenant.name} (${deployment.tenant.slug})`);
+for (const r of deployment.restaurants) {
+  console.log(`Staff login (${r.name}): ${r.primaryOwner.email}`);
+}
+console.log(`Platform admin login: ${deployment.platformAdmin.email}`);
+console.log("Open / for staff sign-in, /tenant/signup for new tenants, or /platform/login for platform admin.");

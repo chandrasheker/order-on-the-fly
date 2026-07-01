@@ -1,0 +1,117 @@
+{
+  "app": {
+    "name": "TableTap Demo",
+    "url": "http://localhost:3000"
+  },
+  "tenant": {
+    "name": "Dvadtech Group",
+    "slug": "dvadtech-group",
+    "plan": "STARTER",
+    "billingEmail": "billing@dvadtech.com"
+  },
+  "platformAdmin": {
+    "name": "Platform Admin",
+    "email": "admin@dvadtech.com",
+    "password": "admin@dvadtech"
+  },
+  "restaurants": [
+    {
+      "name": "Dvadtech Restaurant",
+      "slug": "dvadtech",
+      "tableCount": 10,
+      "defaultMaxSessions": 2,
+      "staff": {
+        "domain": "dvadtech.local",
+        "defaultPassword": "admin123",
+        "owners": [
+          {
+            "name": "Owner",
+            "email": "owner@dvadtech.local"
+          }
+        ],
+        "managers": [
+          {
+            "name": "Manager One",
+            "email": "manager1@dvadtech.local"
+          }
+        ],
+        "cooks": [
+          {
+            "name": "Head Chef",
+            "email": "cook1@dvadtech.local"
+          },
+          {
+            "name": "Cook Two",
+            "email": "cook2@dvadtech.local"
+          }
+        ],
+        "servers": [
+          {
+            "name": "Server One",
+            "email": "server1@dvadtech.local"
+          },
+          {
+            "name": "Server Two",
+            "email": "server2@dvadtech.local"
+          }
+        ]
+      },
+      "menu": [
+        {
+          "name": "Beverages",
+          "icon": "🥤",
+          "items": [
+            {
+              "name": "Mineral Water",
+              "description": "500ml",
+              "price": 30,
+              "prepTimeMinutes": 1,
+              "isVeg": true
+            },
+            {
+              "name": "Fresh Lime Soda",
+              "description": "Sweet or salted",
+              "price": 60,
+              "prepTimeMinutes": 3,
+              "isVeg": true
+            }
+          ]
+        },
+        {
+          "name": "Mains",
+          "icon": "🍽️",
+          "items": [
+            {
+              "name": "Chef Special Thali",
+              "description": "Daily combo",
+              "price": 220,
+              "prepTimeMinutes": 15,
+              "isVeg": true
+            },
+            {
+              "name": "Grilled Chicken",
+              "description": "House marinade",
+              "price": 280,
+              "prepTimeMinutes": 18,
+              "isVeg": false
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "Main",
+          "slug": "main",
+          "isDefault": true,
+          "floors": [
+            {
+              "name": "Ground Floor",
+              "slug": "ground",
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

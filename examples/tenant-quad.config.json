@@ -1,0 +1,411 @@
+{
+  "app": {
+    "name": "TableTap Enterprise",
+    "url": "http://localhost:3000"
+  },
+  "tenant": {
+    "name": "FoodPark India",
+    "slug": "foodpark",
+    "plan": "ENTERPRISE",
+    "billingEmail": "billing@foodpark.in"
+  },
+  "platformAdmin": {
+    "name": "Platform Admin",
+    "email": "admin@foodpark.in",
+    "password": "admin123"
+  },
+  "restaurants": [
+    {
+      "name": "FoodPark North",
+      "slug": "fp-north",
+      "tableCount": 10,
+      "defaultMaxSessions": 2,
+      "staff": {
+        "domain": "fp-north.local",
+        "defaultPassword": "admin123",
+        "owners": [
+          {
+            "name": "Owner",
+            "email": "owner@fp-north.local"
+          }
+        ],
+        "managers": [
+          {
+            "name": "Manager One",
+            "email": "manager1@fp-north.local"
+          }
+        ],
+        "cooks": [
+          {
+            "name": "Head Chef",
+            "email": "cook1@fp-north.local"
+          },
+          {
+            "name": "Cook Two",
+            "email": "cook2@fp-north.local"
+          }
+        ],
+        "servers": [
+          {
+            "name": "Server One",
+            "email": "server1@fp-north.local"
+          },
+          {
+            "name": "Server Two",
+            "email": "server2@fp-north.local"
+          }
+        ]
+      },
+      "menu": [
+        {
+          "name": "Beverages",
+          "icon": "🥤",
+          "items": [
+            {
+              "name": "Mineral Water",
+              "description": "500ml",
+              "price": 30,
+              "prepTimeMinutes": 1,
+              "isVeg": true
+            },
+            {
+              "name": "Fresh Lime Soda",
+              "description": "Sweet or salted",
+              "price": 60,
+              "prepTimeMinutes": 3,
+              "isVeg": true
+            }
+          ]
+        },
+        {
+          "name": "Mains",
+          "icon": "🍽️",
+          "items": [
+            {
+              "name": "Chef Special Thali",
+              "description": "Daily combo",
+              "price": 220,
+              "prepTimeMinutes": 15,
+              "isVeg": true
+            },
+            {
+              "name": "Grilled Chicken",
+              "description": "House marinade",
+              "price": 280,
+              "prepTimeMinutes": 18,
+              "isVeg": false
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "Main",
+          "slug": "main",
+          "isDefault": true,
+          "floors": [
+            {
+              "name": "Ground Floor",
+              "slug": "ground",
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "FoodPark South",
+      "slug": "fp-south",
+      "tableCount": 10,
+      "defaultMaxSessions": 2,
+      "staff": {
+        "domain": "fp-south.local",
+        "defaultPassword": "admin123",
+        "owners": [
+          {
+            "name": "Owner",
+            "email": "owner@fp-south.local"
+          }
+        ],
+        "managers": [
+          {
+            "name": "Manager One",
+            "email": "manager1@fp-south.local"
+          }
+        ],
+        "cooks": [
+          {
+            "name": "Head Chef",
+            "email": "cook1@fp-south.local"
+          },
+          {
+            "name": "Cook Two",
+            "email": "cook2@fp-south.local"
+          }
+        ],
+        "servers": [
+          {
+            "name": "Server One",
+            "email": "server1@fp-south.local"
+          },
+          {
+            "name": "Server Two",
+            "email": "server2@fp-south.local"
+          }
+        ]
+      },
+      "menu": [
+        {
+          "name": "Beverages",
+          "icon": "🥤",
+          "items": [
+            {
+              "name": "Mineral Water",
+              "description": "500ml",
+              "price": 30,
+              "prepTimeMinutes": 1,
+              "isVeg": true
+            },
+            {
+              "name": "Fresh Lime Soda",
+              "description": "Sweet or salted",
+              "price": 60,
+              "prepTimeMinutes": 3,
+              "isVeg": true
+            }
+          ]
+        },
+        {
+          "name": "Mains",
+          "icon": "🍽️",
+          "items": [
+            {
+              "name": "Chef Special Thali",
+              "description": "Daily combo",
+              "price": 220,
+              "prepTimeMinutes": 15,
+              "isVeg": true
+            },
+            {
+              "name": "Grilled Chicken",
+              "description": "House marinade",
+              "price": 280,
+              "prepTimeMinutes": 18,
+              "isVeg": false
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "Main",
+          "slug": "main",
+          "isDefault": true,
+          "floors": [
+            {
+              "name": "Ground Floor",
+              "slug": "ground",
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "FoodPark East",
+      "slug": "fp-east",
+      "tableCount": 8,
+      "defaultMaxSessions": 2,
+      "staff": {
+        "domain": "fp-east.local",
+        "defaultPassword": "admin123",
+        "owners": [
+          {
+            "name": "Owner",
+            "email": "owner@fp-east.local"
+          }
+        ],
+        "managers": [
+          {
+            "name": "Manager One",
+            "email": "manager1@fp-east.local"
+          }
+        ],
+        "cooks": [
+          {
+            "name": "Head Chef",
+            "email": "cook1@fp-east.local"
+          },
+          {
+            "name": "Cook Two",
+            "email": "cook2@fp-east.local"
+          }
+        ],
+        "servers": [
+          {
+            "name": "Server One",
+            "email": "server1@fp-east.local"
+          },
+          {
+            "name": "Server Two",
+            "email": "server2@fp-east.local"
+          }
+        ]
+      },
+      "menu": [
+        {
+          "name": "Beverages",
+          "icon": "🥤",
+          "items": [
+            {
+              "name": "Mineral Water",
+              "description": "500ml",
+              "price": 30,
+              "prepTimeMinutes": 1,
+              "isVeg": true
+            },
+            {
+              "name": "Fresh Lime Soda",
+              "description": "Sweet or salted",
+              "price": 60,
+              "prepTimeMinutes": 3,
+              "isVeg": true
+            }
+          ]
+        },
+        {
+          "name": "Mains",
+          "icon": "🍽️",
+          "items": [
+            {
+              "name": "Chef Special Thali",
+              "description": "Daily combo",
+              "price": 220,
+              "prepTimeMinutes": 15,
+              "isVeg": true
+            },
+            {
+              "name": "Grilled Chicken",
+              "description": "House marinade",
+              "price": 280,
+              "prepTimeMinutes": 18,
+              "isVeg": false
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "Main",
+          "slug": "main",
+          "isDefault": true,
+          "floors": [
+            {
+              "name": "Ground Floor",
+              "slug": "ground",
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "FoodPark West",
+      "slug": "fp-west",
+      "tableCount": 8,
+      "defaultMaxSessions": 2,
+      "staff": {
+        "domain": "fp-west.local",
+        "defaultPassword": "admin123",
+        "owners": [
+          {
+            "name": "Owner",
+            "email": "owner@fp-west.local"
+          }
+        ],
+        "managers": [
+          {
+            "name": "Manager One",
+            "email": "manager1@fp-west.local"
+          }
+        ],
+        "cooks": [
+          {
+            "name": "Head Chef",
+            "email": "cook1@fp-west.local"
+          },
+          {
+            "name": "Cook Two",
+            "email": "cook2@fp-west.local"
+          }
+        ],
+        "servers": [
+          {
+            "name": "Server One",
+            "email": "server1@fp-west.local"
+          },
+          {
+            "name": "Server Two",
+            "email": "server2@fp-west.local"
+          }
+        ]
+      },
+      "menu": [
+        {
+          "name": "Beverages",
+          "icon": "🥤",
+          "items": [
+            {
+              "name": "Mineral Water",
+              "description": "500ml",
+              "price": 30,
+              "prepTimeMinutes": 1,
+              "isVeg": true
+            },
+            {
+              "name": "Fresh Lime Soda",
+              "description": "Sweet or salted",
+              "price": 60,
+              "prepTimeMinutes": 3,
+              "isVeg": true
+            }
+          ]
+        },
+        {
+          "name": "Mains",
+          "icon": "🍽️",
+          "items": [
+            {
+              "name": "Chef Special Thali",
+              "description": "Daily combo",
+              "price": 220,
+              "prepTimeMinutes": 15,
+              "isVeg": true
+            },
+            {
+              "name": "Grilled Chicken",
+              "description": "House marinade",
+              "price": 280,
+              "prepTimeMinutes": 18,
+              "isVeg": false
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "Main",
+          "slug": "main",
+          "isDefault": true,
+          "floors": [
+            {
+              "name": "Ground Floor",
+              "slug": "ground",
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
