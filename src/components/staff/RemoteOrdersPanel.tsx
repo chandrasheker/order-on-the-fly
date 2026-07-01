@@ -112,6 +112,9 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
     setLoadingTables(false);
   }, []);
 
+  const { online, pendingCount, queueOrder, syncPending, cachedMenu, storeMenu } =
+    useOfflineOrderSync(true, undefined);
+
   const loadMenu = useCallback(async () => {
     setLoadingMenu(true);
     setError("");
@@ -120,12 +123,18 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
       if (!res.ok) throw new Error("Could not load menu");
       const json = await res.json();
       setCategories(json.categories ?? []);
+      await storeMenu(json.categories ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load menu");
+      if (cachedMenu && Array.isArray(cachedMenu)) {
+        setCategories(cachedMenu as MenuCategory[]);
+        setError("Using cached menu (offline)");
+      } else {
+        setError(err instanceof Error ? err.message : "Could not load menu");
+      }
     } finally {
       setLoadingMenu(false);
     }
-  }, []);
+  }, [cachedMenu, storeMenu]);
 
   useEffect(() => {
     void loadTables();
@@ -144,8 +153,6 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
     setError("");
     setSuccess("");
   };
-
-  const { online, pendingCount, queueOrder, syncPending } = useOfflineOrderSync(true);
 
   const cartControls = useMemo(
     () => ({ items, addItem, updateQuantity, total, maxPrepTime }),
@@ -188,13 +195,18 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
           });
         }
       } catch {
-        if (!online && tableId) {
-          await queueOrder({ tableId, customerName: payload.customerName, items: payload.items });
-          setSuccess("Offline — order queued and will sync when connection returns.");
-          clearCart();
-          return;
-        }
-        throw new Error("Network error — could not reach server");
+        await queueOrder({
+          kind: meta.channel ? (mode as "takeaway" | "delivery") : "table",
+          tableId: tableId ?? undefined,
+          channel: meta.channel,
+          customerName: payload.customerName,
+          customerPhone: payload.customerPhone,
+          orderNotes: payload.orderNotes,
+          items: payload.items,
+        });
+        setSuccess("Offline — order queued and will sync when connection returns.");
+        clearCart();
+        return;
       }
 
       const json = await res.json().catch(() => ({}));

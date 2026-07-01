@@ -5,6 +5,7 @@ import { enqueueJob } from "@/lib/job-queue";
 
 export type RealtimeEventType =
   | "NEW_ORDER"
+  | "ORDER_READY"
   | "GUEST_SERVICE"
   | "OVERDUE"
   | "AGGREGATOR_ORDER"

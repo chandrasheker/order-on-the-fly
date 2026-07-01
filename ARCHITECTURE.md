@@ -1,64 +1,140 @@
-# TableTap Platform Architecture (Phases 1–4)
+# TableTap Restaurant OS — Architecture
 
-This document describes the production architecture implemented across roadmap phases.
+TableTap is a **Restaurant Operating System**: customer ordering, waiter workflow, kitchen, billing, printing, inventory, analytics, staff, and integrations — unified under a tenant hierarchy.
 
-## Hierarchy (Phase 2)
+## Hierarchy (foundational)
+
+Every operational entity is scoped to:
 
 ```
-Tenant (billing, subscription)
-  └── Restaurant (brand, feature flags)
-        └── Branch (physical location — tables, KDS, staff scope)
-              └── Tables, orders, kitchen stations
+Tenant (billing, subscription, plan)
+  └── Restaurant (brand, menu, feature flags, slug)
+        └── Branch (physical location — timezone, address)
+              └── Floor (Ground, First, Patio, …)
+                    └── Table (QR, layout coordinates, ordering)
 ```
 
-Existing single-restaurant deployments auto-migrate: each restaurant gets a 1:1 `Tenant` and a default `Main` branch via `scripts/backfill-tenant-branches.ts`.
+| Layer | Model | Notes |
+|-------|--------|--------|
+| Tenant | `Tenant` | SaaS billing; one tenant may own many restaurants |
+| Restaurant | `Restaurant` | Menu, staff slots, integrations |
+| Branch | `Branch` | Default `Main` branch auto-created |
+| Floor | `Floor` | Default `Ground Floor` per branch |
+| Table | `Table` | `positionX/Y`, `section` for floor-plan UI |
 
-## Phase 1 — Production foundation
+**Resolution:** `src/platform/tenant-context.ts` + `src/platform/hierarchy.ts`  
+**Backfill:** `scripts/backfill-tenant-branches.ts` → `scripts/backfill-hierarchy.ts` (runs on `npm run db:setup`)
 
-| Component | Location | Notes |
-|-----------|----------|-------|
-| Health check | `GET /api/health` | DB, Redis, migration version |
-| Rate limiting | `src/middleware.ts` | Login + guest order POST |
-| Security headers | Middleware | X-Frame-Options, nosniff, etc. |
-| Job queue | `src/lib/job-queue.ts` | DB-backed; inline or cron via `/api/jobs/process` |
-| Event bus | `src/lib/event-bus.ts` | `PlatformEvent` + async handlers |
-| Printer agent | `services/printer-agent/` | Local ESC/POS relay — `npm run printer:agent` |
-| Offline staff orders | `useOfflineOrderSync` + `/api/offline/sync` | IndexedDB queue when network drops |
+## Domain modules (Phase D)
 
-## Phase 2 — SaaS & scale
+Business capabilities live under `src/domains/`:
 
-| Component | Location |
-|-----------|----------|
-| Tenant / Branch models | `prisma/schema*.prisma` |
-| Branch API | `GET/POST /api/branches` |
-| Redis (optional) | `REDIS_URL`, `src/lib/redis.ts`, Docker `redis` service |
-| Subscriptions stub | `TenantSubscription` model |
+| Module | Path | Owns |
+|--------|------|------|
+| orders | `domains/orders/` | State machine, transitions |
+| tables | `domains/tables/` | Floor hierarchy, floor plan |
+| payments | `domains/payments/` | Reconciliation |
+| kitchen | `domains/kitchen/` | KDS tickets, capacity |
+| menu | `domains/menu/` | Modifiers, promotions |
+| staff | `domains/staff/` | Permissions, performance |
+| customers | `domains/customers/` | CRM, guest requests |
+| analytics | `domains/analytics/` | Events, forecasts |
+| printing | `domains/printing/` | Print jobs, ack/retry |
+| aggregators | `domains/aggregators/` | Swiggy/Zomato |
 
-## Phase 3 — Operations depth
+API routes in `src/app/api/*` delegate to domain services. Legacy `src/lib/*` re-exports remain for compatibility.
 
-| Component | Location |
-|-----------|----------|
-| Recipe / BOM engine | `src/lib/recipe-service.ts`, `/api/recipes` |
-| Enhanced audit log | `oldValue` / `newValue` on `AuditLog` |
-| Analytics events | `PlatformEvent`, `/api/analytics` |
-| Public API | `/api/v1/orders`, `/api/v1/menu` with API keys |
+## Order state machine (Phase B)
 
-## Phase 4 — Forecasting & AI prep
+Explicit item transitions in `domains/orders/state-machine.ts`:
 
-| Component | Location |
-|-----------|----------|
-| Demand forecasts | `src/lib/forecast-service.ts`, `/api/forecasts` |
-| Model | v1 simple moving average (28-day lookback) |
-| Insights | Rush items, slow items, prep recommendations |
+```
+PENDING → PREPARING → READY → SERVED
+         ↘ UNAVAILABLE ↗
+```
 
-## Job types
+Aggregate order status is derived from items. Invalid transitions return HTTP 409.  
+Lifecycle mapping: `PENDING`≈CREATED, `PREPARING`≈COOKING, `READY`, `SERVED`, `paidAt`≈PAID.
 
-- `push_notification`, `sms_notification`, `print_job`, `analytics`, `recipe_deduct`
+## Event bus (Phase C)
 
-## Environment
+Pub/sub in `src/platform/event-bus/`:
 
-See `.env.example` for `REDIS_URL`, `PRINTER_AGENT_URL`, `JOB_CRON_SECRET`, `SMS_WEBHOOK_URL`, VAPID keys.
+1. `publishPlatformEvent()` persists to `PlatformEvent`
+2. Subscribers handle side effects independently:
+   - `subscribers/notifications.ts` — push/SMS
+   - `subscribers/printing.ts` — kitchen chit print queue
+   - `subscribers/analytics.ts` — logging / future rollups
 
-## Postgres production
+Set `EVENT_BUS_INLINE=1` for synchronous dispatch (dev/tests).
 
-Set `DATABASE_URL` to PostgreSQL, `PRISMA_SCHEMA=prisma/schema.postgres.prisma`, `PRISMA_MIGRATIONS=prisma/migrations-postgres`. Use `docker compose up` for full stack with Postgres + Redis.
+## Configuration (Phase E)
+
+| Config | Location |
+|--------|----------|
+| Runtime env | `src/config/app-config.ts` (Zod validation) |
+| Restaurant bootstrap | `restaurant.config.json` via `scripts/restaurant-config.js` |
+| Validate | `npm run config:validate:app` |
+
+Startup validation runs in `src/instrumentation.node.ts` (strict in production).
+
+## Offline sync (Phase F)
+
+| Feature | Implementation |
+|---------|----------------|
+| Order queue | IndexedDB `tabletap-offline` v2 |
+| Menu cache | 24h staff menu in IndexedDB |
+| Modes | Walk-in, takeaway, delivery |
+| Sync API | `POST /api/offline/sync` with `clientId` dedup |
+
+## Printing (Phase F)
+
+| Feature | Implementation |
+|---------|----------------|
+| Print jobs | `PrintJob` model with `ackToken` |
+| Agent | `services/printer-agent/` |
+| Ack | `POST /api/print/ack` |
+| Retry | `POST /api/print/retry` + `npm run worker` |
+
+## Payments reconciliation (Phase F)
+
+- `POST /api/payments/reconciliation` — run daily reconcile
+- `GET /api/payments/reconciliation` — history
+- Model: `PaymentReconciliation` (expected vs received vs variance)
+
+## Background workers (Phase F)
+
+| Component | Command |
+|-----------|---------|
+| Job queue | DB-backed `BackgroundJob`; inline or cron |
+| Worker process | `npm run worker` |
+| Process jobs | `POST /api/jobs/process` |
+
+## PostgreSQL production
+
+```bash
+export DATABASE_URL="postgresql://..."
+export PRISMA_SCHEMA=prisma/schema.postgres.prisma
+export PRISMA_MIGRATIONS=prisma/migrations-postgres
+npm run db:setup
+```
+
+Docker: `docker compose up` (Postgres + Redis).
+
+## Health & monitoring
+
+`GET /api/health` — DB, Redis, migrations, optional job processing.
+
+## Key scripts
+
+| Script | Purpose |
+|--------|---------|
+| `npm run db:setup` | Migrate + seed + hierarchy backfill |
+| `npm run worker` | Background job + print retry loop |
+| `npm run printer:agent` | Local ESC/POS relay |
+| `npm run config:validate:app` | Validate env config |
+| `npm run presentation` | Owner PPT + screenshots |
+
+## Testing & validation
+
+See [TESTING.md](./TESTING.md) for step-by-step validation commands.

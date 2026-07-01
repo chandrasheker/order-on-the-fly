@@ -3,21 +3,41 @@
 import { useCallback, useEffect, useState } from "react";
 
 const DB_NAME = "tabletap-offline";
-const STORE = "pending_orders";
+const DB_VERSION = 2;
+const STORE_ORDERS = "pending_orders";
+const STORE_MENU = "menu_cache";
 
-type PendingOrder = {
+export type PendingOrder = {
   clientId: string;
+  kind: "table" | "takeaway" | "delivery";
   tableId?: string;
+  channel?: string;
   customerName?: string;
+  customerPhone?: string;
+  orderNotes?: string;
   items: Array<{ menuItemId: string; quantity: number; notes?: string }>;
+  comboMeals?: Array<{ comboMealId: string; quantity: number }>;
+  promoCode?: string;
   createdAt: number;
+};
+
+type MenuCache = {
+  restaurantId: string;
+  categories: unknown[];
+  cachedAt: number;
 };
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE, { keyPath: "clientId" });
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_ORDERS)) {
+        db.createObjectStore(STORE_ORDERS, { keyPath: "clientId" });
+      }
+      if (!db.objectStoreNames.contains(STORE_MENU)) {
+        db.createObjectStore(STORE_MENU, { keyPath: "restaurantId" });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -27,8 +47,8 @@ function openDb(): Promise<IDBDatabase> {
 async function savePending(order: PendingOrder) {
   const db = await openDb();
   return new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(order);
+    const tx = db.transaction(STORE_ORDERS, "readwrite");
+    tx.objectStore(STORE_ORDERS).put(order);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -37,8 +57,8 @@ async function savePending(order: PendingOrder) {
 async function listPending(): Promise<PendingOrder[]> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).getAll();
+    const tx = db.transaction(STORE_ORDERS, "readonly");
+    const req = tx.objectStore(STORE_ORDERS).getAll();
     req.onsuccess = () => resolve(req.result as PendingOrder[]);
     req.onerror = () => reject(req.error);
   });
@@ -47,17 +67,50 @@ async function listPending(): Promise<PendingOrder[]> {
 async function removePending(clientId: string) {
   const db = await openDb();
   return new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).delete(clientId);
+    const tx = db.transaction(STORE_ORDERS, "readwrite");
+    tx.objectStore(STORE_ORDERS).delete(clientId);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
 }
 
-export function useOfflineOrderSync(enabled = true) {
+export async function cacheStaffMenu(restaurantId: string, categories: unknown[]) {
+  if (typeof indexedDB === "undefined") return;
+  const db = await openDb();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_MENU, "readwrite");
+    tx.objectStore(STORE_MENU).put({
+      restaurantId,
+      categories,
+      cachedAt: Date.now(),
+    } satisfies MenuCache);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function loadCachedStaffMenu(restaurantId: string): Promise<unknown[] | null> {
+  if (typeof indexedDB === "undefined") return null;
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_MENU, "readonly");
+    const req = tx.objectStore(STORE_MENU).get(restaurantId);
+    req.onsuccess = () => {
+      const row = req.result as MenuCache | undefined;
+      if (!row) return resolve(null);
+      const age = Date.now() - row.cachedAt;
+      if (age > 24 * 60 * 60 * 1000) return resolve(null);
+      resolve(row.categories);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export function useOfflineOrderSync(enabled = true, restaurantId?: string) {
   const [online, setOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [cachedMenu, setCachedMenu] = useState<unknown[] | null>(null);
 
   const refreshCount = useCallback(async () => {
     if (!enabled || typeof indexedDB === "undefined") return;
@@ -95,11 +148,14 @@ export function useOfflineOrderSync(enabled = true) {
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     void refreshCount();
+    if (restaurantId) {
+      void loadCachedStaffMenu(restaurantId).then(setCachedMenu);
+    }
     return () => {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [enabled, refreshCount, syncPending]);
+  }, [enabled, refreshCount, syncPending, restaurantId]);
 
   const queueOrder = useCallback(
     async (order: Omit<PendingOrder, "clientId" | "createdAt">) => {
@@ -111,5 +167,14 @@ export function useOfflineOrderSync(enabled = true) {
     [refreshCount],
   );
 
-  return { online, pendingCount, syncing, queueOrder, syncPending };
+  const storeMenu = useCallback(
+    async (categories: unknown[]) => {
+      if (!restaurantId) return;
+      await cacheStaffMenu(restaurantId, categories);
+      setCachedMenu(categories);
+    },
+    [restaurantId],
+  );
+
+  return { online, pendingCount, syncing, queueOrder, syncPending, cachedMenu, storeMenu };
 }

@@ -7,7 +7,8 @@ export type JobType =
   | "sms_notification"
   | "print_job"
   | "analytics"
-  | "recipe_deduct";
+  | "recipe_deduct"
+  | "platform_event";
 
 export async function enqueueJob(params: {
   type: JobType;
@@ -72,8 +73,13 @@ async function handleJob(type: JobType, payload: Record<string, unknown>) {
       break;
     }
     case "analytics": {
-      const { recordPlatformEvent } = await import("@/lib/event-bus");
+      const { recordPlatformEvent } = await import("@/platform/event-bus");
       await recordPlatformEvent(payload as Parameters<typeof recordPlatformEvent>[0]);
+      break;
+    }
+    case "platform_event": {
+      const { processPlatformEventJob } = await import("@/platform/event-bus");
+      await processPlatformEventJob(payload as Parameters<typeof processPlatformEventJob>[0]);
       break;
     }
     case "recipe_deduct": {

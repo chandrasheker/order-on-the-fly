@@ -34,16 +34,32 @@ const server = http.createServer(async (req, res) => {
     for await (const chunk of req) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 
-    log("Print job received", { type: body.type, orderId: body.orderId ?? body.orderNumber });
+    log("Print job received", { kind: body.kind, ackToken: body.ackToken, orderId: body.payload?.orderId });
 
-    // Stub: in production, write ESC/POS bytes to USB/serial/network printer.
-    // Integrate with `node-thermal-printer` or raw socket to port 9100.
     if (process.env.PRINTER_DEVICE?.startsWith("network:")) {
       log("Would send to printer device:", process.env.PRINTER_DEVICE);
     }
 
+    const appUrl = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+    const ackToken = body.ackToken;
+    if (ackToken) {
+      try {
+        const ackRes = await fetch(`${appUrl}/api/print/ack`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(SECRET ? { Authorization: `Bearer ${SECRET}` } : {}),
+          },
+          body: JSON.stringify({ ackToken }),
+        });
+        log("Ack response", ackRes.status);
+      } catch (err) {
+        log("Ack failed", err.message);
+      }
+    }
+
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, queued: true }));
+    res.end(JSON.stringify({ ok: true, ackToken }));
     return;
   }
 
