@@ -9,7 +9,7 @@ import {
 } from "@/lib/order-service";
 import { transitionOrderItemDirect, InvalidOrderTransitionError } from "@/domains/orders/transitions";
 import { requestOrderPayment } from "@/lib/payment-service";
-import { recordFullOrderPayment, recordOrderPayment, orderItemHasPayment, finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
+import { recordFullOrderPayment, recordOrderPayment, recordTableTabFullPayment, orderItemHasPayment, finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
 import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
@@ -29,7 +29,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { action, itemId, tableToken, amount, method, itemIds, note, tipAmount, managerUserId, managerPassword, reason } =
+  const { action, itemId, tableToken, amount, method, itemIds, note, tipAmount, managerUserId, managerPassword, reason, payTab } =
     await req.json();
   logApiRequest("orders/[id]", "PATCH", { orderId: id, action, itemId });
 
@@ -157,6 +157,30 @@ export async function PATCH(
   }
 
   if (action === "mark-paid") {
+    if (payTab) {
+      const result = await recordTableTabFullPayment({
+        tableId: order.tableId,
+        method: method ?? "UPI",
+        collectedByUserId: session.id,
+        collectedByName: session.name,
+      });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+
+      const receipt = await buildReceiptForPaidOrder(id, session.restaurantId);
+      logInfo("api:orders/[id]", "Table tab marked paid", {
+        tableId: order.tableId,
+        orderCount: result.paidOrderIds.length,
+      });
+      return NextResponse.json({
+        success: true,
+        fullyPaid: true,
+        paidOrderIds: result.paidOrderIds,
+        receipt,
+      });
+    }
+
     if (order.status !== "SERVED") {
       return NextResponse.json(
         { error: "Order must be fully served before marking paid" },

@@ -1,11 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { todayDateString, formatCurrency } from "@/lib/utils";
 import { paymentQrExists } from "@/lib/payment-qr-storage";
-import {
-  getTableTabPaymentSummary,
-  getTableTabOrders,
-  clearTabPaymentRequestIfSettled,
-} from "@/lib/table-tab-service";
+import { clearTabPaymentRequestIfSettled, clearTableTabFlags, getTableTabOrders, getTableTabPaymentSummary, isTabFullySettled } from "@/lib/table-tab-service";
 
 /** Tab has a payment request outstanding (informational — does not block new orders). */
 export async function isTablePaymentBlocked(tableId: string) {
@@ -138,6 +134,12 @@ export async function requestTableTabPayment(tableId: string, tableToken: string
 }
 
 export async function onTabPaymentProgress(tableId: string) {
+  if (await isTabFullySettled(tableId)) {
+    await clearTableTabFlags(tableId);
+    await clearTablePaymentAlerts(tableId);
+    return;
+  }
+
   await clearTabPaymentRequestIfSettled(tableId);
   const summary = await getTableTabPaymentSummary(tableId);
   if (summary.remaining <= 0.01) {

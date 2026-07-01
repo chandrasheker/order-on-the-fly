@@ -3,12 +3,44 @@ import { prisma } from "@/lib/prisma";
 import { todayDateString, sumOrderRevenue } from "@/lib/utils";
 import { getOrderPaymentSummaries } from "@/lib/payment-allocation-service";
 
+function todayTableOrdersWhere(tableId: string) {
+  return {
+    tableId,
+    date: todayDateString(),
+    status: { not: "CANCELLED" as const },
+  };
+}
+
+async function getOpenVisitOrders(tableId: string) {
+  return prisma.order.findMany({
+    where: todayTableOrdersWhere(tableId),
+    include: { items: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 export async function ensureTableTabId(tableId: string): Promise<string> {
   const table = await prisma.table.findUnique({
     where: { id: tableId },
     select: { currentTabId: true },
   });
   if (table?.currentTabId) return table.currentTabId;
+
+  const unsettled = await prisma.order.findFirst({
+    where: {
+      ...todayTableOrdersWhere(tableId),
+      paidAt: null,
+    },
+    orderBy: { createdAt: "desc" },
+    select: { tabId: true },
+  });
+  if (unsettled?.tabId) {
+    await prisma.table.update({
+      where: { id: tableId },
+      data: { currentTabId: unsettled.tabId },
+    });
+    return unsettled.tabId;
+  }
 
   const tabId = randomUUID();
   await prisma.table.update({
@@ -18,28 +50,36 @@ export async function ensureTableTabId(tableId: string): Promise<string> {
   return tabId;
 }
 
+/** Keep all open-visit orders on the same tab id (multi-round until payment). */
+export async function syncOpenVisitTabIds(tableId: string) {
+  const tabId = await ensureTableTabId(tableId);
+  await prisma.order.updateMany({
+    where: {
+      ...todayTableOrdersWhere(tableId),
+      paidAt: null,
+    },
+    data: { tabId },
+  });
+  return tabId;
+}
+
 export async function getTableTabOrders(tableId: string) {
-  const today = todayDateString();
+  if (!(await isTabFullySettled(tableId))) {
+    await syncOpenVisitTabIds(tableId);
+    return getOpenVisitOrders(tableId);
+  }
+
   const table = await prisma.table.findUnique({
     where: { id: tableId },
     select: { currentTabId: true },
   });
-
-  if (table?.currentTabId) {
-    return prisma.order.findMany({
-      where: {
-        tableId,
-        date: today,
-        status: { not: "CANCELLED" },
-        OR: [{ tabId: table.currentTabId }, { tabId: null }],
-      },
-      include: { items: true },
-      orderBy: { createdAt: "asc" },
-    });
-  }
+  if (!table?.currentTabId) return [];
 
   return prisma.order.findMany({
-    where: { tableId, date: today, status: { not: "CANCELLED" } },
+    where: {
+      ...todayTableOrdersWhere(tableId),
+      tabId: table.currentTabId,
+    },
     include: { items: true },
     orderBy: { createdAt: "asc" },
   });
@@ -82,10 +122,23 @@ export async function getTableTabPaymentSummary(tableId: string) {
 }
 
 export async function isTabFullySettled(tableId: string) {
-  const summary = await getTableTabPaymentSummary(tableId);
-  const orders = await getTableTabOrders(tableId);
+  const orders = await getOpenVisitOrders(tableId);
   const openKitchen = orders.some((o) => o.status !== "SERVED" && o.status !== "CANCELLED");
-  return !openKitchen && summary.remaining <= 0.01;
+  if (openKitchen) return false;
+
+  const draftCount = await prisma.tableCartDraft.count({ where: { tableId } });
+  if (draftCount > 0) return false;
+
+  const servedOrders = orders.filter((o) => o.status === "SERVED");
+  if (servedOrders.length === 0) return orders.length === 0;
+
+  const summaries = await getOrderPaymentSummaries(servedOrders.map((o) => o.id));
+  let remaining = 0;
+  for (const order of servedOrders) {
+    const summary = summaries.get(order.id);
+    if (summary) remaining += summary.remaining;
+  }
+  return remaining <= 0.01;
 }
 
 export async function clearTableTabFlags(tableId: string) {
@@ -108,7 +161,7 @@ export async function clearTabPaymentRequestIfSettled(tableId: string) {
 }
 
 export async function assignOrderToTableTab(orderId: string, tableId: string) {
-  const tabId = await ensureTableTabId(tableId);
+  const tabId = await syncOpenVisitTabIds(tableId);
   await prisma.order.update({
     where: { id: orderId },
     data: { tabId },

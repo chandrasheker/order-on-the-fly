@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell,
@@ -403,6 +403,19 @@ export function StaffDashboard() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/");
   };
+
+  const pendingByTable = useMemo(() => {
+    const groups = new Map<number, Order[]>();
+    for (const order of pendingOrders) {
+      const tableNumber = order.table.number;
+      const list = groups.get(tableNumber) ?? [];
+      list.push(order);
+      groups.set(tableNumber, list);
+    }
+    return Array.from(groups.values()).sort(
+      (a, b) => (a[0]?.table.number ?? 0) - (b[0]?.table.number ?? 0),
+    );
+  }, [pendingOrders]);
 
   if (loading) {
     return (
@@ -970,7 +983,7 @@ export function StaffDashboard() {
         {viewMode === "pending" && showTab("pending") && (
           <>
             <p className="text-sm text-zinc-400 mb-4">
-              Served orders awaiting payment — pay full or split by item / share
+              Served orders awaiting payment — multiple rounds on the same table are combined until paid
             </p>
             {pendingOrders.length === 0 ? (
               <Card className="p-12 text-center">
@@ -979,15 +992,24 @@ export function StaffDashboard() {
               </Card>
             ) : (
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {pendingOrders.map((order) => (
-                  <PendingPaymentCard
-                    key={order.id}
-                    order={order}
-                    role={role!}
-                    splitBillEnabled={Boolean(features.split_bill)}
-                    onPaymentComplete={handlePaymentComplete}
-                  />
-                ))}
+                {pendingByTable.map((tableOrders) =>
+                  tableOrders.length > 1 ? (
+                    <TableTabPendingCard
+                      key={`tab-${tableOrders[0]!.table.number}`}
+                      orders={tableOrders}
+                      role={role!}
+                      onPaymentComplete={handlePaymentComplete}
+                    />
+                  ) : (
+                    <PendingPaymentCard
+                      key={tableOrders[0]!.id}
+                      order={tableOrders[0]!}
+                      role={role!}
+                      splitBillEnabled={Boolean(features.split_bill)}
+                      onPaymentComplete={handlePaymentComplete}
+                    />
+                  ),
+                )}
               </div>
             )}
           </>
@@ -1366,6 +1388,89 @@ function ActiveOrderCard({
       {canServeAll && (
         <Button variant="primary" size="sm" className="w-full" onClick={() => onUpdate(order.id, "", "serve-all")}>
           Mark All Served
+        </Button>
+      )}
+    </motion.div>
+  );
+}
+
+function TableTabPendingCard({
+  orders,
+  role,
+  onPaymentComplete,
+}: {
+  orders: Order[];
+  role: Role;
+  onPaymentComplete: (res: Response, json: { error?: string; receipt?: ReceiptPayload }) => Promise<void>;
+}) {
+  const anchor = orders[0]!;
+  const total = orders.reduce((sum, order) => sum + (order.total ?? 0), 0);
+  const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="rounded-2xl border border-yellow-500/30 bg-yellow-500/5 p-5 backdrop-blur-xl md:col-span-2"
+    >
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <span className="text-2xl font-bold">T{anchor.table.number}</span>
+          <p className="text-sm text-zinc-400">
+            Combined table bill · {orders.length} orders
+          </p>
+        </div>
+        <Badge className="bg-yellow-500/15 text-yellow-400 border-yellow-500/30">Awaiting payment</Badge>
+      </div>
+
+      <div className="space-y-3 mb-4">
+        {orders.map((order) => (
+          <div key={order.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+            <p className="text-xs text-zinc-500 mb-2">
+              Order #{order.orderNumber}
+              {order.customerName ? ` · ${order.customerName}` : ""}
+              {order.placedByName ? ` · staff: ${order.placedByName}` : ""}
+            </p>
+            <div className="space-y-1">
+              {order.items.map((item) => (
+                <div key={item.id} className="flex justify-between text-sm">
+                  <span className={item.status === "UNAVAILABLE" ? "text-zinc-500" : "text-zinc-300"}>
+                    {item.quantity}x {item.itemName}
+                  </span>
+                  <span className="text-zinc-400">
+                    {formatCurrency(
+                      item.status === "UNAVAILABLE" ? 0 : (item.unitPrice ?? 0) * item.quantity,
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
+        <span className="text-sm text-zinc-400">Table total due</span>
+        <span className="text-lg font-bold text-yellow-400">{formatCurrency(total)}</span>
+      </div>
+
+      {canPay && (
+        <Button
+          variant="success"
+          size="sm"
+          className="w-full bg-emerald-600 hover:bg-emerald-500"
+          onClick={async () => {
+            const res = await fetch(`/api/orders/${anchor.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "mark-paid", method: "UPI", payTab: true }),
+            });
+            const json = await res.json().catch(() => ({}));
+            await onPaymentComplete(res, json);
+          }}
+        >
+          Mark entire table paid
         </Button>
       )}
     </motion.div>
