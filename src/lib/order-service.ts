@@ -4,7 +4,7 @@ import { maybeAutoPauseKitchen } from "@/lib/kitchen-capacity-service";
 import { clearPaymentAlerts } from "@/lib/payment-service";
 import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
-import { channelForTableKind, isServiceTable } from "@/lib/order-channel";
+import { channelForTableKind } from "@/lib/order-channel";
 import { scheduleAggregatorStatusPush } from "@/lib/aggregator-sync-service";
 import { decrementInventoryForOrder } from "@/lib/inventory-service";
 import { touchGuestProfile } from "@/lib/guest-crm-service";
@@ -185,14 +185,8 @@ export async function createOrderForTable(params: {
     }
   }
 
-  const { isTablePaymentBlocked } = await import("@/lib/payment-service");
-  if (!isServiceTable(table.kind) && (await isTablePaymentBlocked(table.id))) {
-    throw new OrderCreationError(
-      "This table has an unpaid bill. Collect payment before placing a new order.",
-      403,
-      "TABLE_PAYMENT_BLOCKED",
-    );
-  }
+  const { ensureTableTabId } = await import("@/lib/table-tab-service");
+  const tabId = await ensureTableTabId(table.id);
 
   const resolvedChannel =
     orderChannel ??
@@ -354,6 +348,7 @@ export async function createOrderForTable(params: {
       externalOrderId: externalOrderId?.trim() || null,
       orderNotes: orderNotes?.trim() || null,
       tableId: table.id,
+      tabId,
       restaurantId: table.restaurantId,
       tenantId: hierarchy.tenantId,
       branchId: hierarchy.branchId,
@@ -408,6 +403,12 @@ export async function createOrderForTable(params: {
     orderNumber: order.orderNumber,
     total,
     tableNumber: table.number,
+  });
+
+  const { clearTableCartDraft } = await import("@/lib/table-cart-draft-service");
+  await clearTableCartDraft({
+    tableId: table.id,
+    source: placedByUserId ? "STAFF" : "CUSTOMER",
   });
 
   return { order, total };

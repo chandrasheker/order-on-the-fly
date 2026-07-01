@@ -286,6 +286,8 @@ model Table {
   assignedServer   User?      @relation("TableServer", fields: [assignedServerId], references: [id], onDelete: SetNull)
   seatedAt     DateTime?
   guestCount   Int?
+  currentTabId String?
+  tabPaymentRequestedAt DateTime?
   restaurantId String
   tenantId     String?
   tenant       Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -301,8 +303,27 @@ model Table {
   targetSwitchRequests TableSwitchRequest[] @relation("TargetTableSwitchRequests")
   reservations         Reservation[]
   guestServiceRequests GuestServiceRequest[]
+  cartDrafts           TableCartDraft[]
 
   @@unique([restaurantId, number])
+}
+
+enum CartDraftSource {
+  CUSTOMER
+  STAFF
+}
+
+model TableCartDraft {
+  id         String          @id @default(cuid())
+  tableId    String
+  table      Table           @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  draftKey   String
+  source     CartDraftSource
+  itemsJson  String          @default("[]")
+  updatedAt  DateTime        @updatedAt
+
+  @@unique([tableId, draftKey, source])
+  @@index([tableId, updatedAt])
 }
 
 model TableSession {
@@ -405,6 +426,7 @@ model Order {
   printJobs      PrintJob[]
   alarmTriggered Boolean     @default(false)
   rewardSpun     Boolean     @default(false)
+  tabId          String?
   paidAt         DateTime?
   paymentRequestedAt DateTime?
   oosNoticeDismissedAt DateTime?

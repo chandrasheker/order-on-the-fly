@@ -48,6 +48,7 @@ const STATE_STYLES: Record<string, string> = {
   seated: "border-blue-500/40 bg-blue-500/10 text-blue-300",
   ordering: "border-violet-500/40 bg-violet-500/10 text-violet-300",
   kitchen: "border-orange-500/40 bg-orange-500/10 text-orange-300",
+  ready: "border-cyan-500/40 bg-cyan-500/10 text-cyan-300",
   eating: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
   payment: "border-yellow-500/40 bg-yellow-500/10 text-yellow-300",
   overdue: "border-red-500/50 bg-red-500/15 text-red-300 animate-pulse",

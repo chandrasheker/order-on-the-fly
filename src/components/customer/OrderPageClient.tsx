@@ -10,6 +10,7 @@ import { WaitingGames } from "@/components/customer/WaitingGames";
 import { FeedbackButton } from "@/components/customer/FeedbackButton";
 import { Input, Button, Spinner } from "@/components/ui";
 import { useCartStore } from "@/store/cart";
+import { useCartDraftSync } from "@/hooks/useCartDraftSync";
 import { shouldShowCustomerOrder, shouldShowCustomerPaymentOrder, customerOrderBillTotal } from "@/lib/utils";
 import { useTableSession } from "@/hooks/useTableSession";
 import { UtensilsCrossed, Sparkles, Users, Heart, QrCode, ShieldAlert } from "lucide-react";
@@ -63,7 +64,7 @@ interface LastOrder {
 export function OrderPageClient({ slug, token }: Props) {
   const [data, setData] = useState<{
     restaurant: RestaurantData;
-    table: { number: number };
+    table: { id: string; number: number };
     categories: Parameters<typeof MenuView>[0]["categories"];
     features?: MenuFeatures;
     kitchenPaused?: boolean;
@@ -78,12 +79,21 @@ export function OrderPageClient({ slug, token }: Props) {
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [showNameInput, setShowNameInput] = useState(true);
   const [orderError, setOrderError] = useState("");
-  const [paymentBlocked, setPaymentBlocked] = useState(false);
+  const [tabPaymentPending, setTabPaymentPending] = useState(false);
   const [showThankYou, setShowThankYou] = useState(false);
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { customerName, setCustomerName, items, promoCode, clearCart } = useCartStore();
   const tableSession = useTableSession(token, slug);
+
+  useCartDraftSync({
+    enabled: tableSession.diningVerified && Boolean(data?.table.id),
+    source: "CUSTOMER",
+    tableToken: token,
+    tableId: data?.table.id,
+    sessionKey: tableSession.sessionKey,
+    items,
+  });
 
   const fetchMenu = useCallback(async () => {
     const res = await fetch(`/api/menu/${slug}/${token}`);
@@ -98,7 +108,7 @@ export function OrderPageClient({ slug, token }: Props) {
         kitchenPauseMessage: json.kitchenPauseMessage,
         combos: json.combos,
       });
-      setPaymentBlocked(Boolean(json.paymentBlocked));
+      setTabPaymentPending(Boolean(json.tabPaymentPending ?? json.paymentBlocked));
     }
     setLoading(false);
   }, [slug, token]);
@@ -112,8 +122,8 @@ export function OrderPageClient({ slug, token }: Props) {
     if (res.ok) {
       const json = await res.json();
       setOrders(json.orders ?? []);
-      if (json.paymentBlocked !== undefined) {
-        setPaymentBlocked(Boolean(json.paymentBlocked));
+      if (json.tabPaymentPending !== undefined || json.paymentBlocked !== undefined) {
+        setTabPaymentPending(Boolean(json.tabPaymentPending ?? json.paymentBlocked));
       }
     } else if (res.status === 403) {
       setOrders([]);
@@ -129,10 +139,10 @@ export function OrderPageClient({ slug, token }: Props) {
   }, [fetchMenu, fetchOrders, tableSession.loading, tableSession.diningVerified]);
 
   useEffect(() => {
-    if (!paymentBlocked) return;
+    if (!tabPaymentPending) return;
     const interval = setInterval(fetchOrders, 3000);
     return () => clearInterval(interval);
-  }, [paymentBlocked, fetchOrders]);
+  }, [tabPaymentPending, fetchOrders]);
 
   useEffect(() => {
     let paymentConfirmed = false;
@@ -158,7 +168,7 @@ export function OrderPageClient({ slug, token }: Props) {
 
     if (paymentConfirmed && !showThankYou) {
       setShowThankYou(true);
-      setPaymentBlocked(false);
+      setTabPaymentPending(false);
       setLastOrder(null);
 
       if (thankYouTimerRef.current) clearTimeout(thankYouTimerRef.current);
@@ -262,10 +272,10 @@ export function OrderPageClient({ slug, token }: Props) {
   const hasPaymentOrders = orders.some((o) => shouldShowCustomerPaymentOrder(o));
   const hasVisibleOrders = hasActiveOrders || hasPaymentOrders;
   const latestOrderId = orders[0]?.id;
-  const canOrder = tableSession.canOrder && !paymentBlocked && !data?.kitchenPaused;
+  const canOrder = tableSession.canOrder && !data?.kitchenPaused;
   const showOrderingGate =
     !canOrder &&
-    !paymentBlocked &&
+    !tabPaymentPending &&
     !tableSession.loading &&
     !tableSession.canTrackExistingOrder &&
     !hasVisibleOrders;
@@ -317,12 +327,12 @@ export function OrderPageClient({ slug, token }: Props) {
       </div>
 
       <div className="max-w-lg mx-auto px-4 space-y-6 pb-8">
-        {paymentBlocked && (
+        {tabPaymentPending && (
           <div className="p-4 rounded-2xl bg-yellow-500/15 border border-yellow-500/30 text-center space-y-2">
-            <p className="font-semibold text-yellow-300">Table locked — payment pending</p>
+            <p className="font-semibold text-yellow-300">Payment pending</p>
             <p className="text-sm text-zinc-400">
-              Complete payment for your current bill before ordering more. Staff will confirm once
-              payment is received.
+              Staff is confirming your bill. You can still order more — new items will be added to
+              the same table bill until payment is complete.
             </p>
           </div>
         )}
@@ -440,7 +450,7 @@ export function OrderPageClient({ slug, token }: Props) {
             tableToken={token}
             paymentQrUrl={data.restaurant.paymentQrUrl}
             onRefresh={fetchOrders}
-            onPaymentRequested={() => setPaymentBlocked(true)}
+            onPaymentRequested={() => setTabPaymentPending(true)}
           />
         )}
 

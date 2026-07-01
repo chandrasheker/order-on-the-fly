@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { purgeStaleTableSessions } from "@/lib/table-session-service";
 import { todayDateString } from "@/lib/utils";
+import { clearTableCartDraft } from "@/lib/table-cart-draft-service";
+import { clearTableTabFlags, isTabFullySettled, ensureTableTabId } from "@/lib/table-tab-service";
 
 export async function hasOpenTableWork(tableId: string) {
   const count = await prisma.order.count({
@@ -17,12 +19,17 @@ export async function hasOpenTableWork(tableId: string) {
       ],
     },
   });
-  return count > 0;
+  if (count > 0) return true;
+
+  const draftCount = await prisma.tableCartDraft.count({ where: { tableId } });
+  return draftCount > 0;
 }
 
 export async function closeTableOrdering(tableId: string) {
   await purgeStaleTableSessions(tableId);
   await prisma.tableSession.deleteMany({ where: { tableId } });
+  await clearTableCartDraft({ tableId });
+  await clearTableTabFlags(tableId);
   await prisma.table.update({
     where: { id: tableId },
     data: {
@@ -37,6 +44,7 @@ export async function closeTableOrdering(tableId: string) {
 
 export async function openTableOrdering(tableId: string) {
   const table = await prisma.table.findUnique({ where: { id: tableId } });
+  await ensureTableTabId(tableId);
   await prisma.table.update({
     where: { id: tableId },
     data: {
@@ -48,26 +56,7 @@ export async function openTableOrdering(tableId: string) {
 }
 
 export async function maybeAutoCloseTableAfterPayment(tableId: string) {
-  const today = todayDateString();
-  const openOrders = await prisma.order.count({
-    where: {
-      tableId,
-      date: today,
-      status: { notIn: ["SERVED", "CANCELLED"] },
-    },
-  });
-  if (openOrders > 0) return;
-
-  const unpaidServed = await prisma.order.count({
-    where: {
-      tableId,
-      date: today,
-      status: "SERVED",
-      paidAt: null,
-      items: { some: { status: "SERVED" } },
-    },
-  });
-  if (unpaidServed > 0) return;
+  if (!(await isTabFullySettled(tableId))) return;
 
   await closeTableOrdering(tableId);
 }
