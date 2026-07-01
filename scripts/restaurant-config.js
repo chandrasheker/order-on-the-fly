@@ -1,17 +1,14 @@
 /**
- * Shared restaurant configuration loader + normalizer.
- *
- * This is the single source of truth that makes the whole app generic.
- * Instead of hard-coding one restaurant, all restaurant-specific values
- * (name, branding, staff, menu, tables, admin) come from a JSON config file.
+ * Deployment config loader — single restaurant OR multi-restaurant tenant bundle.
  *
  * Resolution order:
- *   1. process.env.RESTAURANT_CONFIG  (explicit path)
- *   2. <repo>/restaurant.config.json  (per-deployment, git-ignored)
- *   3. <repo>/restaurant.config.example.json  (committed template/demo)
+ *   1. process.env.RESTAURANT_CONFIG
+ *   2. restaurant.config.json
+ *   3. restaurant.config.example.json
  *
- * Used by CommonJS scripts (init-db, ensure-env) and, via createRequire,
- * by the TypeScript seed / admin scripts.
+ * Formats:
+ *   - Legacy single: { restaurant, staff, menu, platformAdmin, app }
+ *   - Multi-tenant:  { tenant, restaurants: [...], platformAdmin, app }
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -45,7 +42,7 @@ function resolveConfigPath() {
   }
 
   throw new Error(
-    "No restaurant config found. Create restaurant.config.json (copy restaurant.config.example.json) or run `npm run setup`.",
+    "No restaurant config found. Copy examples/tenant-single.config.json or run npm run setup.",
   );
 }
 
@@ -87,21 +84,11 @@ function normalizeMenu(menu) {
   }));
 }
 
-function loadRestaurantConfig() {
-  const configPath = resolveConfigPath();
-  let raw;
-  try {
-    raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  } catch (err) {
-    throw new Error(`Failed to parse restaurant config at ${configPath}: ${err.message}`);
-  }
-
-  const restaurant = raw.restaurant || {};
+function normalizeRestaurantEntry(raw, { tenantSlug, app }) {
+  const restaurant = raw.restaurant || raw;
   const name = restaurant.name || "My Restaurant";
   const slug = restaurant.slug || slugify(name);
-  if (!slug) {
-    throw new Error("restaurant.slug (or a usable restaurant.name) is required in the config.");
-  }
+  if (!slug) throw new Error("Each restaurant needs slug or name");
 
   const staffInput = raw.staff || {};
   const domain = staffInput.domain || `${slug}.com`;
@@ -115,7 +102,7 @@ function loadRestaurantConfig() {
   ];
 
   if (staff.filter((s) => s.role === "OWNER").length === 0) {
-    throw new Error("At least one owner is required in staff.owners.");
+    throw new Error(`At least one owner required for restaurant ${slug}`);
   }
 
   const counts = {
@@ -125,43 +112,161 @@ function loadRestaurantConfig() {
     server: staff.filter((s) => s.role === "SERVER").length,
   };
 
-  const primaryOwner = staff.find((s) => s.role === "OWNER");
+  const rewards = restaurant.rewards || {};
+  const branches = Array.isArray(raw.branches)
+    ? raw.branches.map((b, i) => ({
+        name: b.name || `Branch ${i + 1}`,
+        slug: b.slug || slugify(b.name || `branch-${i + 1}`),
+        address: b.address ?? null,
+        isDefault: b.isDefault ?? i === 0,
+        floors: Array.isArray(b.floors)
+          ? b.floors.map((f, j) => ({
+              name: f.name || `Floor ${j + 1}`,
+              slug: f.slug || slugify(f.name || `floor-${j + 1}`),
+              isDefault: f.isDefault ?? j === 0,
+            }))
+          : [{ name: "Ground Floor", slug: "ground", isDefault: true }],
+      }))
+    : [
+        {
+          name: "Main",
+          slug: "main",
+          address: null,
+          isDefault: true,
+          floors: [{ name: "Ground Floor", slug: "ground", isDefault: true }],
+        },
+      ];
+
+  return {
+    name,
+    slug,
+    tenantSlug,
+    logoUrl: restaurant.logoUrl ?? null,
+    backgroundImageUrl: restaurant.backgroundImageUrl ?? null,
+    tableCount: Number(restaurant.tableCount) > 0 ? Number(restaurant.tableCount) : 10,
+    defaultMaxSessions:
+      Number(restaurant.defaultMaxSessions) > 0 ? Number(restaurant.defaultMaxSessions) : 2,
+    rewardThresholdTea: Number(rewards.thresholdTea) || 250,
+    rewardThresholdBeverage: Number(rewards.thresholdBeverage) || 500,
+    rewardTeaLabel: rewards.teaLabel || "Free Masala Chai (next visit)",
+    rewardBeverageLabel: rewards.beverageLabel || "Free Beverage (next visit)",
+    counts,
+    primaryOwner: staff.find((s) => s.role === "OWNER"),
+    staff,
+    menu: normalizeMenu(raw.menu || []),
+    branches,
+    guestUrl: `${app.url.replace(/\/$/, "")}/order/${slug}/${slug}-table-1/check-in`,
+  };
+}
+
+function loadDeploymentConfig() {
+  const configPath = resolveConfigPath();
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (err) {
+    throw new Error(`Failed to parse config at ${configPath}: ${err.message}`);
+  }
+
+  const app = {
+    url: raw.app?.url || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+    name: raw.app?.name || "TableTap",
+  };
 
   const adminInput = raw.platformAdmin || {};
   const platformAdmin = {
     name: adminInput.name || "Platform Admin",
-    email: (adminInput.email || `admin@${domain}`).toLowerCase(),
-    password: adminInput.password || defaultPassword,
+    email: (adminInput.email || "admin@tabletap.app").toLowerCase(),
+    password: adminInput.password || "changeme123",
   };
 
-  const rewards = restaurant.rewards || {};
-  const app = raw.app || {};
+  const isMulti = Array.isArray(raw.restaurants) && raw.restaurants.length > 0;
+
+  if (isMulti) {
+    const tenantRaw = raw.tenant || {};
+    const tenantName = tenantRaw.name || "My Restaurant Group";
+    const tenantSlug = tenantRaw.slug || slugify(tenantName);
+    const restaurants = raw.restaurants.map((r) =>
+      normalizeRestaurantEntry(r, { tenantSlug, app }),
+    );
+
+    return {
+      configPath,
+      mode: "tenant",
+      app,
+      platformAdmin,
+      tenant: {
+        name: tenantName,
+        slug: tenantSlug,
+        plan: tenantRaw.plan || "STARTER",
+        billingEmail: tenantRaw.billingEmail || platformAdmin.email,
+      },
+      restaurants,
+      primaryOwner: restaurants[0]?.primaryOwner,
+      restaurant: restaurants[0],
+    };
+  }
+
+  const restaurant = normalizeRestaurantEntry(
+    { restaurant: raw.restaurant, staff: raw.staff, menu: raw.menu, branches: raw.branches },
+    { tenantSlug: raw.tenant?.slug || slugify(raw.restaurant?.name), app },
+  );
+
+  const tenantRaw = raw.tenant || {};
+  const tenantName = tenantRaw.name || restaurant.name;
+  const tenantSlug = tenantRaw.slug || restaurant.slug;
 
   return {
     configPath,
-    app: {
-      url: app.url || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-      name: app.name || "TableTap",
-    },
-    restaurant: {
-      name,
-      slug,
-      logoUrl: restaurant.logoUrl ?? null,
-      backgroundImageUrl: restaurant.backgroundImageUrl ?? null,
-      tableCount: Number(restaurant.tableCount) > 0 ? Number(restaurant.tableCount) : 10,
-      defaultMaxSessions:
-        Number(restaurant.defaultMaxSessions) > 0 ? Number(restaurant.defaultMaxSessions) : 2,
-      rewardThresholdTea: Number(rewards.thresholdTea) || 250,
-      rewardThresholdBeverage: Number(rewards.thresholdBeverage) || 500,
-      rewardTeaLabel: rewards.teaLabel || "Free Masala Chai (next visit)",
-      rewardBeverageLabel: rewards.beverageLabel || "Free Beverage (next visit)",
-    },
-    counts,
-    primaryOwner,
+    mode: "single",
+    app,
     platformAdmin,
-    staff,
-    menu: normalizeMenu(raw.menu),
+    tenant: {
+      name: tenantName,
+      slug: tenantSlug,
+      plan: tenantRaw.plan || "STARTER",
+      billingEmail: tenantRaw.billingEmail || restaurant.primaryOwner?.email,
+    },
+    restaurants: [restaurant],
+    primaryOwner: restaurant.primaryOwner,
+    restaurant,
   };
 }
 
-module.exports = { loadRestaurantConfig, slugify, resolveConfigPath };
+/** Backward-compatible: first restaurant + legacy shape */
+function loadRestaurantConfig() {
+  const deployment = loadDeploymentConfig();
+  return {
+    configPath: deployment.configPath,
+    app: deployment.app,
+    restaurant: {
+      name: deployment.restaurant.name,
+      slug: deployment.restaurant.slug,
+      logoUrl: deployment.restaurant.logoUrl,
+      backgroundImageUrl: deployment.restaurant.backgroundImageUrl,
+      tableCount: deployment.restaurant.tableCount,
+      defaultMaxSessions: deployment.restaurant.defaultMaxSessions,
+      rewardThresholdTea: deployment.restaurant.rewardThresholdTea,
+      rewardThresholdBeverage: deployment.restaurant.rewardThresholdBeverage,
+      rewardTeaLabel: deployment.restaurant.rewardTeaLabel,
+      rewardBeverageLabel: deployment.restaurant.rewardBeverageLabel,
+    },
+    counts: deployment.restaurant.counts,
+    primaryOwner: deployment.primaryOwner,
+    platformAdmin: deployment.platformAdmin,
+    staff: deployment.restaurant.staff,
+    menu: deployment.restaurant.menu,
+    tenant: deployment.tenant,
+    mode: deployment.mode,
+    restaurants: deployment.restaurants,
+  };
+}
+
+module.exports = {
+  loadRestaurantConfig,
+  loadDeploymentConfig,
+  slugify,
+  resolveConfigPath,
+  normalizeMenu,
+  normalizeRestaurantEntry,
+};

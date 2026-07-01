@@ -8,7 +8,8 @@ TableTap is **fully generic** — launch it for any restaurant by editing one co
 
 | Doc | Contents |
 |-----|----------|
-| **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Tenant → Restaurant → Branch → Floor → Table, domain modules, event bus, state machine |
+| **[MULTI_TENANT.md](./MULTI_TENANT.md)** | **Multi-restaurant configs, tenant admin, domains, billing** |
+| **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Tenant hierarchy, domain modules, event bus |
 | **[TESTING.md](./TESTING.md)** | Validation commands for every phase (A–F) |
 
 ## Documentation (start here)

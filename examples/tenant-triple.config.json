@@ -1,0 +1,313 @@
+{
+  "app": {
+    "name": "TableTap Multi",
+    "url": "http://localhost:3000"
+  },
+  "tenant": {
+    "name": "South Spice Collective",
+    "slug": "southspice",
+    "plan": "PRO",
+    "billingEmail": "billing@southspice.com"
+  },
+  "platformAdmin": {
+    "name": "Platform Admin",
+    "email": "admin@southspice.com",
+    "password": "admin123"
+  },
+  "restaurants": [
+    {
+      "name": "Charminar Biryani",
+      "slug": "charminar",
+      "tableCount": 10,
+      "defaultMaxSessions": 2,
+      "staff": {
+        "domain": "charminar.local",
+        "defaultPassword": "admin123",
+        "owners": [
+          {
+            "name": "Owner",
+            "email": "owner@charminar.local"
+          }
+        ],
+        "managers": [
+          {
+            "name": "Manager One",
+            "email": "manager1@charminar.local"
+          }
+        ],
+        "cooks": [
+          {
+            "name": "Head Chef",
+            "email": "cook1@charminar.local"
+          },
+          {
+            "name": "Cook Two",
+            "email": "cook2@charminar.local"
+          }
+        ],
+        "servers": [
+          {
+            "name": "Server One",
+            "email": "server1@charminar.local"
+          },
+          {
+            "name": "Server Two",
+            "email": "server2@charminar.local"
+          }
+        ]
+      },
+      "menu": [
+        {
+          "name": "Beverages",
+          "icon": "🥤",
+          "items": [
+            {
+              "name": "Mineral Water",
+              "description": "500ml",
+              "price": 30,
+              "prepTimeMinutes": 1,
+              "isVeg": true
+            },
+            {
+              "name": "Fresh Lime Soda",
+              "description": "Sweet or salted",
+              "price": 60,
+              "prepTimeMinutes": 3,
+              "isVeg": true
+            }
+          ]
+        },
+        {
+          "name": "Mains",
+          "icon": "🍽️",
+          "items": [
+            {
+              "name": "Chef Special Thali",
+              "description": "Daily combo",
+              "price": 220,
+              "prepTimeMinutes": 15,
+              "isVeg": true
+            },
+            {
+              "name": "Grilled Chicken",
+              "description": "House marinade",
+              "price": 280,
+              "prepTimeMinutes": 18,
+              "isVeg": false
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "Main",
+          "slug": "main",
+          "isDefault": true,
+          "floors": [
+            {
+              "name": "Ground Floor",
+              "slug": "ground",
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Coastal Kitchen",
+      "slug": "coastal",
+      "tableCount": 8,
+      "defaultMaxSessions": 2,
+      "staff": {
+        "domain": "coastal.local",
+        "defaultPassword": "admin123",
+        "owners": [
+          {
+            "name": "Owner",
+            "email": "owner@coastal.local"
+          }
+        ],
+        "managers": [
+          {
+            "name": "Manager One",
+            "email": "manager1@coastal.local"
+          }
+        ],
+        "cooks": [
+          {
+            "name": "Head Chef",
+            "email": "cook1@coastal.local"
+          },
+          {
+            "name": "Cook Two",
+            "email": "cook2@coastal.local"
+          }
+        ],
+        "servers": [
+          {
+            "name": "Server One",
+            "email": "server1@coastal.local"
+          },
+          {
+            "name": "Server Two",
+            "email": "server2@coastal.local"
+          }
+        ]
+      },
+      "menu": [
+        {
+          "name": "Beverages",
+          "icon": "🥤",
+          "items": [
+            {
+              "name": "Mineral Water",
+              "description": "500ml",
+              "price": 30,
+              "prepTimeMinutes": 1,
+              "isVeg": true
+            },
+            {
+              "name": "Fresh Lime Soda",
+              "description": "Sweet or salted",
+              "price": 60,
+              "prepTimeMinutes": 3,
+              "isVeg": true
+            }
+          ]
+        },
+        {
+          "name": "Mains",
+          "icon": "🍽️",
+          "items": [
+            {
+              "name": "Chef Special Thali",
+              "description": "Daily combo",
+              "price": 220,
+              "prepTimeMinutes": 15,
+              "isVeg": true
+            },
+            {
+              "name": "Grilled Chicken",
+              "description": "House marinade",
+              "price": 280,
+              "prepTimeMinutes": 18,
+              "isVeg": false
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "Main",
+          "slug": "main",
+          "isDefault": true,
+          "floors": [
+            {
+              "name": "Ground Floor",
+              "slug": "ground",
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Filter Coffee Bar",
+      "slug": "filtercoffee",
+      "tableCount": 6,
+      "defaultMaxSessions": 2,
+      "staff": {
+        "domain": "filtercoffee.local",
+        "defaultPassword": "admin123",
+        "owners": [
+          {
+            "name": "Owner",
+            "email": "owner@filtercoffee.local"
+          }
+        ],
+        "managers": [
+          {
+            "name": "Manager One",
+            "email": "manager1@filtercoffee.local"
+          }
+        ],
+        "cooks": [
+          {
+            "name": "Head Chef",
+            "email": "cook1@filtercoffee.local"
+          },
+          {
+            "name": "Cook Two",
+            "email": "cook2@filtercoffee.local"
+          }
+        ],
+        "servers": [
+          {
+            "name": "Server One",
+            "email": "server1@filtercoffee.local"
+          },
+          {
+            "name": "Server Two",
+            "email": "server2@filtercoffee.local"
+          }
+        ]
+      },
+      "menu": [
+        {
+          "name": "Beverages",
+          "icon": "🥤",
+          "items": [
+            {
+              "name": "Mineral Water",
+              "description": "500ml",
+              "price": 30,
+              "prepTimeMinutes": 1,
+              "isVeg": true
+            },
+            {
+              "name": "Fresh Lime Soda",
+              "description": "Sweet or salted",
+              "price": 60,
+              "prepTimeMinutes": 3,
+              "isVeg": true
+            }
+          ]
+        },
+        {
+          "name": "Mains",
+          "icon": "🍽️",
+          "items": [
+            {
+              "name": "Chef Special Thali",
+              "description": "Daily combo",
+              "price": 220,
+              "prepTimeMinutes": 15,
+              "isVeg": true
+            },
+            {
+              "name": "Grilled Chicken",
+              "description": "House marinade",
+              "price": 280,
+              "prepTimeMinutes": 18,
+              "isVeg": false
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "Main",
+          "slug": "main",
+          "isDefault": true,
+          "floors": [
+            {
+              "name": "Ground Floor",
+              "slug": "ground",
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,215 @@
+{
+  "app": {
+    "name": "TableTap Multi",
+    "url": "http://localhost:3000"
+  },
+  "tenant": {
+    "name": "Twin Eats Group",
+    "slug": "twineats",
+    "plan": "PRO",
+    "billingEmail": "billing@twineats.com"
+  },
+  "platformAdmin": {
+    "name": "Platform Admin",
+    "email": "admin@twineats.com",
+    "password": "admin123"
+  },
+  "restaurants": [
+    {
+      "name": "PistaHouse Downtown",
+      "slug": "pistahouse-dt",
+      "tableCount": 12,
+      "defaultMaxSessions": 2,
+      "staff": {
+        "domain": "pistahouse-dt.local",
+        "defaultPassword": "admin123",
+        "owners": [
+          {
+            "name": "Owner",
+            "email": "owner@pistahouse-dt.local"
+          }
+        ],
+        "managers": [
+          {
+            "name": "Manager One",
+            "email": "manager1@pistahouse-dt.local"
+          }
+        ],
+        "cooks": [
+          {
+            "name": "Head Chef",
+            "email": "cook1@pistahouse-dt.local"
+          },
+          {
+            "name": "Cook Two",
+            "email": "cook2@pistahouse-dt.local"
+          }
+        ],
+        "servers": [
+          {
+            "name": "Server One",
+            "email": "server1@pistahouse-dt.local"
+          },
+          {
+            "name": "Server Two",
+            "email": "server2@pistahouse-dt.local"
+          }
+        ]
+      },
+      "menu": [
+        {
+          "name": "Beverages",
+          "icon": "🥤",
+          "items": [
+            {
+              "name": "Mineral Water",
+              "description": "500ml",
+              "price": 30,
+              "prepTimeMinutes": 1,
+              "isVeg": true
+            },
+            {
+              "name": "Fresh Lime Soda",
+              "description": "Sweet or salted",
+              "price": 60,
+              "prepTimeMinutes": 3,
+              "isVeg": true
+            }
+          ]
+        },
+        {
+          "name": "Mains",
+          "icon": "🍽️",
+          "items": [
+            {
+              "name": "Chef Special Thali",
+              "description": "Daily combo",
+              "price": 220,
+              "prepTimeMinutes": 15,
+              "isVeg": true
+            },
+            {
+              "name": "Grilled Chicken",
+              "description": "House marinade",
+              "price": 280,
+              "prepTimeMinutes": 18,
+              "isVeg": false
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "Main",
+          "slug": "main",
+          "isDefault": true,
+          "floors": [
+            {
+              "name": "Ground Floor",
+              "slug": "ground",
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PistaHouse Airport",
+      "slug": "pistahouse-ap",
+      "tableCount": 8,
+      "defaultMaxSessions": 2,
+      "staff": {
+        "domain": "pistahouse-ap.local",
+        "defaultPassword": "admin123",
+        "owners": [
+          {
+            "name": "Owner",
+            "email": "owner@pistahouse-ap.local"
+          }
+        ],
+        "managers": [
+          {
+            "name": "Manager One",
+            "email": "manager1@pistahouse-ap.local"
+          }
+        ],
+        "cooks": [
+          {
+            "name": "Head Chef",
+            "email": "cook1@pistahouse-ap.local"
+          },
+          {
+            "name": "Cook Two",
+            "email": "cook2@pistahouse-ap.local"
+          }
+        ],
+        "servers": [
+          {
+            "name": "Server One",
+            "email": "server1@pistahouse-ap.local"
+          },
+          {
+            "name": "Server Two",
+            "email": "server2@pistahouse-ap.local"
+          }
+        ]
+      },
+      "menu": [
+        {
+          "name": "Beverages",
+          "icon": "🥤",
+          "items": [
+            {
+              "name": "Mineral Water",
+              "description": "500ml",
+              "price": 30,
+              "prepTimeMinutes": 1,
+              "isVeg": true
+            },
+            {
+              "name": "Fresh Lime Soda",
+              "description": "Sweet or salted",
+              "price": 60,
+              "prepTimeMinutes": 3,
+              "isVeg": true
+            }
+          ]
+        },
+        {
+          "name": "Mains",
+          "icon": "🍽️",
+          "items": [
+            {
+              "name": "Chef Special Thali",
+              "description": "Daily combo",
+              "price": 220,
+              "prepTimeMinutes": 15,
+              "isVeg": true
+            },
+            {
+              "name": "Grilled Chicken",
+              "description": "House marinade",
+              "price": 280,
+              "prepTimeMinutes": 18,
+              "isVeg": false
+            }
+          ]
+        }
+      ],
+      "branches": [
+        {
+          "name": "Main",
+          "slug": "main",
+          "isDefault": true,
+          "floors": [
+            {
+              "name": "Ground Floor",
+              "slug": "ground",
+              "isDefault": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

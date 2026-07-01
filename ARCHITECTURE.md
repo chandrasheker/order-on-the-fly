@@ -138,3 +138,5 @@ Docker: `docker compose up` (Postgres + Redis).
 ## Testing & validation
 
 See [TESTING.md](./TESTING.md) for step-by-step validation commands.
+
+See [MULTI_TENANT.md](./MULTI_TENANT.md) for multi-restaurant configs, tenant admin, domains, and billing.

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button, Card, Input, Spinner, Badge } from "@/components/ui";
 import { LogOut, Shield, Save, Download, Users, Crown } from "lucide-react";
 import type { Role } from "@/generated/prisma/client";
@@ -219,6 +220,24 @@ export default function PlatformUsersPage() {
           >
             <Crown className="w-4 h-4" /> Premium features
           </button>
+          <Link
+            href="/platform/tenants"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border bg-white/5 border-white/10 text-zinc-400 hover:text-white ml-auto"
+          >
+            Tenants
+          </Link>
+          <Link
+            href="/platform/billing"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border bg-white/5 border-white/10 text-zinc-400 hover:text-white"
+          >
+            Billing
+          </Link>
+          <Link
+            href="/tenant/signup"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:text-white"
+          >
+            + New tenant
+          </Link>
         </div>
       </header>
 
