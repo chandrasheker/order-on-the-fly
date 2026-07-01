@@ -489,7 +489,7 @@ export function StaffDashboard() {
               {user?.name} · <span className="text-orange-400 capitalize">{user?.role?.toLowerCase()}</span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="header-trailing-actions flex items-center gap-2">
             {!alertsEnabled && (
               <button
                 type="button"

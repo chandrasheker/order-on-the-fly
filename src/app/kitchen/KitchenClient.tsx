@@ -130,7 +130,7 @@ export default function KitchenClient() {
               <p className="text-xs text-zinc-500">Station routing · live tickets</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="header-trailing-actions flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"

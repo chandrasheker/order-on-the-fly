@@ -44,7 +44,7 @@ export function PlatformShell({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="header-trailing-actions flex items-center gap-2 shrink-0">
             {actions}
             <Button variant="secondary" size="sm" onClick={logout}>
               <LogOut className="w-4 h-4" /> Logout

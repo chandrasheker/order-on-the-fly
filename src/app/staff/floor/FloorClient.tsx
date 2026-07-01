@@ -179,7 +179,7 @@ export default function FloorPlanPage() {
             <p className="text-xs text-zinc-500">Table timers · server assignment · live bill</p>
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={load}>
+        <Button variant="secondary" size="sm" onClick={load} className="header-trailing-actions">
           <RefreshCw className="w-4 h-4" />
         </Button>
       </header>
