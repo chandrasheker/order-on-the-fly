@@ -58,10 +58,6 @@ function applyMemoryEnv(args) {
   if (!/--max-old-space-size=\d+/.test(existing)) {
     process.env.NODE_OPTIONS = `${existing} --max-old-space-size=${limit}`.trim();
   }
-
-  if (totalMemMb <= 1024 && !process.env.NODE_OPTIONS.includes("--optimize-for-size")) {
-    process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS} --optimize-for-size`.trim();
-  }
 }
 
 const args = process.argv.slice(2);
