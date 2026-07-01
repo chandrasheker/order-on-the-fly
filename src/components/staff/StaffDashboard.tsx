@@ -56,6 +56,7 @@ import { KitchenCapacityPanel } from "@/components/staff/KitchenCapacityPanel";
 import { useStaffPush } from "@/hooks/useStaffPush";
 import type { ReceiptPayload } from "@/lib/receipt-service";
 import { isClientOffline, isNetworkFetchError, swallowPollingFetchError } from "@/lib/client-fetch";
+import { CookKitchenDashboard } from "@/components/staff/CookKitchenDashboard";
 
 interface OrderItem {
   id: string;
@@ -447,6 +448,19 @@ export function StaffDashboard() {
       <div className="min-h-screen flex items-center justify-center bg-app-shell">
         <Spinner className="w-8 h-8" />
       </div>
+    );
+  }
+
+  if (user?.role === "COOK") {
+    return (
+      <CookKitchenDashboard
+        user={{
+          id: user.id,
+          name: user.name,
+          restaurantName: user.restaurantName,
+        }}
+        kdsEnabled={Boolean(features.kds)}
+      />
     );
   }
 
@@ -966,7 +980,7 @@ export function StaffDashboard() {
           </>
         )}
 
-        {viewMode === "revenue" && (
+        {viewMode === "revenue" && showTab("revenue") && (
           <>
             <p className="text-sm text-zinc-400 mb-4">
               Today&apos;s revenue from paid orders only (served items, out-of-stock excluded)

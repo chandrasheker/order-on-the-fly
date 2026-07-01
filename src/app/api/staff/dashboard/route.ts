@@ -37,6 +37,31 @@ export async function GET() {
     const today = todayDateString();
     const features = await getRestaurantFeatureFlags(session.restaurantId);
 
+    if (session.role === "COOK") {
+      return NextResponse.json({
+        orders: [],
+        pendingOrders: [],
+        completedOrders: [],
+        alerts: [],
+        permissions: { tabs: [], role: session.role },
+        features,
+        missedTimeline: [],
+        missedSummary: [],
+        tableSwitchRequests: [],
+        stats: {
+          activeOrders: 0,
+          pendingPayments: 0,
+          pendingPaymentsAmount: 0,
+          completedOrders: 0,
+          todayOrders: 0,
+          revenue: 0,
+          overdueCount: 0,
+          missedTimelineCount: 0,
+          unreadAlerts: 0,
+        },
+      });
+    }
+
     try {
       await ensureServiceTables(session.restaurantId, session.restaurantSlug);
     } catch (error) {
