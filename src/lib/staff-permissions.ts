@@ -7,6 +7,7 @@ export type StaffTab =
   | "revenue"
   | "overdue"
   | "missed"
+  | "tables_today"
   | "alerts"
   | "offline";
 
@@ -20,10 +21,10 @@ export type OrderAction =
   | "record-payment";
 
 const TAB_ACCESS: Record<Role, StaffTab[]> = {
-  OWNER: ["active", "pending", "completed", "revenue", "overdue", "missed", "alerts", "offline"],
-  MANAGER: ["active", "pending", "completed", "revenue", "overdue", "missed", "alerts", "offline"],
+  OWNER: ["active", "pending", "completed", "revenue", "overdue", "missed", "tables_today", "alerts", "offline"],
+  MANAGER: ["active", "pending", "completed", "revenue", "overdue", "missed", "tables_today", "alerts", "offline"],
   COOK: ["active", "completed", "overdue", "missed", "alerts"],
-  SERVER: ["active", "pending", "overdue", "alerts", "offline"],
+  SERVER: ["active", "pending", "overdue", "tables_today", "alerts", "offline"],
 };
 
 const ACTION_ACCESS: Record<Role, OrderAction[]> = {

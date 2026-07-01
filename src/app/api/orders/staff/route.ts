@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { createOrderForTable, OrderCreationError } from "@/lib/order-service";
+import { createOrderForTable, getTodayOrdersByTable, OrderCreationError } from "@/lib/order-service";
 import { createChannelOrder } from "@/lib/aggregator-order-service";
 import { canPlaceOfflineOrder } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
@@ -15,7 +15,17 @@ const REMOTE_CHANNELS: OrderChannel[] = ["TAKEAWAY", "DELIVERY"];
 
 export async function GET(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
-  if (!session || !canPlaceOfflineOrder(session.role)) {
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const byTable = req.nextUrl.searchParams.get("byTable") === "1";
+  if (byTable) {
+    const tables = await getTodayOrdersByTable(session.restaurantId);
+    return NextResponse.json({ tables });
+  }
+
+  if (!canPlaceOfflineOrder(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
