@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus, StickyNote } from "lucide-react";
+import { Minus, Plus, StickyNote, Trash2 } from "lucide-react";
 import { Button, Input, Spinner } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import type { CartItem } from "@/store/cart";
@@ -13,6 +13,7 @@ type StaffCartPanelProps = {
   onUpdateQuantity: (lineId: string, quantity: number) => void;
   onUpdateNotes: (lineId: string, notes: string) => void;
   onPlaceOrder: () => void;
+  onClearCart: () => void;
   className?: string;
 };
 
@@ -24,6 +25,7 @@ export function StaffCartPanel({
   onUpdateQuantity,
   onUpdateNotes,
   onPlaceOrder,
+  onClearCart,
   className,
 }: StaffCartPanelProps) {
   if (items.length === 0) return null;
@@ -79,9 +81,21 @@ export function StaffCartPanel({
           <p className="text-lg font-bold text-white">{formatCurrency(total)}</p>
         </div>
 
-        <Button className="w-full" disabled={placing} onClick={onPlaceOrder}>
-          {placing ? <Spinner /> : "Send to kitchen"}
-        </Button>
+        <div className="flex gap-2 pt-1">
+          <Button
+            type="button"
+            variant="secondary"
+            className="flex-1"
+            disabled={placing}
+            onClick={onClearCart}
+          >
+            <Trash2 className="w-4 h-4" />
+            Empty cart
+          </Button>
+          <Button type="button" className="flex-1" disabled={placing} onClick={onPlaceOrder}>
+            {placing ? <Spinner /> : "Send to kitchen"}
+          </Button>
+        </div>
       </div>
     </div>
   );
