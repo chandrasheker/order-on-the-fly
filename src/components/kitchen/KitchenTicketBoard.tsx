@@ -5,6 +5,8 @@ import { AlertTriangle, Ban, CheckCircle2, Flame, Play } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { cn, formatCountdown } from "@/lib/utils";
 
+import type { OrderChannel } from "@/generated/prisma/client";
+
 export type KitchenBoardItem = {
   id: string;
   itemName: string;
@@ -22,6 +24,7 @@ export type KitchenBoardTicket = {
   orderNumber: number;
   tableNumber: number;
   locationLabel?: string;
+  orderChannel?: OrderChannel | null;
   alarmTriggered: boolean;
   items: KitchenBoardItem[];
 };

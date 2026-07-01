@@ -59,6 +59,30 @@ export function formatOrderLocation(input: {
   }
 }
 
+export function formatCookChannelShort(input: {
+  orderChannel?: OrderChannel | null;
+  tableNumber: number;
+  tableKind?: TableKind | null;
+  serviceLabel?: string | null;
+}) {
+  const channel = input.orderChannel ?? channelForTableKind(input.tableKind ?? "DINE_IN", input.serviceLabel);
+  switch (channel) {
+    case "WALK_IN":
+      return `walk-in · T${input.tableNumber}`;
+    case "TAKEAWAY":
+      return "takeaway";
+    case "DELIVERY":
+      return "delivery";
+    case "SWIGGY":
+      return "online · swiggy";
+    case "ZOMATO":
+      return "online · zomato";
+    case "DINE_IN":
+    default:
+      return `dine-in · T${input.tableNumber}`;
+  }
+}
+
 export function channelBadgeClass(channel: OrderChannel) {
   switch (channel) {
     case "TAKEAWAY":
