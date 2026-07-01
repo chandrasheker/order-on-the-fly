@@ -56,16 +56,16 @@ export async function GET(
       kitchenState,
       modifierLinks,
     ] = await Promise.all([
-      prisma.menuCategory.findMany({
-        where: { restaurantId: restaurant.id },
-        include: {
-          items: {
-            where: { isAvailable: true },
-            orderBy: { sortOrder: "asc" },
-          },
+    prisma.menuCategory.findMany({
+      where: { restaurantId: restaurant.id, isEnabled: true },
+      include: {
+        items: {
+          where: { isAvailable: true },
+          orderBy: { sortOrder: "asc" },
         },
-        orderBy: { sortOrder: "asc" },
-      }),
+      },
+      orderBy: { sortOrder: "asc" },
+    }),
       isFeatureEnabled(restaurant.id, "promotions_engine"),
       isFeatureEnabled(restaurant.id, "menu_modifiers"),
       isFeatureEnabled(restaurant.id, "call_waiter"),

@@ -369,6 +369,7 @@ model MenuCategory {
   name         String
   slug         String
   icon         String?
+  isEnabled    Boolean    @default(true)
   sortOrder    Int        @default(0)
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)

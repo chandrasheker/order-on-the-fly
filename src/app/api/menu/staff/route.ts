@@ -14,7 +14,7 @@ export async function GET() {
   if (blocked) return blocked;
 
   const categories = await prisma.menuCategory.findMany({
-    where: { restaurantId: session.restaurantId },
+    where: { restaurantId: session.restaurantId, isEnabled: true },
     include: {
       items: {
         where: { isAvailable: true },
