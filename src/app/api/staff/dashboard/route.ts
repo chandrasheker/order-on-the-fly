@@ -11,7 +11,7 @@ import { todayDateString, sumOrderRevenue, sumPaidOrderRevenue } from "@/lib/uti
 import { getTabsForRole } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { logApiRequest, logInfo } from "@/lib/logger";
-import { getOrderPaymentSummaries } from "@/lib/payment-allocation-service";
+import { getOrderPaymentSummaries, finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import { ensureServiceTables } from "@/lib/service-tables";
 
@@ -141,21 +141,33 @@ export async function GET() {
     }));
 
   const pendingWithTotals = withTotal(pendingOrders);
-  let pendingWithPayments = pendingWithTotals;
+  type PendingWithPayment = (typeof pendingWithTotals)[number] & {
+    paymentSummary: Awaited<ReturnType<typeof getOrderPaymentSummaries>> extends Map<string, infer S>
+      ? S | null
+      : null;
+  };
+  let pendingWithPayments: PendingWithPayment[] = pendingWithTotals as PendingWithPayment[];
 
-  if (features.split_bill && pendingWithTotals.length > 0) {
+  if (pendingWithTotals.length > 0) {
     const summaries = await getOrderPaymentSummaries(pendingWithTotals.map((o) => o.id));
-    pendingWithPayments = pendingWithTotals
-      .map((order) => ({
+    pendingWithPayments = [];
+    for (const order of pendingWithTotals) {
+      const paymentSummary = summaries.get(order.id) ?? null;
+      const remaining = paymentSummary?.remaining ?? order.total ?? 0;
+      if (remaining <= 0.01) {
+        if (!order.paidAt) {
+          void finalizeOrderIfSettled(order.id);
+        }
+        continue;
+      }
+      pendingWithPayments.push({
         ...order,
-        paymentSummary: summaries.get(order.id) ?? null,
-      }))
-      .filter((order) => (order.paymentSummary?.remaining ?? order.total ?? 0) > 0);
-  } else {
-    pendingWithPayments = pendingWithTotals.filter((order) => !order.paidAt);
+        paymentSummary,
+      });
+    }
   }
 
-  type PendingOrder = (typeof pendingWithPayments)[number] & {
+  type PendingOrder = PendingWithPayment & {
     paymentSummary?: { remaining: number } | null;
   };
 

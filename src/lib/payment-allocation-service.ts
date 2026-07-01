@@ -273,9 +273,6 @@ export async function recordOrderPayment(params: {
           status: 400,
         };
       }
-      if (order.paidAt) {
-        return { ok: false as const, error: "Order already fully paid", status: 400 };
-      }
 
       const paidByItem = new Map<string, number>();
       for (const item of order.items) {
@@ -291,8 +288,27 @@ export async function recordOrderPayment(params: {
       }
 
       const summary = computeSummaryFromOrder(order, paidByItem);
-      if (summary.remaining <= 0) {
-        return { ok: false as const, error: "Order already fully paid", status: 400 };
+
+      if (order.paidAt || summary.remaining <= 0.01) {
+        if (!order.paidAt && summary.fullyPaid) {
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              paidAt: new Date(),
+              paidByUserId: params.collectedByUserId ?? null,
+              paidByName: params.collectedByName ?? null,
+            },
+          });
+        }
+        return {
+          ok: true as const,
+          payment: null,
+          summary,
+          fullyPaid: true,
+          tableId: order.tableId,
+          orderId: order.id,
+          idempotent: true as const,
+        };
       }
 
       const amount = Math.min(params.amount, summary.remaining);
@@ -418,6 +434,7 @@ export async function recordTableTabFullPayment(params: {
   let lastResult:
     | { ok: true; payment: unknown; summary: unknown; fullyPaid: boolean }
     | { ok: false; error: string; status: number } | null = null;
+  const paidOrderIds: string[] = [];
 
   for (const orderId of tabSummary.unpaidOrderIds) {
     const result = await recordFullOrderPayment({
@@ -426,8 +443,22 @@ export async function recordTableTabFullPayment(params: {
       collectedByUserId: params.collectedByUserId,
       collectedByName: params.collectedByName,
     });
-    if (!result.ok) return result;
+    if (!result.ok) {
+      const alreadyPaid =
+        result.status === 400 &&
+        (result.error === "Order already fully paid" || result.error === "Nothing to pay for this table");
+      if (alreadyPaid) {
+        paidOrderIds.push(orderId);
+        continue;
+      }
+      return result;
+    }
     lastResult = result;
+    paidOrderIds.push(orderId);
+  }
+
+  if (paidOrderIds.length === 0) {
+    return { ok: false as const, error: "Nothing to pay for this table", status: 400 };
   }
 
   return {
@@ -435,6 +466,6 @@ export async function recordTableTabFullPayment(params: {
     payment: lastResult?.payment,
     summary: lastResult?.summary,
     fullyPaid: true,
-    paidOrderIds: tabSummary.unpaidOrderIds,
+    paidOrderIds,
   };
 }
