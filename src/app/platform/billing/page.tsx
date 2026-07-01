@@ -171,6 +171,8 @@ function PlatformBillingContent() {
       admin={admin}
       title="Billing"
       subtitle={tenant ? tenant.name : "Subscription plans per tenant"}
+      backHref={presetTenantId ? `/platform/tenants/${presetTenantId}` : "/platform"}
+      backLabel={presetTenantId ? "Tenant overview" : "All tenants"}
       breadcrumb={[
         { label: "All tenants", href: "/platform" },
         ...(tenant
