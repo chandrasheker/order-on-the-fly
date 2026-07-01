@@ -40,6 +40,8 @@ export function generateRewardCode() {
 }
 
 export function getBaseUrl() {
+  // Table QR codes use this value only — there is no LAN / eth auto-detection.
+  // Set NEXT_PUBLIC_APP_URL in .env (shell exports and .env.local override .env).
   const raw =
     process.env.NEXT_PUBLIC_APP_URL ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||

@@ -164,6 +164,17 @@ logInfo("init-db", "Database ready", { login: OWNER_EMAIL, config: deployment.co
 console.log("Database ready.");
 console.log(`Config: ${path.relative(ROOT, deployment.configPath)} (${deployment.restaurants.length} restaurant(s))`);
 console.log(`Tenant: ${deployment.tenant.name} (${deployment.tenant.slug})`);
+
+const qrBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+const configAppUrl = deployment.app.url.replace(/\/$/, "");
+console.log(`QR / guest URLs use: ${qrBaseUrl}`);
+if (configAppUrl !== qrBaseUrl) {
+  console.warn(
+    `⚠️  restaurant config app.url (${configAppUrl}) differs from NEXT_PUBLIC_APP_URL (${qrBaseUrl}). ` +
+      "Table QR codes always use NEXT_PUBLIC_APP_URL. Update .env or app.url so they match.",
+  );
+}
+
 for (const r of deployment.restaurants) {
   console.log(`Staff login (${r.name}): ${r.primaryOwner.email}`);
 }

@@ -192,7 +192,8 @@ function loadDeploymentConfig() {
   }
 
   const app = {
-    url: raw.app?.url || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+    // QR codes and webhooks use NEXT_PUBLIC_APP_URL at runtime — keep in sync with app.url in the JSON file.
+    url: process.env.NEXT_PUBLIC_APP_URL || raw.app?.url || "http://localhost:3000",
     name: raw.app?.name || "TableTap",
   };
 
