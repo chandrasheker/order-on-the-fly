@@ -92,6 +92,10 @@ export function PlatformTenantOverview({
     return () => clearInterval(interval);
   }, [loadOverview]);
 
+  useEffect(() => {
+    loadOverview();
+  }, [tenantEnabled, loadOverview]);
+
   const submitRestaurant = async () => {
     setMessage("");
     const res = await fetch("/api/platform/tenants", {

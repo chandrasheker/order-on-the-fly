@@ -56,10 +56,69 @@ export async function endStaffSessionsForRestaurant(restaurantId: string) {
 }
 
 export async function endStaffSessionsForTenant(tenantId: string) {
+  const restaurantIds = (
+    await prisma.restaurant.findMany({
+      where: { tenantId },
+      select: { id: true },
+    })
+  ).map((r) => r.id);
+
   await prisma.staffSession.updateMany({
-    where: { tenantId, logoutAt: null },
+    where: {
+      logoutAt: null,
+      OR: [
+        { tenantId },
+        ...(restaurantIds.length > 0 ? [{ restaurantId: { in: restaurantIds } }] : []),
+      ],
+    },
     data: { logoutAt: new Date() },
   });
+}
+
+/** Keep platform active-login counts accurate after disable/re-enable or stale JWT session ids. */
+export async function syncStaffSessionForUser(params: {
+  userId: string;
+  restaurantId: string;
+  tenantId?: string | null;
+  role: Role;
+  preferredSessionId?: string | null;
+}) {
+  if (params.preferredSessionId) {
+    const preferred = await prisma.staffSession.findUnique({
+      where: { id: params.preferredSessionId },
+    });
+    if (
+      preferred &&
+      !preferred.logoutAt &&
+      preferred.userId === params.userId &&
+      preferred.restaurantId === params.restaurantId
+    ) {
+      await touchStaffSession(preferred.id);
+      return preferred.id;
+    }
+  }
+
+  const existing = await prisma.staffSession.findFirst({
+    where: {
+      userId: params.userId,
+      restaurantId: params.restaurantId,
+      logoutAt: null,
+      lastSeenAt: { gte: activeSince() },
+    },
+    orderBy: { lastSeenAt: "desc" },
+  });
+  if (existing) {
+    await touchStaffSession(existing.id);
+    return existing.id;
+  }
+
+  const created = await startStaffSession({
+    userId: params.userId,
+    restaurantId: params.restaurantId,
+    tenantId: params.tenantId,
+    role: params.role,
+  });
+  return created.id;
 }
 
 export async function getActiveStaffSessionsForRestaurant(restaurantId: string) {

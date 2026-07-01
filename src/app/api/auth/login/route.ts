@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createToken, verifyPassword, STAFF_SESSION_COOKIE } from "@/lib/auth";
+import { createToken, verifyPassword, STAFF_SESSION_COOKIE, staffSessionCookieOptions } from "@/lib/auth";
 import { getStaffHomePath } from "@/lib/feature-flags";
 import { logApiError, logApiRequest, logInfo, logWarn } from "@/lib/logger";
 import { getRestaurantAccessState, accessBlockMessage } from "@/lib/access-control-service";
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     const staffSession = await startStaffSession({
       userId: user.id,
       restaurantId: user.restaurantId,
-      tenantId: user.tenantId,
+      tenantId: user.tenantId ?? user.restaurant.tenantId,
       role: user.role,
       ...client,
     });
@@ -111,13 +111,7 @@ export async function POST(req: NextRequest) {
     const homePath = await getStaffHomePath(user.restaurantId, user.role);
 
     const response = NextResponse.json({ user: session, homePath });
-    response.cookies.set(STAFF_SESSION_COOKIE, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
+    response.cookies.set(STAFF_SESSION_COOKIE, token, staffSessionCookieOptions());
 
     return response;
   } catch (error) {
