@@ -81,10 +81,11 @@ export function PlatformTenantOverview({
     showing,
   } = useRestaurantSearch(mergedRestaurants);
 
-  const loadOverview = useCallback(async () => {
+  const loadOverview = useCallback(async (options?: { signal?: AbortSignal }) => {
     if (isClientOffline()) return;
     try {
       const res = await fetch(`/api/platform/tenants/${tenantId}/overview`, {
+        signal: options?.signal,
         cache: "no-store",
       });
       if (res.ok) {
@@ -96,14 +97,16 @@ export function PlatformTenantOverview({
   }, [tenantId]);
 
   useEffect(() => {
-    void loadOverview();
-    const interval = setInterval(() => void loadOverview(), 30_000);
-    return () => clearInterval(interval);
-  }, [loadOverview]);
-
-  useEffect(() => {
-    void loadOverview();
-  }, [tenantEnabled, loadOverview]);
+    const controller = new AbortController();
+    void loadOverview({ signal: controller.signal });
+    const interval = setInterval(() => {
+      void loadOverview({ signal: controller.signal });
+    }, 30_000);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
+  }, [loadOverview, tenantEnabled]);
 
   const submitRestaurant = async () => {
     setMessage("");
