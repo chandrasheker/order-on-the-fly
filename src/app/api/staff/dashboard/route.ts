@@ -4,6 +4,7 @@ import {
   getActiveOrders,
   getPendingPaymentOrders,
   getCompletedOrders,
+  getFinishedKitchenItemsForCook,
   getMissedTimelineItems,
   checkOverdueItems,
 } from "@/lib/order-service";
@@ -135,6 +136,13 @@ export async function GET() {
     0,
   );
 
+  const finishedKitchenItems =
+    session.role === "COOK"
+      ? await getFinishedKitchenItemsForCook(session.restaurantId, session.id)
+      : [];
+
+  const finishedKitchenOrderIds = new Set(finishedKitchenItems.map((item) => item.orderId));
+
   const roleTabs = getTabsForRole(session.role).filter((tab) => {
     if (tab === "offline" && !features.phone_orders) return false;
     return true;
@@ -152,6 +160,24 @@ export async function GET() {
     orders,
     pendingOrders: pendingWithPayments,
     completedOrders: withTotal(completedOrders),
+    finishedKitchenItems: finishedKitchenItems.map((item) => {
+      const row = item as (typeof item) & {
+        order: { orderNumber: number; table: { number: number } };
+      };
+      return {
+        id: row.id,
+        itemName: row.itemName,
+        quantity: row.quantity,
+        status: row.status,
+        preparedByName: row.preparedByName,
+        readyByName: row.readyByName,
+        servedByName: row.servedByName,
+        servedAt: row.servedAt,
+        orderId: row.orderId,
+        orderNumber: row.order.orderNumber,
+        tableNumber: row.order.table.number,
+      };
+    }),
     alerts,
     permissions: {
       tabs: roleTabs,
@@ -182,6 +208,8 @@ export async function GET() {
       completedOrders: completedOrders.length,
       todayOrders: orderCount,
       revenue: todayRevenue,
+      finishedKitchenItems: finishedKitchenItems.length,
+      finishedKitchenOrders: finishedKitchenOrderIds.size,
       overdueCount,
       missedTimelineCount: missedData.items.length,
       unreadAlerts: alerts.length,
