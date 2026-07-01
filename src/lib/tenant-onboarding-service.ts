@@ -3,6 +3,10 @@ import bcrypt from "bcryptjs";
 import type { TenantPlan } from "@/generated/prisma/client";
 import { slugify } from "@/lib/utils";
 import { ensureStarterMenuCategories } from "@/lib/menu-setup-service";
+import {
+  getActiveStaffSessionsByRestaurants,
+  summarizeActiveSessions,
+} from "@/lib/staff-session-service";
 
 export type SignupTenantInput = {
   tenantName: string;
@@ -278,14 +282,35 @@ export async function getTenantOverview(tenantId: string) {
     },
   });
 
+  const restaurantIds = tenant.restaurants.map((r) => r.id);
+  const activeByRestaurant = await getActiveStaffSessionsByRestaurants(restaurantIds);
+
+  const restaurantsWithSessions = tenant.restaurants.map((restaurant) => ({
+    id: restaurant.id,
+    name: restaurant.name,
+    slug: restaurant.slug,
+    isEnabled: restaurant.isEnabled,
+    _count: restaurant._count,
+    activeSessions: summarizeActiveSessions(activeByRestaurant.get(restaurant.id) ?? []),
+  }));
+
   return {
-    tenant,
+    tenant: {
+      id: tenant.id,
+      name: tenant.name,
+      slug: tenant.slug,
+      plan: tenant.plan,
+      subscriptionStatus: tenant.subscriptionStatus,
+      isEnabled: tenant.isEnabled,
+    },
+    restaurants: restaurantsWithSessions,
     stats: {
       restaurantCount: tenant.restaurants.length,
       ordersToday,
       totalOrders: tenant.restaurants.reduce((s, r) => s + r._count.orders, 0),
       totalStaff: tenant.restaurants.reduce((s, r) => s + r._count.users, 0),
       totalTables: tenant.restaurants.reduce((s, r) => s + r._count.tables, 0),
+      activeLogins: restaurantsWithSessions.reduce((s, r) => s + r.activeSessions.total, 0),
     },
   };
 }

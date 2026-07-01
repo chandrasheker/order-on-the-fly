@@ -6,9 +6,12 @@ import {
   verifyPassword,
 } from "@/lib/auth";
 import { logApiError, logApiRequest, logInfo, logWarn } from "@/lib/logger";
+import { recordLoginAudit, requestClientMeta } from "@/lib/login-audit-service";
 
 export async function POST(req: NextRequest) {
   logApiRequest("platform/auth/login", "POST");
+  const client = requestClientMeta(req);
+
   try {
     const { email: bodyEmail, password: bodyPassword } = await req.json();
     const email = String(bodyEmail).trim().toLowerCase();
@@ -21,9 +24,25 @@ export async function POST(req: NextRequest) {
     const admin = await prisma.platformAdmin.findUnique({ where: { email } });
 
     if (!admin || !(await verifyPassword(password, admin.passwordHash))) {
+      await recordLoginAudit({
+        kind: "PLATFORM_ADMIN",
+        success: false,
+        email,
+        platformAdminId: admin?.id,
+        failureReason: "Invalid credentials",
+        ...client,
+      });
       logWarn("platform/auth/login", "Invalid platform admin credentials", { email });
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
+
+    await recordLoginAudit({
+      kind: "PLATFORM_ADMIN",
+      success: true,
+      email,
+      platformAdminId: admin.id,
+      ...client,
+    });
 
     const session = {
       type: "platform_admin" as const,

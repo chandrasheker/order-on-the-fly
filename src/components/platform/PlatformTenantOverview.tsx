@@ -1,33 +1,59 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Building2, Plus, ChevronDown, ChevronUp, Layers } from "lucide-react";
-import { Button, Card, Input } from "@/components/ui";
+import { useCallback, useEffect, useState } from "react";
+import { Building2, Plus, ChevronDown, ChevronUp, Layers, Users } from "lucide-react";
+import { Button, Card, Input, Badge } from "@/components/ui";
 import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
+
+type ActiveSessions = {
+  total: number;
+  byRole: { OWNER: number; MANAGER: number; COOK: number; SERVER: number };
+  users: Array<{ name: string; email: string; role: string; lastSeenAt: string }>;
+};
 
 type TenantRestaurant = {
   id: string;
   name: string;
   slug: string;
+  isEnabled?: boolean;
   branches: Array<{ id: string; name: string; slug: string; floors: Array<{ name: string }> }>;
   _count: { users: number; orders: number; tables: number };
+  activeSessions?: ActiveSessions;
 };
 
 interface PlatformTenantOverviewProps {
   tenantId: string;
   tenantName: string;
+  tenantEnabled: boolean;
   restaurants: TenantRestaurant[];
   onRestaurantsChange: () => void;
+  onTenantToggle: (enabled: boolean) => Promise<void>;
+  togglingTenant: boolean;
+}
+
+function roleSummary(byRole: ActiveSessions["byRole"]) {
+  const parts: string[] = [];
+  if (byRole.OWNER) parts.push(`${byRole.OWNER} owner${byRole.OWNER > 1 ? "s" : ""}`);
+  if (byRole.MANAGER) parts.push(`${byRole.MANAGER} manager${byRole.MANAGER > 1 ? "s" : ""}`);
+  if (byRole.COOK) parts.push(`${byRole.COOK} cook${byRole.COOK > 1 ? "s" : ""}`);
+  if (byRole.SERVER) parts.push(`${byRole.SERVER} server${byRole.SERVER > 1 ? "s" : ""}`);
+  return parts.length ? parts.join(", ") : "Nobody logged in";
 }
 
 export function PlatformTenantOverview({
   tenantId,
   tenantName,
+  tenantEnabled,
   restaurants,
   onRestaurantsChange,
+  onTenantToggle,
+  togglingTenant,
 }: PlatformTenantOverviewProps) {
-  const [overview, setOverview] = useState<Record<string, unknown> | null>(null);
+  const [overview, setOverview] = useState<{
+    stats?: Record<string, number>;
+    restaurants?: TenantRestaurant[];
+  } | null>(null);
   const [addRestaurant, setAddRestaurant] = useState({
     name: "",
     slug: "",
@@ -35,6 +61,12 @@ export function PlatformTenantOverview({
     ownerName: "Owner",
   });
   const [message, setMessage] = useState("");
+  const [togglingRestaurantId, setTogglingRestaurantId] = useState<string | null>(null);
+
+  const mergedRestaurants = (overview?.restaurants ?? restaurants).map((r) => {
+    const base = restaurants.find((b) => b.id === r.id) ?? r;
+    return { ...base, ...r, branches: base.branches ?? r.branches };
+  });
 
   const {
     search,
@@ -46,13 +78,19 @@ export function PlatformTenantOverview({
     collapseAll,
     total,
     showing,
-  } = useRestaurantSearch(restaurants);
+  } = useRestaurantSearch(mergedRestaurants);
 
-  useEffect(() => {
+  const loadOverview = useCallback(() => {
     void fetch(`/api/platform/tenants/${tenantId}/overview`)
       .then((r) => (r.ok ? r.json() : null))
       .then(setOverview);
   }, [tenantId]);
+
+  useEffect(() => {
+    loadOverview();
+    const interval = setInterval(loadOverview, 30_000);
+    return () => clearInterval(interval);
+  }, [loadOverview]);
 
   const submitRestaurant = async () => {
     setMessage("");
@@ -73,24 +111,61 @@ export function PlatformTenantOverview({
     setMessage(`Added ${json.restaurant.name}`);
     setAddRestaurant({ name: "", slug: "", ownerEmail: "", ownerName: "Owner" });
     onRestaurantsChange();
+    loadOverview();
   };
 
-  const stats = overview?.stats as Record<string, number> | undefined;
+  const toggleRestaurant = async (restaurant: TenantRestaurant) => {
+    setTogglingRestaurantId(restaurant.id);
+    await fetch("/api/platform/tenants", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "set_restaurant_enabled",
+        restaurantId: restaurant.id,
+        isEnabled: !(restaurant.isEnabled ?? true),
+      }),
+    });
+    setTogglingRestaurantId(null);
+    onRestaurantsChange();
+    loadOverview();
+  };
+
+  const stats = overview?.stats;
 
   return (
     <div className="space-y-6">
+      <Card className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-violet-500/20">
+        <div>
+          <p className="font-medium">{tenantName}</p>
+          <p className="text-sm text-zinc-400">
+            {tenantEnabled
+              ? "Tenant is live — all enabled restaurants operate normally."
+              : "Tenant is disabled — all restaurants and staff access are blocked."}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant={tenantEnabled ? "secondary" : "success"}
+          disabled={togglingTenant}
+          onClick={() => void onTenantToggle(!tenantEnabled)}
+        >
+          {togglingTenant ? "Saving…" : tenantEnabled ? "Disable tenant" : "Enable tenant"}
+        </Button>
+      </Card>
+
       <p className="text-sm text-zinc-400">
-        Restaurants belonging to <span className="text-zinc-200">{tenantName}</span>. Staff setup and
-        premium features are managed per restaurant on the other tabs.
+        Restaurants belonging to <span className="text-zinc-200">{tenantName}</span>. Disable a
+        restaurant temporarily to stop orders and staff logins for that location only.
       </p>
 
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {[
             ["Restaurants", stats.restaurantCount],
+            ["Active logins", stats.activeLogins ?? 0],
             ["Orders today", stats.ordersToday],
             ["Total orders", stats.totalOrders],
-            ["Staff", stats.totalStaff],
+            ["Staff accounts", stats.totalStaff],
           ].map(([label, value]) => (
             <Card key={String(label)} className="p-4">
               <p className="text-xs text-zinc-500">{label}</p>
@@ -106,7 +181,7 @@ export function PlatformTenantOverview({
           <h2 className="font-semibold">Restaurants in this tenant</h2>
         </div>
 
-        {restaurants.length === 0 ? (
+        {mergedRestaurants.length === 0 ? (
           <p className="text-sm text-zinc-500 py-6 text-center">
             No restaurants yet. Add the first one below.
           </p>
@@ -131,31 +206,59 @@ export function PlatformTenantOverview({
               )}
               {filteredRestaurants.map((r) => {
                 const open = isExpanded(r.id);
+                const enabled = r.isEnabled ?? true;
+                const sessions = r.activeSessions;
                 return (
-                  <div key={r.id} className="rounded-xl border border-white/10 overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => toggleExpanded(r.id)}
-                      className="w-full p-4 flex items-center justify-between gap-3 text-left hover:bg-white/[0.02] transition-colors"
-                      aria-expanded={open}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
+                  <div
+                    key={r.id}
+                    className={`rounded-xl border overflow-hidden ${enabled ? "border-white/10" : "border-red-500/30 opacity-80"}`}
+                  >
+                    <div className="flex items-center gap-2 p-4">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(r.id)}
+                        className="flex flex-1 items-center gap-2 min-w-0 text-left hover:opacity-90"
+                        aria-expanded={open}
+                      >
                         {open ? (
                           <ChevronUp className="w-4 h-4 text-zinc-400 shrink-0" />
                         ) : (
                           <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
                         )}
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{r.name}</p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium truncate">{r.name}</p>
+                            {!enabled && (
+                              <Badge className="bg-red-500/15 text-red-400 border-red-500/30">
+                                Disabled
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-xs text-zinc-500">/{r.slug}</p>
                         </div>
+                      </button>
+                      <div className="text-right shrink-0 hidden sm:block">
+                        {sessions && sessions.total > 0 ? (
+                          <p className="text-xs text-emerald-400 flex items-center gap-1 justify-end">
+                            <Users className="w-3 h-3" />
+                            {sessions.total} logged in
+                          </p>
+                        ) : (
+                          <p className="text-xs text-zinc-500">No active logins</p>
+                        )}
                       </div>
-                      <p className="text-xs text-zinc-500 shrink-0">
-                        {r._count.tables} tables · {r._count.users} staff
-                      </p>
-                    </button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={enabled ? "secondary" : "success"}
+                        disabled={togglingRestaurantId === r.id}
+                        onClick={() => void toggleRestaurant(r)}
+                      >
+                        {togglingRestaurantId === r.id ? "…" : enabled ? "Disable" : "Enable"}
+                      </Button>
+                    </div>
                     {open && (
-                      <div className="px-4 pb-4 pt-0 border-t border-white/5 space-y-2">
+                      <div className="px-4 pb-4 pt-0 border-t border-white/5 space-y-3">
                         <p className="text-xs text-zinc-500 pt-3">
                           {r._count.tables} tables · {r._count.users} staff · {r._count.orders}{" "}
                           orders
@@ -163,6 +266,45 @@ export function PlatformTenantOverview({
                         <p className="text-xs text-emerald-400">
                           Guest check-in: /order/{r.slug}/{r.slug}-table-1/check-in
                         </p>
+
+                        <div className="rounded-lg bg-white/[0.03] border border-white/10 p-3">
+                          <p className="text-xs font-medium text-zinc-300 mb-2 flex items-center gap-1.5">
+                            <Users className="w-3.5 h-3.5 text-cyan-400" />
+                            Active sessions (last 15 min)
+                          </p>
+                          {sessions && sessions.total > 0 ? (
+                            <>
+                              <p className="text-xs text-zinc-400 mb-2">
+                                {roleSummary(sessions.byRole)}
+                              </p>
+                              <ul className="space-y-1">
+                                {sessions.users.map((u) => (
+                                  <li
+                                    key={`${u.email}-${u.lastSeenAt}`}
+                                    className="text-xs text-zinc-500 flex justify-between gap-2"
+                                  >
+                                    <span>
+                                      {u.name}{" "}
+                                      <span className="text-zinc-600">({u.role})</span>
+                                    </span>
+                                    <span className="shrink-0">
+                                      {Math.max(
+                                        0,
+                                        Math.floor(
+                                          (Date.now() - new Date(u.lastSeenAt).getTime()) / 60000,
+                                        ),
+                                      )}
+                                      m ago
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </>
+                          ) : (
+                            <p className="text-xs text-zinc-500">No staff currently logged in.</p>
+                          )}
+                        </div>
+
                         {r.branches.map((b) => (
                           <p key={b.id} className="text-xs text-zinc-400 flex items-center gap-1">
                             <Layers className="w-3 h-3" /> {b.name} —{" "}
