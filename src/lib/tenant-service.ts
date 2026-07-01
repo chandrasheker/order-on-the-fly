@@ -6,7 +6,7 @@ export async function ensureTenantForRestaurant(restaurantId: string) {
     where: { id: restaurantId },
     select: { id: true, name: true, slug: true, tenantId: true },
   });
-  if (!restaurant) throw new Error("Restaurant not found");
+  if (!restaurant) return null;
   if (restaurant.tenantId) {
     return prisma.tenant.findUnique({ where: { id: restaurant.tenantId } });
   }

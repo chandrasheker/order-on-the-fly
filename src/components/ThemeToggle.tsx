@@ -1,16 +1,33 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import { cn } from "@/lib/utils";
 
 type Props = {
   className?: string;
-  fixed?: boolean;
 };
 
-export function ThemeToggle({ className, fixed = false }: Props) {
+export function ThemeToggle({ className }: Props) {
   const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const shellClass = cn(
+    "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors",
+    "border-[color:var(--surface-border)] bg-[color:var(--surface)] text-[color:var(--foreground)]",
+    "hover:bg-[color:var(--surface-hover)] shadow-sm",
+    className,
+  );
+
+  if (!mounted) {
+    return <div className={shellClass} aria-hidden suppressHydrationWarning />;
+  }
+
   const isDark = theme === "dark";
 
   return (
@@ -19,13 +36,8 @@ export function ThemeToggle({ className, fixed = false }: Props) {
       onClick={toggleTheme}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       title={isDark ? "Light mode" : "Dark mode"}
-      className={cn(
-        "inline-flex items-center justify-center rounded-xl border transition-colors",
-        "border-[color:var(--surface-border)] bg-[color:var(--surface)] text-[color:var(--foreground)]",
-        "hover:bg-[color:var(--surface-hover)] shadow-sm",
-        fixed ? "fixed top-4 right-4 z-[60] h-10 w-10 backdrop-blur-md" : "h-9 w-9",
-        className,
-      )}
+      className={shellClass}
+      suppressHydrationWarning
     >
       {isDark ? <Sun className="h-4 w-4 text-amber-300" /> : <Moon className="h-4 w-4 text-indigo-600" />}
     </button>

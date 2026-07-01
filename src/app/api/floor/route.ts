@@ -60,8 +60,12 @@ export async function PATCH(req: NextRequest) {
     width: body.width,
     height: body.height,
     section: body.section,
-    assignedServerId: body.assignedServerId,
-    guestCount: body.guestCount,
+    ...(Object.prototype.hasOwnProperty.call(body, "assignedServerId")
+      ? { assignedServerId: body.assignedServerId as string | null }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(body, "guestCount")
+      ? { guestCount: body.guestCount as number | null }
+      : {}),
     seated: body.seated,
     clear: body.clear,
   });

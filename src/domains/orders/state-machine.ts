@@ -21,6 +21,7 @@ export type OrderItemTransition =
 const ORDER_ITEM_TRANSITIONS: Record<OrderItemStatus, Partial<Record<OrderItemTransition, OrderItemStatus>>> = {
   PENDING: {
     "start-preparing": "PREPARING",
+    "mark-ready": "READY",
     "mark-unavailable": "UNAVAILABLE",
   },
   PREPARING: {

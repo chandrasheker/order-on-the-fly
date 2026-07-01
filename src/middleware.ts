@@ -31,6 +31,7 @@ async function getPlatformAdminSession(request: NextRequest) {
 }
 
 function isPublicApi(pathname: string, request: NextRequest) {
+  if (pathname === "/api/health") return true;
   if (pathname === "/api/tenant/signup" && request.method === "POST") return true;
   if (pathname.startsWith("/api/v1/")) return true;
   if (/^\/api\/payment\/qr\/[^/]+$/.test(pathname)) return true;
@@ -115,6 +116,10 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL("/platform", request.url));
       }
       return NextResponse.next();
+    }
+    // Legacy list route — tenant picker lives at /platform
+    if (pathname === "/platform/tenants") {
+      return NextResponse.redirect(new URL("/platform", request.url));
     }
     if (!platformAdmin) {
       return NextResponse.redirect(new URL("/platform/login", request.url));

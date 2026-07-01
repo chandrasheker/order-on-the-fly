@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ThemeToggle } from "@/components/ThemeToggle";
 
 const CONTACT_PHONE = "8904685843";
 const CONTACT_TEL = "+918904685843";
@@ -41,12 +40,8 @@ export function SiteFooter() {
             reserved.
           </p>
 
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-5 text-xs text-[color:var(--muted)] text-center sm:text-right">
-            <div className="flex items-center justify-center sm:justify-end gap-2">
-              <span className="hidden sm:inline">Theme</span>
-              <ThemeToggle />
-            </div>
-            <p>
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-x-4 gap-y-2 text-xs text-[color:var(--muted)] text-center sm:text-right">
+            <p className="shrink-0">
               Powered by{" "}
               <span className="text-[color:var(--foreground)] font-medium">DVAD Tech</span>
             </p>

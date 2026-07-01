@@ -123,7 +123,9 @@ enum TenantPlan {
 
 enum SubscriptionStatus {
   TRIAL
+  DEMO
   ACTIVE
+  EXPIRED
   PAST_DUE
   CANCELLED
 }
@@ -833,6 +835,8 @@ model Tenant {
   subscriptionStatus SubscriptionStatus @default(TRIAL)
   billingEmail       String?
   externalBillingId  String?
+  demoPackUsedAt     DateTime?
+  demoExpiresAt      DateTime?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   restaurants        Restaurant[]

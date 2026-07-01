@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/init-db.js && next dev",
+    "dev:single": "RESTAURANT_CONFIG=examples/tenant-single.config.json node scripts/init-db.js && next dev",
+    "dev:dual": "RESTAURANT_CONFIG=examples/tenant-dual.config.json node scripts/init-db.js && next dev",
+    "dev:triple": "RESTAURANT_CONFIG=examples/tenant-triple.config.json node scripts/init-db.js && next dev",
+    "dev:quad": "RESTAURANT_CONFIG=examples/tenant-quad.config.json node scripts/init-db.js && next dev",
     "dev:clean": "node scripts/start-server.js",
     "start:clean": "node scripts/start-server.js --pull",
     "start:clean:keep-db": "node scripts/start-server.js --pull --no-clean",
@@ -28,6 +32,7 @@
     "setup": "node scripts/setup-restaurant.mjs",
     "config:validate": "node -e \"require('./scripts/restaurant-config').loadRestaurantConfig() && console.log('Restaurant config is valid')\"",
     "config:validate:app": "tsx -e \"import { validateAppConfig } from './src/config/app-config'; validateAppConfig(); console.log('App config valid')\"",
+    "qa:validate": "node scripts/qa-validate.mjs",
     "presentation": "node scripts/build-owner-presentation.mjs",
     "crash-dump": "node scripts/crash-dump.js --reason manual",
     "printer:agent": "node services/printer-agent/index.mjs",

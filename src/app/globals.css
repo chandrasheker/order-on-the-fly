@@ -110,3 +110,17 @@ html {
 .light .hover\:bg-white\/15:hover {
   background-color: var(--surface-hover);
 }
+
+/* Fixed top-right theme toggle — trailing header actions reserve space */
+:root {
+  --theme-toggle-rail: 3.25rem;
+}
+
+.header-trailing-actions {
+  margin-right: var(--theme-toggle-rail);
+}
+
+select option {
+  background-color: var(--background);
+  color: var(--foreground);
+}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureStarterMenuCategories } from "@/lib/menu-setup-service";
 import { scheduleMenuSync, syncMenuItemAvailability } from "@/lib/aggregator-sync-service";
 
 export async function GET() {
@@ -8,6 +9,8 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  await ensureStarterMenuCategories(session.restaurantId);
 
   const categories = await prisma.menuCategory.findMany({
     where: { restaurantId: session.restaurantId },

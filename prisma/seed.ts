@@ -266,6 +266,9 @@ async function main() {
     console.log(`     Guest check-in: ${entry.guestUrl}`);
   }
 
+  const { saveDeploymentMarker } = require("../scripts/restaurant-config.js");
+  saveDeploymentMarker(config.configPath);
+
   await prisma.$disconnect();
 }
 

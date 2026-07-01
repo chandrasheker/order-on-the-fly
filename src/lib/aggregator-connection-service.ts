@@ -15,6 +15,7 @@ import { createChannelOrder, type AggregatorItemInput } from "@/lib/aggregator-o
 import { buildKitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { scheduleMenuSync } from "@/lib/aggregator-sync-service";
 import { OrderCreationError } from "@/lib/order-service";
+import { getAppBaseUrl } from "@/lib/server-app-url";
 import {
   isAggregatorRowsReady,
   markAggregatorRowsReady,
@@ -26,8 +27,7 @@ const PLATFORM_CHANNEL: Record<AggregatorPlatform, OrderChannel> = {
 };
 
 export function aggregatorWebhookUrl(slug: string, platform: AggregatorPlatform) {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  return `${base}/api/webhooks/${platform.toLowerCase()}/${slug}`;
+  return `${getAppBaseUrl()}/api/webhooks/${platform.toLowerCase()}/${slug}`;
 }
 
 export async function getAggregatorConnectionsForRestaurant(restaurantId: string, slug: string) {

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { todayDateString, sumOrderRevenue, isOrderItemOpen } from "@/lib/utils";
+import { todayDateString, isOrderItemOpen } from "@/lib/utils";
 import { openTableOrdering, closeTableOrdering, hasOpenTableWork } from "@/lib/table-ordering-service";
 import { getOrderPaymentSummaries } from "@/lib/payment-allocation-service";
 
@@ -11,6 +11,21 @@ export type TableFloorState =
   | "eating"
   | "payment"
   | "overdue";
+
+export const FLOOR_STATE_LABELS: Record<
+  TableFloorState,
+  { label: string; description: string }
+> = {
+  available: { label: "Available", description: "Empty — ready for guests" },
+  seated: { label: "Seated", description: "Guests seated, no order yet" },
+  ordering: { label: "Ordering", description: "Guests are placing an order" },
+  kitchen: { label: "Kitchen", description: "Items cooking on the line" },
+  eating: { label: "Eating", description: "Food served, guests dining" },
+  payment: { label: "Payment", description: "Bill ready — awaiting payment" },
+  overdue: { label: "Overdue", description: "Kitchen item past prep deadline" },
+};
+
+const ATTEND_ALERT_TYPE = "FLOOR_ATTEND";
 
 function deriveTableState(input: {
   orderingEnabled: boolean;
@@ -24,11 +39,54 @@ function deriveTableState(input: {
   if (input.activeItems > 0) return "kitchen";
   if (input.awaitingPayment) return "payment";
   if (input.openOrders > 0 && input.orderingEnabled) return "ordering";
-  if (input.effectiveSeatedAt && !input.orderingEnabled && input.openOrders === 0 && input.activeItems === 0) {
+  if (
+    input.effectiveSeatedAt &&
+    !input.orderingEnabled &&
+    input.openOrders === 0 &&
+    input.activeItems === 0
+  ) {
     return "seated";
   }
   if (input.effectiveSeatedAt || input.orderingEnabled) return "eating";
   return "available";
+}
+
+async function ensureTableAttendAlerts(
+  restaurantId: string,
+  tables: Array<{
+    number: number;
+    assignedServer: { id: string; name: string } | null;
+    occupancyMinutes: number | null;
+    stats: { orderCount: number };
+    state: TableFloorState;
+  }>,
+) {
+  for (const table of tables) {
+    if (!table.assignedServer) continue;
+    if (table.stats.orderCount > 0) continue;
+    if (table.state === "available") continue;
+    if (table.occupancyMinutes == null || table.occupancyMinutes < 5) continue;
+
+    const existing = await prisma.alert.findFirst({
+      where: {
+        restaurantId,
+        tableNumber: table.number,
+        type: ATTEND_ALERT_TYPE,
+        isRead: false,
+        createdAt: { gte: new Date(Date.now() - 30 * 60_000) },
+      },
+    });
+    if (existing) continue;
+
+    await prisma.alert.create({
+      data: {
+        restaurantId,
+        type: ATTEND_ALERT_TYPE,
+        tableNumber: table.number,
+        message: `Table ${table.number}: please attend and take order (${table.occupancyMinutes} min open, ${table.assignedServer.name})`,
+      },
+    });
+  }
 }
 
 export async function getFloorSnapshot(restaurantId: string) {
@@ -63,76 +121,83 @@ export async function getFloorSnapshot(restaurantId: string) {
   const paymentSummaries = await getOrderPaymentSummaries(servedOrderIds);
 
   const tableSnapshots = tables.map((table, index) => {
-      const tableOrders = ordersByTable.get(table.id) ?? [];
-      const activeItems = tableOrders.reduce(
-        (sum, order) =>
-          sum + order.items.filter((item) => isOrderItemOpen(item.status)).length,
-        0,
-      );
-      const overdueItems = tableOrders.reduce(
-        (sum, order) =>
-          sum +
-          order.items.filter(
-            (item) => item.isOverdue && isOrderItemOpen(item.status),
-          ).length,
-        0,
-      );
-      const openOrders = tableOrders.filter((o) => o.status !== "SERVED").length;
+    const tableOrders = ordersByTable.get(table.id) ?? [];
+    const activeItems = tableOrders.reduce(
+      (sum, order) =>
+        sum + order.items.filter((item) => isOrderItemOpen(item.status)).length,
+      0,
+    );
+    const overdueItems = tableOrders.reduce(
+      (sum, order) =>
+        sum +
+        order.items.filter((item) => item.isOverdue && isOrderItemOpen(item.status)).length,
+      0,
+    );
+    const openOrders = tableOrders.filter((o) => o.status !== "SERVED").length;
 
-      let billTotal = 0;
-      let paidTotal = 0;
-      let awaitingPayment = false;
-      for (const order of tableOrders) {
-        if (order.status !== "SERVED") continue;
-        const summary = paymentSummaries.get(order.id);
-        if (!summary) continue;
-        billTotal += summary.total;
-        paidTotal += summary.paid;
-        if (summary.remaining > 0) awaitingPayment = true;
-      }
+    let billTotal = 0;
+    let paidTotal = 0;
+    let awaitingPayment = false;
+    for (const order of tableOrders) {
+      if (order.status !== "SERVED") continue;
+      const summary = paymentSummaries.get(order.id);
+      if (!summary) continue;
+      billTotal += summary.total;
+      paidTotal += summary.paid;
+      if (summary.remaining > 0) awaitingPayment = true;
+    }
 
-      const effectiveSeatedAt = table.seatedAt ?? table.orderingOpenedAt;
-      const elapsedMinutes = effectiveSeatedAt
-        ? Math.floor((Date.now() - effectiveSeatedAt.getTime()) / 60000)
+    const isTableOpen = table.orderingEnabled || Boolean(table.seatedAt || table.orderingOpenedAt);
+    const occupancyStartedAt =
+      table.assignedServerId && isTableOpen
+        ? table.seatedAt ?? table.orderingOpenedAt
         : null;
+    const occupancyMinutes = occupancyStartedAt
+      ? Math.floor((Date.now() - occupancyStartedAt.getTime()) / 60000)
+      : null;
 
-      const cols = 4;
-      const defaultX = (index % cols) * 112 + 16;
-      const defaultY = Math.floor(index / cols) * 112 + 16;
+    const cols = 4;
+    const defaultX = (index % cols) * 112 + 16;
+    const defaultY = Math.floor(index / cols) * 112 + 16;
 
-      return {
-        id: table.id,
-        number: table.number,
-        section: table.section,
-        orderingEnabled: table.orderingEnabled,
-        positionX: table.positionX ?? defaultX,
-        positionY: table.positionY ?? defaultY,
-        width: table.width ?? 96,
-        height: table.height ?? 96,
-        guestCount: table.guestCount,
-        seatedAt: effectiveSeatedAt?.toISOString() ?? null,
-        elapsedMinutes,
-        assignedServer: table.assignedServer,
-        state: deriveTableState({
-          orderingEnabled: table.orderingEnabled,
-          effectiveSeatedAt,
-          activeItems,
-          overdueItems,
-          awaitingPayment,
-          openOrders,
-        }),
-        stats: {
-          orderCount: tableOrders.length,
-          activeItems,
-          overdueItems,
-          billTotal,
-          paidTotal,
-          remaining: Math.max(0, billTotal - paidTotal),
-        },
-      };
+    const state = deriveTableState({
+      orderingEnabled: table.orderingEnabled,
+      effectiveSeatedAt: occupancyStartedAt,
+      activeItems,
+      overdueItems,
+      awaitingPayment,
+      openOrders,
     });
 
-  return { tables: tableSnapshots, servers };
+    return {
+      id: table.id,
+      number: table.number,
+      section: table.section,
+      orderingEnabled: table.orderingEnabled,
+      positionX: table.positionX ?? defaultX,
+      positionY: table.positionY ?? defaultY,
+      width: table.width ?? 96,
+      height: table.height ?? 96,
+      guestCount: table.guestCount,
+      seatedAt: occupancyStartedAt?.toISOString() ?? null,
+      elapsedMinutes: occupancyMinutes,
+      occupancyMinutes,
+      assignedServer: table.assignedServer,
+      state,
+      stats: {
+        orderCount: tableOrders.length,
+        activeItems,
+        overdueItems,
+        billTotal,
+        paidTotal,
+        remaining: Math.max(0, billTotal - paidTotal),
+      },
+    };
+  });
+
+  await ensureTableAttendAlerts(restaurantId, tableSnapshots);
+
+  return { tables: tableSnapshots, servers, stateLegend: FLOOR_STATE_LABELS };
 }
 
 export async function updateTableFloor(
@@ -194,25 +259,52 @@ export async function updateTableFloor(
     await openTableOrdering(tableId);
   }
 
-  const seatedAt =
-    data.seated === true && !table.seatedAt && !table.orderingOpenedAt
-      ? new Date()
-      : data.seated === false
-        ? null
-        : undefined;
+  const tableIsOpen =
+    data.seated === true ||
+    table.orderingEnabled ||
+    Boolean(table.seatedAt || table.orderingOpenedAt);
+
+  let seatedAt: Date | null | undefined;
+  if (data.seated === false) {
+    seatedAt = null;
+  } else if (
+    data.seated === true &&
+    !table.seatedAt &&
+    !table.orderingOpenedAt
+  ) {
+    seatedAt = new Date();
+  } else if (
+    data.assignedServerId &&
+    tableIsOpen &&
+    !table.seatedAt &&
+    !table.orderingOpenedAt
+  ) {
+    seatedAt = new Date();
+  }
+
+  const patch: {
+    positionX?: number;
+    positionY?: number;
+    width?: number;
+    height?: number;
+    section?: string | null;
+    assignedServerId?: string | null;
+    guestCount?: number | null;
+    seatedAt?: Date | null;
+  } = {};
+
+  if (data.positionX !== undefined) patch.positionX = data.positionX;
+  if (data.positionY !== undefined) patch.positionY = data.positionY;
+  if (data.width !== undefined) patch.width = data.width;
+  if (data.height !== undefined) patch.height = data.height;
+  if (data.section !== undefined) patch.section = data.section;
+  if (data.assignedServerId !== undefined) patch.assignedServerId = data.assignedServerId;
+  if (data.guestCount !== undefined) patch.guestCount = data.guestCount;
+  if (seatedAt !== undefined) patch.seatedAt = seatedAt;
 
   const updated = await prisma.table.update({
     where: { id: tableId },
-    data: {
-      positionX: data.positionX,
-      positionY: data.positionY,
-      width: data.width,
-      height: data.height,
-      section: data.section,
-      assignedServerId: data.assignedServerId,
-      guestCount: data.guestCount,
-      seatedAt,
-    },
+    data: patch,
   });
   return { table: updated };
 }

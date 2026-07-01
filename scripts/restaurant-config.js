@@ -3,8 +3,9 @@
  *
  * Resolution order:
  *   1. process.env.RESTAURANT_CONFIG
- *   2. restaurant.config.json
- *   3. restaurant.config.example.json
+ *   2. .deployment-config.json (last db:reset / seed)
+ *   3. restaurant.config.json
+ *   4. restaurant.config.example.json
  *
  * Formats:
  *   - Legacy single: { restaurant, staff, menu, platformAdmin, app }
@@ -14,6 +15,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
+const DEPLOYMENT_MARKER = path.join(ROOT, ".deployment-config.json");
 
 const ROLE_PREFIX = {
   OWNER: "owner",
@@ -30,9 +32,30 @@ function slugify(value) {
     .replace(/^-+|-+$/g, "");
 }
 
+function readDeploymentMarker() {
+  if (!fs.existsSync(DEPLOYMENT_MARKER)) return null;
+  try {
+    const saved = JSON.parse(fs.readFileSync(DEPLOYMENT_MARKER, "utf8"));
+    if (!saved?.configPath) return null;
+    const resolved = path.resolve(ROOT, saved.configPath);
+    return fs.existsSync(resolved) ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDeploymentMarker(configPath) {
+  const relative = path.relative(ROOT, configPath) || configPath;
+  fs.writeFileSync(
+    DEPLOYMENT_MARKER,
+    `${JSON.stringify({ configPath: relative, savedAt: new Date().toISOString() }, null, 2)}\n`,
+  );
+}
+
 function resolveConfigPath() {
   const candidates = [
     process.env.RESTAURANT_CONFIG && path.resolve(ROOT, process.env.RESTAURANT_CONFIG),
+    readDeploymentMarker(),
     path.join(ROOT, "restaurant.config.json"),
     path.join(ROOT, "restaurant.config.example.json"),
   ].filter(Boolean);
@@ -169,7 +192,8 @@ function loadDeploymentConfig() {
   }
 
   const app = {
-    url: raw.app?.url || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+    // QR codes and webhooks use NEXT_PUBLIC_APP_URL at runtime — keep in sync with app.url in the JSON file.
+    url: process.env.NEXT_PUBLIC_APP_URL || raw.app?.url || "http://localhost:3000",
     name: raw.app?.name || "TableTap",
   };
 
@@ -265,6 +289,7 @@ function loadRestaurantConfig() {
 module.exports = {
   loadRestaurantConfig,
   loadDeploymentConfig,
+  saveDeploymentMarker,
   slugify,
   resolveConfigPath,
   normalizeMenu,

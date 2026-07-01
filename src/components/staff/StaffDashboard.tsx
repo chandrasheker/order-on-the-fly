@@ -218,6 +218,10 @@ export function StaffDashboard() {
   const fetchDashboard = useCallback(async () => {
     try {
       const dashRes = await fetch("/api/staff/dashboard");
+      if (dashRes.status === 401) {
+        router.push("/");
+        return;
+      }
       if (!dashRes.ok) return;
       const data = await dashRes.json();
       setOrders(data.orders);
@@ -233,7 +237,7 @@ export function StaffDashboard() {
     } catch (error) {
       console.error("Dashboard fetch failed:", error);
     }
-  }, []);
+  }, [router]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -485,7 +489,7 @@ export function StaffDashboard() {
               {user?.name} · <span className="text-orange-400 capitalize">{user?.role?.toLowerCase()}</span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="header-trailing-actions flex items-center gap-2">
             {!alertsEnabled && (
               <button
                 type="button"
@@ -534,8 +538,13 @@ export function StaffDashboard() {
                 <Link href="/admin/qr" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
                   <QrCode className="w-4 h-4" />
                 </Link>
-                <Link href="/admin/menu" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
+                <Link
+                  href="/admin/menu"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-300 text-sm font-medium"
+                  title="Manage menu categories and items"
+                >
                   <Utensils className="w-4 h-4" />
+                  <span className="hidden sm:inline">Menu</span>
                 </Link>
                 <Link href="/admin/rewards" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 relative">
                   <Gift className="w-4 h-4" />

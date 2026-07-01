@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Spinner, Badge } from "@/components/ui";
-import { Crown, Save, Sparkles, CheckSquare, Square } from "lucide-react";
+import { Crown, Save, Sparkles, CheckSquare, Square, ChevronDown, ChevronUp } from "lucide-react";
 import type { FeatureKey } from "@/lib/feature-catalog";
+import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
+import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 
 type FeatureRow = {
   key: FeatureKey;
@@ -22,15 +24,27 @@ type RestaurantFeatures = {
   features: FeatureRow[];
 };
 
-export function PlatformFeaturesPanel() {
+export function PlatformFeaturesPanel({ tenantId }: { tenantId: string }) {
   const [restaurants, setRestaurants] = useState<RestaurantFeatures[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Record<FeatureKey, boolean>>>({});
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
+  const {
+    search,
+    setSearch,
+    filtered: filteredRestaurants,
+    isExpanded,
+    toggleExpanded,
+    expandAll,
+    collapseAll,
+    total,
+    showing,
+  } = useRestaurantSearch(restaurants);
+
   const load = useCallback(async () => {
-    const res = await fetch("/api/platform/features");
+    const res = await fetch(`/api/platform/features?tenantId=${encodeURIComponent(tenantId)}`);
     if (!res.ok) {
       setLoading(false);
       return;
@@ -47,7 +61,7 @@ export function PlatformFeaturesPanel() {
     }
     setDrafts(next);
     setLoading(false);
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     load();
@@ -118,7 +132,22 @@ export function PlatformFeaturesPanel() {
         </p>
       )}
 
-      {restaurants.map((restaurant) => {
+      {restaurants.length > 0 && (
+        <PlatformRestaurantToolbar
+          search={search}
+          onSearchChange={setSearch}
+          showing={showing}
+          total={total}
+          onExpandAll={expandAll}
+          onCollapseAll={collapseAll}
+        />
+      )}
+
+      {filteredRestaurants.length === 0 && search.trim() && (
+        <p className="text-sm text-center text-zinc-500 py-8">No restaurants match your search.</p>
+      )}
+
+      {filteredRestaurants.map((restaurant) => {
         const premium = restaurant.features.filter((f) => f.tier === "premium");
         const roadmap = restaurant.features.filter((f) => f.tier === "roadmap");
         const toggleable = [...premium, ...roadmap];
@@ -126,19 +155,32 @@ export function PlatformFeaturesPanel() {
         const enabledCount = toggleable.filter((f) => draft[f.key] ?? f.enabled).length;
         const allEnabled = toggleable.length > 0 && enabledCount === toggleable.length;
         const noneEnabled = enabledCount === 0;
+        const open = isExpanded(restaurant.id);
 
         return (
-          <Card key={restaurant.id} className="p-5 space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-amber-400" />
-                  {restaurant.name}
-                </h2>
-                <p className="text-xs text-zinc-500">
-                  {restaurant.slug} · {enabledCount}/{toggleable.length} premium & roadmap enabled
-                </p>
-              </div>
+          <Card key={restaurant.id} className="overflow-hidden">
+            <div className="p-5 flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => toggleExpanded(restaurant.id)}
+                className="flex flex-1 items-center gap-2 min-w-0 text-left hover:opacity-80 transition-opacity"
+                aria-expanded={open}
+              >
+                {open ? (
+                  <ChevronUp className="w-5 h-5 text-zinc-400 shrink-0" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-zinc-400 shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Crown className="w-5 h-5 text-amber-400 shrink-0" />
+                    <span className="truncate">{restaurant.name}</span>
+                  </h2>
+                  <p className="text-xs text-zinc-500">
+                    {restaurant.slug} · {enabledCount}/{toggleable.length} premium & roadmap enabled
+                  </p>
+                </div>
+              </button>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="secondary"
@@ -170,6 +212,8 @@ export function PlatformFeaturesPanel() {
               </div>
             </div>
 
+            {open && (
+            <div className="px-5 pb-5 space-y-5 border-t border-white/5 pt-5">
             <div className="space-y-3">
               <h3 className="text-sm font-medium text-amber-300/90">Premium (billable)</h3>
               {premium.map((feature) => (
@@ -229,6 +273,8 @@ export function PlatformFeaturesPanel() {
                 </label>
               ))}
             </div>
+            </div>
+            )}
           </Card>
         );
       })}

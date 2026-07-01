@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { encryptSecret } from "@/lib/credential-crypto";
 import { dispatchRealtimeNotifications } from "@/lib/outbound-notification-service";
+import { getAppBaseUrl } from "@/lib/server-app-url";
 import { todayDateString, formatCurrency } from "@/lib/utils";
 import { getOrderPaymentSummary, recordOrderPayment } from "@/lib/payment-allocation-service";
 import type { PaymentGatewayProvider } from "@/generated/prisma/client";
@@ -22,7 +23,7 @@ export async function getPaymentGatewaySettings(restaurantId: string) {
     provider: row.paymentGatewayProvider,
     keyId: row.paymentGatewayKeyId,
     webhookConfigured: Boolean(row.paymentWebhookSecret),
-    webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/api/webhooks/payment/${row.slug}`,
+    webhookUrl: `${getAppBaseUrl()}/api/webhooks/payment/${row.slug}`,
   };
 }
 

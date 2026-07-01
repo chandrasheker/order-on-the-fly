@@ -1,172 +1,62 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button, Card, Input, Spinner, Badge } from "@/components/ui";
-import { LogOut, Shield, Save, Download, Users, Crown } from "lucide-react";
-import type { Role } from "@/generated/prisma/client";
-import { DEFAULT_SLOT_COUNTS } from "@/lib/staff-permissions";
-import { PlatformFeaturesPanel } from "@/components/platform/PlatformFeaturesPanel";
-import { cn } from "@/lib/utils";
+import { Badge, Card, Input, Spinner } from "@/components/ui";
+import { Building2, ChevronRight, Plus, Search } from "lucide-react";
+import { PlatformShell } from "@/components/platform/PlatformShell";
 
-type PlatformTab = "staff" | "features";
-
-interface SlotRow {
-  slotKey: string;
-  role: Role;
-  userId: string | null;
-  name: string;
-  email: string;
-  password: string;
-}
-
-interface RestaurantConfig {
+type TenantSummary = {
   id: string;
   name: string;
   slug: string;
-  staffConfigured: boolean;
-  counts: { owner: number; manager: number; cook: number; server: number };
-  slots: Array<Omit<SlotRow, "password">>;
-}
+  plan: string;
+  subscriptionStatus: string;
+  billingEmail: string | null;
+  restaurants: Array<{ id: string; name: string; slug: string }>;
+};
 
-function buildSlotsFromCounts(
-  restaurant: RestaurantConfig,
-  drafts: Record<string, SlotRow>
-): SlotRow[] {
-  return restaurant.slots.map((slot) => ({
-    ...slot,
-    password: drafts[slot.slotKey]?.password ?? "",
-    name: drafts[slot.slotKey]?.name ?? slot.name,
-    email: drafts[slot.slotKey]?.email ?? slot.email,
-  }));
-}
-
-function slotsForCounts(
-  slug: string,
-  counts: RestaurantConfig["counts"],
-  existing: SlotRow[]
-): SlotRow[] {
-  const keys: Array<{ slotKey: string; role: Role }> = [];
-  for (let i = 1; i <= counts.owner; i++) keys.push({ slotKey: `owner${i}`, role: "OWNER" });
-  for (let i = 1; i <= counts.manager; i++) keys.push({ slotKey: `manager${i}`, role: "MANAGER" });
-  for (let i = 1; i <= counts.cook; i++) keys.push({ slotKey: `cook${i}`, role: "COOK" });
-  for (let i = 1; i <= counts.server; i++) keys.push({ slotKey: `server${i}`, role: "SERVER" });
-
-  const byKey = new Map(existing.map((s) => [s.slotKey, s]));
-  return keys.map(({ slotKey, role }) => {
-    const prev = byKey.get(slotKey);
-    return {
-      slotKey,
-      role,
-      userId: prev?.userId ?? null,
-      name: prev?.name ?? `${role.charAt(0)}${role.slice(1).toLowerCase()} ${slotKey.replace(/\D/g, "")}`,
-      email: prev?.email ?? `${slotKey}@${slug}.com`,
-      password: prev?.password ?? "",
-    };
-  });
-}
-
-export default function PlatformUsersPage() {
+export default function PlatformHomePage() {
   const router = useRouter();
-  const [tab, setTab] = useState<PlatformTab>("staff");
   const [admin, setAdmin] = useState<{ name: string; email: string } | null>(null);
-  const [restaurants, setRestaurants] = useState<RestaurantConfig[]>([]);
+  const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [countsDraft, setCountsDraft] = useState<Record<string, RestaurantConfig["counts"]>>({});
-  const [slotDrafts, setSlotDrafts] = useState<Record<string, Record<string, SlotRow>>>({});
-  const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
-    const [meRes, configRes] = await Promise.all([
-      fetch("/api/platform/auth/me"),
-      fetch("/api/platform/staff-config"),
-    ]);
-
+    const meRes = await fetch("/api/platform/auth/me");
     if (!meRes.ok) {
       router.push("/platform/login");
       return;
     }
-
     const me = await meRes.json();
     setAdmin(me.admin);
 
-    if (configRes.ok) {
-      const data = await configRes.json();
-      const list = data.restaurants as RestaurantConfig[];
-      setRestaurants(list);
-
-      const nextCounts: typeof countsDraft = {};
-      const nextSlots: typeof slotDrafts = {};
-      for (const r of list) {
-        nextCounts[r.id] = r.counts;
-        nextSlots[r.id] = Object.fromEntries(
-          buildSlotsFromCounts(r, {}).map((s) => [s.slotKey, s])
-        );
-      }
-      setCountsDraft(nextCounts);
-      setSlotDrafts(nextSlots);
+    const res = await fetch("/api/platform/tenants");
+    if (res.ok) {
+      const json = await res.json();
+      const list = (json.tenants ?? []) as TenantSummary[];
+      list.sort((a, b) => a.name.localeCompare(b.name));
+      setTenants(list);
     }
     setLoading(false);
   }, [router]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
-  const logout = async () => {
-    await fetch("/api/platform/auth/logout", { method: "POST" });
-    router.push("/platform/login");
-  };
-
-  const updateCount = (
-    restaurantId: string,
-    field: keyof RestaurantConfig["counts"],
-    value: number
-  ) => {
-    setCountsDraft((prev) => {
-      const counts = { ...prev[restaurantId], [field]: Math.max(0, value) };
-      const restaurant = restaurants.find((r) => r.id === restaurantId);
-      if (restaurant) {
-        const currentSlots = Object.values(slotDrafts[restaurantId] ?? {});
-        const nextSlots = slotsForCounts(restaurant.slug, counts, currentSlots);
-        setSlotDrafts((s) => ({ ...s, [restaurantId]: Object.fromEntries(nextSlots.map((x) => [x.slotKey, x])) }));
-      }
-      return { ...prev, [restaurantId]: counts };
-    });
-  };
-
-  const saveRestaurant = async (restaurantId: string) => {
-    const counts = countsDraft[restaurantId];
-    const slots = Object.values(slotDrafts[restaurantId] ?? {});
-    if (!counts) return;
-
-    setSavingId(restaurantId);
-    setMessage(null);
-
-    const res = await fetch("/api/platform/staff-config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ restaurantId, ...counts, ownerSlots: counts.owner, managerSlots: counts.manager, cookSlots: counts.cook, serverSlots: counts.server, slots }),
-    });
-
-    if (res.ok) {
-      setMessage({
-        type: "ok",
-        text: "Staff configuration saved. Passwords you entered are now active — use Download CSV to export them.",
-      });
-      await load();
-    } else {
-      const data = await res.json();
-      setMessage({ type: "err", text: data.error || "Save failed" });
-    }
-    setSavingId(null);
-  };
-
-  const downloadCsv = (restaurantId: string, reset = false) => {
-    window.location.href = `/api/platform/staff-export?restaurantId=${restaurantId}${reset ? "&reset=true" : ""}`;
-  };
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return tenants;
+    return tenants.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.slug.toLowerCase().includes(q) ||
+        t.billingEmail?.toLowerCase().includes(q),
+    );
+  }, [tenants, search]);
 
   if (loading) {
     return (
@@ -177,250 +67,86 @@ export default function PlatformUsersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/5 px-4 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-violet-400" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold">TableTap Super Admin</h1>
-              <p className="text-sm text-zinc-400">
-                {admin?.name} · {admin?.email}
-              </p>
-            </div>
-          </div>
-          <Button variant="secondary" size="sm" onClick={logout}>
-            <LogOut className="w-4 h-4" /> Logout
-          </Button>
+    <PlatformShell
+      admin={admin}
+      title="TableTap Super Admin"
+      subtitle="Select a tenant to manage its restaurants"
+      actions={
+        <Link
+          href="/tenant/signup"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:text-white"
+        >
+          <Plus className="w-4 h-4" /> New tenant
+        </Link>
+      }
+    >
+      <div className="space-y-6">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tenants by name or slug…"
+            className="pl-10"
+            aria-label="Search tenants"
+          />
         </div>
-        <div className="max-w-4xl mx-auto px-4 mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={() => setTab("staff")}
-            className={cn(
-              "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors",
-              tab === "staff"
-                ? "bg-violet-500/20 border-violet-500/40 text-violet-200"
-                : "bg-white/5 border-white/10 text-zinc-400 hover:text-white"
-            )}
-          >
-            <Users className="w-4 h-4" /> Staff setup
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("features")}
-            className={cn(
-              "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors",
-              tab === "features"
-                ? "bg-amber-500/20 border-amber-500/40 text-amber-200"
-                : "bg-white/5 border-white/10 text-zinc-400 hover:text-white"
-            )}
-          >
-            <Crown className="w-4 h-4" /> Premium features
-          </button>
-          <Link
-            href="/platform/tenants"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border bg-white/5 border-white/10 text-zinc-400 hover:text-white ml-auto"
-          >
-            Tenants
-          </Link>
-          <Link
-            href="/platform/billing"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border bg-white/5 border-white/10 text-zinc-400 hover:text-white"
-          >
-            Billing
-          </Link>
-          <Link
-            href="/tenant/signup"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:text-white"
-          >
-            + New tenant
-          </Link>
-        </div>
-      </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-        {tab === "features" ? (
-          <PlatformFeaturesPanel />
-        ) : (
-          <>
-        <p className="text-sm text-zinc-400">
-          Configure how many owner, manager, cook, and server sessions each restaurant gets. Each
-          slot is a unique login. Default: {DEFAULT_SLOT_COUNTS.owner} owner,{" "}
-          {DEFAULT_SLOT_COUNTS.manager} managers, {DEFAULT_SLOT_COUNTS.cook} cooks,{" "}
-          {DEFAULT_SLOT_COUNTS.server} servers.
+        <p className="text-xs text-zinc-500">
+          {search.trim()
+            ? `${filtered.length} of ${tenants.length} tenant${tenants.length === 1 ? "" : "s"}`
+            : `${tenants.length} tenant${tenants.length === 1 ? "" : "s"} total`}
         </p>
 
-        {message && (
-          <p
-            className={`text-sm text-center ${
-              message.type === "ok" ? "text-emerald-400" : "text-red-400"
-            }`}
-          >
-            {message.text}
-          </p>
-        )}
-
-        {restaurants.map((restaurant) => {
-          const counts = countsDraft[restaurant.id] ?? restaurant.counts;
-          const slots = Object.values(slotDrafts[restaurant.id] ?? {});
-
-          return (
-            <Card key={restaurant.id} className="p-5 space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-violet-400" />
-                  <h2 className="text-lg font-semibold">{restaurant.name}</h2>
-                  {restaurant.staffConfigured && (
-                    <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
-                      Configured
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => downloadCsv(restaurant.id)}
-                  >
-                    <Download className="w-4 h-4" /> Download CSV
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => downloadCsv(restaurant.id, true)}
-                  >
-                    Reset &amp; export
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {(
-                  [
-                    ["owner", "Owners"],
-                    ["manager", "Managers"],
-                    ["cook", "Cooks"],
-                    ["server", "Servers"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <div key={key}>
-                    <label className="text-xs text-zinc-500 block mb-1">{label}</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={counts[key]}
-                      onChange={(e) =>
-                        updateCount(restaurant.id, key, parseInt(e.target.value, 10) || 0)
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-3">
-                {slots.map((slot) => (
-                  <div
-                    key={slot.slotKey}
-                    className="rounded-xl border border-white/10 bg-white/[0.02] p-4 space-y-3"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-sm">{slot.slotKey}</span>
-                      <Badge className="bg-violet-500/15 text-violet-300 border-violet-500/30 capitalize">
-                        {slot.role.toLowerCase()}
-                      </Badge>
-                    </div>
-                    <div className="grid sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-xs text-zinc-500 block mb-1">Name</label>
-                        <Input
-                          value={slot.name}
-                          onChange={(e) =>
-                            setSlotDrafts((prev) => ({
-                              ...prev,
-                              [restaurant.id]: {
-                                ...prev[restaurant.id],
-                                [slot.slotKey]: {
-                                  ...prev[restaurant.id][slot.slotKey],
-                                  name: e.target.value,
-                                },
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-zinc-500 block mb-1">Username (email)</label>
-                        <Input
-                          type="email"
-                          value={slot.email}
-                          onChange={(e) =>
-                            setSlotDrafts((prev) => ({
-                              ...prev,
-                              [restaurant.id]: {
-                                ...prev[restaurant.id],
-                                [slot.slotKey]: {
-                                  ...prev[restaurant.id][slot.slotKey],
-                                  email: e.target.value,
-                                },
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-zinc-500 block mb-1">Password</label>
-                        <Input
-                          type="password"
-                          placeholder="Leave blank to keep current"
-                          value={slot.password}
-                          onChange={(e) =>
-                            setSlotDrafts((prev) => ({
-                              ...prev,
-                              [restaurant.id]: {
-                                ...prev[restaurant.id],
-                                [slot.slotKey]: {
-                                  ...prev[restaurant.id][slot.slotKey],
-                                  password: e.target.value,
-                                },
-                              },
-                            }))
-                          }
-                          autoComplete="new-password"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <Button
-                onClick={() => saveRestaurant(restaurant.id)}
-                disabled={savingId === restaurant.id}
-                className="w-full sm:w-auto"
+        {filtered.length === 0 && (
+          <Card className="p-8 text-center">
+            <p className="text-zinc-500">
+              {search.trim() ? "No tenants match your search." : "No tenants yet."}
+            </p>
+            {!search.trim() && (
+              <Link
+                href="/tenant/signup"
+                className="inline-block mt-4 text-sm text-violet-400 hover:text-violet-300"
               >
-                {savingId === restaurant.id ? (
-                  <Spinner />
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" /> Save staff configuration
-                  </>
-                )}
-              </Button>
-
-              <p className="text-xs text-zinc-500">
-                Save first with the passwords you want staff to use. Download CSV exports those saved
-                passwords without changing them. Use &quot;Reset &amp; export&quot; only if you need
-                new random passwords.
-              </p>
-            </Card>
-          );
-        })}
-          </>
+                Create the first tenant →
+              </Link>
+            )}
+          </Card>
         )}
-      </main>
-    </div>
+
+        <div className="grid gap-3">
+          {filtered.map((tenant) => (
+            <Link key={tenant.id} href={`/platform/tenants/${tenant.id}`} className="block group">
+              <Card className="p-5 hover:border-violet-500/40 transition-colors">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center shrink-0">
+                      <Building2 className="w-5 h-5 text-violet-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-semibold truncate group-hover:text-violet-200 transition-colors">
+                        {tenant.name}
+                      </h2>
+                      <p className="text-sm text-zinc-500">{tenant.slug}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <Badge className="bg-white/5 text-zinc-300 border-white/10">{tenant.plan}</Badge>
+                        <Badge className="bg-white/5 text-zinc-400 border-white/10">
+                          {tenant.subscriptionStatus}
+                        </Badge>
+                        <span className="text-xs text-zinc-500">
+                          {tenant.restaurants.length} restaurant
+                          {tenant.restaurants.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-violet-400 shrink-0 transition-colors" />
+                </div>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </PlatformShell>
   );
 }

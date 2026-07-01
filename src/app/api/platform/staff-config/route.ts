@@ -28,13 +28,30 @@ function parseCounts(body: Record<string, unknown>): SlotCounts | null {
   return { owner, manager, cook, server };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const tenantId = req.nextUrl.searchParams.get("tenantId");
+  if (!tenantId) {
+    return NextResponse.json(
+      { error: "tenantId query parameter is required" },
+      { status: 400 },
+    );
+  }
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true },
+  });
+  if (!tenant) {
+    return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+  }
+
   const restaurants = await prisma.restaurant.findMany({
+    where: { tenantId },
     orderBy: { name: "asc" },
     include: {
       users: { orderBy: { slotKey: "asc" } },

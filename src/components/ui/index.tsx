@@ -102,6 +102,24 @@ export function Input({
   );
 }
 
+export function Select({
+  className,
+  children,
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={cn(
+        "w-full px-4 py-3 rounded-xl bg-[color:var(--input-bg)] border border-[color:var(--input-border)] text-[color:var(--foreground)] focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all appearance-none cursor-pointer",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </select>
+  );
+}
+
 export function Spinner({ className }: { className?: string }) {
   return (
     <div
