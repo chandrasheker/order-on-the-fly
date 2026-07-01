@@ -2,7 +2,7 @@ const { execSync, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { logInfo, logError } = require("./logger");
-const { loadDeploymentConfig } = require("./restaurant-config");
+const { loadDeploymentConfig, saveDeploymentMarker } = require("./restaurant-config");
 
 require("dotenv/config");
 require("./ensure-env.js");
@@ -94,14 +94,13 @@ function tableExists(db, tableName) {
 
 function needsSeed(db) {
   if (!tableExists(db, "User")) return true;
+  if (process.env.FORCE_SEED === "1") return true;
+
+  // Never re-seed a populated database on `npm run dev` — that would wipe a
+  // db:reset:quad (or any other) setup when restaurant.config.json differs.
   try {
-    const owner = db
-      .prepare("SELECT email, passwordHash FROM User WHERE email = ?")
-      .get(OWNER_EMAIL);
-    if (!owner) return true;
-    if (process.env.SKIP_SEED_PASSWORD_CHECK === "1") return false;
-    const bcrypt = require("bcryptjs");
-    return !bcrypt.compareSync(OWNER_PASSWORD, owner.passwordHash);
+    const row = db.prepare("SELECT COUNT(*) AS count FROM User").get();
+    return (row?.count ?? 0) === 0;
   } catch {
     return true;
   }
@@ -140,14 +139,18 @@ if (needsSeed(sqlite.db)) {
     mode: deployment.mode,
     tenant: deployment.tenant.name,
     restaurants: deployment.restaurants.length,
+    config: deployment.configPath,
   });
   console.log(
     `Seeding ${deployment.restaurants.length} restaurant(s) for tenant ${deployment.tenant.name}...`,
   );
   runTsx("prisma/seed.ts");
+  saveDeploymentMarker(deployment.configPath);
 } else {
   sqlite.db.close();
-  logInfo("init-db", "Seed skipped; owner account already exists");
+  logInfo("init-db", "Seed skipped; database already has users", {
+    config: deployment.configPath,
+  });
 }
 
 try {
@@ -157,8 +160,9 @@ try {
   logError("init-db", "Tenant/branch/floor backfill warning", { error: err.message });
 }
 
-logInfo("init-db", "Database ready", { login: OWNER_EMAIL });
+logInfo("init-db", "Database ready", { login: OWNER_EMAIL, config: deployment.configPath });
 console.log("Database ready.");
+console.log(`Config: ${path.relative(ROOT, deployment.configPath)} (${deployment.restaurants.length} restaurant(s))`);
 console.log(`Tenant: ${deployment.tenant.name} (${deployment.tenant.slug})`);
 for (const r of deployment.restaurants) {
   console.log(`Staff login (${r.name}): ${r.primaryOwner.email}`);

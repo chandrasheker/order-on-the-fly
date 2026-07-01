@@ -21,7 +21,10 @@ function isPrismaCode(error: unknown, code: string) {
 
 /** Ensure tenant + branch + floor exist before stamping FK fields on tables. */
 async function resolveServiceTableScope(restaurantId: string) {
-  await ensureTenantForRestaurant(restaurantId);
+  const tenant = await ensureTenantForRestaurant(restaurantId);
+  if (!tenant) {
+    throw new Error("Restaurant not found");
+  }
   const branch = await ensureDefaultBranch(restaurantId);
   const floor = await ensureDefaultFloor(branch.id, restaurantId);
 

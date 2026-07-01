@@ -48,6 +48,9 @@ next-env.d.ts
 *.db-journal
 prisma/dev.db
 
+/dev.db
+.deployment-config.json
+
 # per-deployment restaurant config (copy restaurant.config.example.json)
 /restaurant.config.json
 

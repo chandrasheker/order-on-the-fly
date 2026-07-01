@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import type { Role } from "@/generated/prisma/client";
+import { prisma } from "@/lib/prisma";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "tabletap-super-secret-key-change-in-production"
@@ -77,7 +78,32 @@ export async function getSession(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(STAFF_SESSION_COOKIE)?.value;
   if (!token) return null;
-  return verifyToken(token);
+  const payload = await verifyToken(token);
+  if (!payload) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      restaurantId: true,
+      restaurant: { select: { id: true, name: true, slug: true } },
+    },
+  });
+
+  if (!user?.restaurant) return null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    restaurantId: user.restaurant.id,
+    restaurantName: user.restaurant.name,
+    restaurantSlug: user.restaurant.slug,
+  };
 }
 
 export async function getPlatformAdminSession(): Promise<PlatformAdminSession | null> {

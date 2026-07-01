@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/init-db.js && next dev",
+    "dev:single": "RESTAURANT_CONFIG=examples/tenant-single.config.json node scripts/init-db.js && next dev",
+    "dev:dual": "RESTAURANT_CONFIG=examples/tenant-dual.config.json node scripts/init-db.js && next dev",
+    "dev:triple": "RESTAURANT_CONFIG=examples/tenant-triple.config.json node scripts/init-db.js && next dev",
+    "dev:quad": "RESTAURANT_CONFIG=examples/tenant-quad.config.json node scripts/init-db.js && next dev",
     "dev:clean": "node scripts/start-server.js",
     "start:clean": "node scripts/start-server.js --pull",
     "start:clean:keep-db": "node scripts/start-server.js --pull --no-clean",

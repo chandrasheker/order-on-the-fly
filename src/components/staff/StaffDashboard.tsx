@@ -218,6 +218,10 @@ export function StaffDashboard() {
   const fetchDashboard = useCallback(async () => {
     try {
       const dashRes = await fetch("/api/staff/dashboard");
+      if (dashRes.status === 401) {
+        router.push("/");
+        return;
+      }
       if (!dashRes.ok) return;
       const data = await dashRes.json();
       setOrders(data.orders);
@@ -233,7 +237,7 @@ export function StaffDashboard() {
     } catch (error) {
       console.error("Dashboard fetch failed:", error);
     }
-  }, []);
+  }, [router]);
 
   const fetchData = useCallback(async () => {
     try {
