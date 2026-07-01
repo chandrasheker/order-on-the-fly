@@ -40,6 +40,7 @@ import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
 import { SplitPaymentPanel } from "@/components/staff/SplitPaymentPanel";
 import { AggregatorInboxBanner } from "@/components/staff/AggregatorInboxBanner";
 import { RemoteOrdersPanel } from "@/components/staff/RemoteOrdersPanel";
+import { TableOrdersTodayPanel } from "@/components/staff/TableOrdersTodayPanel";
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { ThermalPrinterButton } from "@/components/staff/ThermalPrinterButton";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
@@ -209,6 +210,7 @@ export function StaffDashboard() {
   const { registerPush } = useStaffPush(Boolean(features.push_alerts));
   const { printReceipt, autoPrint, kitchenChitPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint, toggleKitchenChitPrint, reprintOrderReceipt, printKitchenChit } = useThermalPrinter();
   const [printMessage, setPrintMessage] = useState<string | null>(null);
+  const [tableOrdersRefreshKey, setTableOrdersRefreshKey] = useState(0);
   const dashAbortRef = useRef<AbortController | null>(null);
   const dashFailCountRef = useRef(0);
 
@@ -351,6 +353,7 @@ export function StaffDashboard() {
 
   const handleRemoteOrderPlaced = async (result?: { kitchenChit?: KitchenChitPayload | null }) => {
     fetchData();
+    setTableOrdersRefreshKey((key) => key + 1);
     if (printerSupported && kitchenChitPrint && result?.kitchenChit) {
       try {
         await printKitchenChit(result.kitchenChit);
@@ -648,9 +651,12 @@ export function StaffDashboard() {
             {printMessage}
           </div>
         )}
-        {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
-
-        <KitchenCapacityPanel enabled={Boolean(features.kitchen_capacity)} />
+        {(user && canManageTableOrdering(user.role)) || features.kitchen_capacity ? (
+          <div className="grid lg:grid-cols-2 gap-4 mb-6 items-start">
+            {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
+            <KitchenCapacityPanel enabled={Boolean(features.kitchen_capacity)} />
+          </div>
+        ) : null}
         <GuestRequestsPanel enabled={Boolean(features.call_waiter)} />
 
         {tableSwitchRequests.length > 0 && (
@@ -829,6 +835,27 @@ export function StaffDashboard() {
                   <div>
                     <p className="text-xs text-zinc-500">Missed Timelines</p>
                     <p className="text-xl font-bold">{stats.missedTimelineCount}</p>
+                  </div>
+                </div>
+              </button>
+            )}
+
+            {showTab("tables_today") && (
+              <button
+                type="button"
+                onClick={() => setViewMode("tables_today")}
+                className={cn(
+                  "text-left rounded-2xl border p-4 transition-all",
+                  viewMode === "tables_today"
+                    ? "border-cyan-500/50 bg-cyan-500/10"
+                    : "border-white/10 bg-white/5 hover:border-white/20"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <ClipboardList className="w-5 h-5 text-cyan-400" />
+                  <div>
+                    <p className="text-xs text-zinc-500">Table orders</p>
+                    <p className="text-sm font-semibold text-cyan-200">Today by table</p>
                   </div>
                 </div>
               </button>
@@ -1095,6 +1122,10 @@ export function StaffDashboard() {
               </div>
             )}
           </>
+        )}
+
+        {viewMode === "tables_today" && (
+          <TableOrdersTodayPanel refreshKey={tableOrdersRefreshKey} />
         )}
 
         {viewMode === "offline" && (

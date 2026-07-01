@@ -513,6 +513,63 @@ export async function getTodayOrders(restaurantId: string) {
   });
 }
 
+export async function getTodayOrdersByTable(restaurantId: string) {
+  const tables = await prisma.table.findMany({
+    where: { restaurantId, number: { lt: 900 } },
+    orderBy: { number: "asc" },
+    select: { id: true, number: true },
+  });
+
+  if (tables.length === 0) return [];
+
+  const orders = await prisma.order.findMany({
+    where: {
+      restaurantId,
+      date: todayDateString(),
+      status: { not: "CANCELLED" },
+      tableId: { in: tables.map((table) => table.id) },
+    },
+    include: {
+      items: {
+        select: {
+          id: true,
+          itemName: true,
+          quantity: true,
+          unitPrice: true,
+          status: true,
+          notes: true,
+        },
+        orderBy: { expectedReadyAt: "asc" },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const ordersByTable = new Map<string, typeof orders>();
+  for (const table of tables) ordersByTable.set(table.id, []);
+  for (const order of orders) {
+    if (!order.tableId) continue;
+    const list = ordersByTable.get(order.tableId) ?? [];
+    list.push(order);
+    ordersByTable.set(order.tableId, list);
+  }
+
+  return tables.map((table) => ({
+    id: table.id,
+    number: table.number,
+    orders: (ordersByTable.get(table.id) ?? []).map((order) => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      status: order.status,
+      paidAt: order.paidAt,
+      createdAt: order.createdAt,
+      total: sumOrderRevenue(order.items),
+      items: order.items,
+    })),
+  }));
+}
+
 export async function getPendingPaymentOrders(restaurantId: string) {
   const orders = await prisma.order.findMany({
     where: {

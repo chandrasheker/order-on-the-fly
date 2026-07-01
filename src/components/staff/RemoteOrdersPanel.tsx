@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Phone, UserRound, ShoppingBag, Truck } from "lucide-react";
 import { MenuView } from "@/components/customer/MenuView";
 import { StaffCartPanel } from "@/components/staff/StaffCartPanel";
-import { TableOrderHistory } from "@/components/staff/TableOrderHistory";
 import { Input, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useStaffCartStore } from "@/store/staff-cart";
@@ -77,7 +76,6 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [customerPhone, setCustomerPhone] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
 
@@ -237,7 +235,6 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
       clearCart();
       setCustomerPhone("");
       setOrderNotes("");
-      setHistoryRefreshKey((key) => key + 1);
       await loadTables();
       onOrderPlaced?.({ kitchenChit: json.kitchenChit ?? null });
     } catch (err) {
@@ -368,10 +365,6 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
           />
         )}
       </div>
-
-      {meta.needsTable && tableId && (
-        <TableOrderHistory tableId={tableId} refreshKey={historyRefreshKey} />
-      )}
 
       {items.length > 0 && (
         <StaffCartPanel
