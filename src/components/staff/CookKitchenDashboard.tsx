@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   AlertTriangle,
   Ban,
@@ -33,37 +33,91 @@ type WorkItem = {
 };
 
 const KDS_CATEGORY_FILTER_KEY = "kds-category-filter";
+const GRID_GAP_PX = 8;
+const MIN_TILE_W = 136;
+const MIN_TILE_H = 116;
 
-function useViewportSize() {
-  const [size, setSize] = useState({ width: 1024, height: 768 });
+type CookGridSpec = {
+  cols: number;
+  rows: number;
+  capacity: number;
+  tileWidth: number;
+  tileHeight: number;
+};
 
-  useEffect(() => {
-    const update = () => {
-      setSize({ width: window.innerWidth, height: window.innerHeight });
+function computeCookGridSpec(mainWidth: number, mainHeight: number): CookGridSpec | null {
+  if (mainWidth < MIN_TILE_W || mainHeight < MIN_TILE_H) return null;
+
+  const maxCols = Math.min(4, Math.floor((mainWidth + GRID_GAP_PX) / (MIN_TILE_W + GRID_GAP_PX)));
+  const maxRows = Math.min(
+    6,
+    Math.floor((mainHeight + GRID_GAP_PX) / (MIN_TILE_H + GRID_GAP_PX)),
+  );
+
+  let best: CookGridSpec | null = null;
+
+  for (let cols = 1; cols <= maxCols; cols++) {
+    for (let rows = 1; rows <= maxRows; rows++) {
+      const tileWidth = (mainWidth - (cols - 1) * GRID_GAP_PX) / cols;
+      const tileHeight = (mainHeight - (rows - 1) * GRID_GAP_PX) / rows;
+      if (tileWidth < MIN_TILE_W || tileHeight < MIN_TILE_H) continue;
+
+      const capacity = cols * rows;
+      if (!best || capacity > best.capacity) {
+        best = {
+          cols,
+          rows,
+          capacity,
+          tileWidth: Math.floor(tileWidth),
+          tileHeight: Math.floor(tileHeight),
+        };
+      }
+    }
+  }
+
+  return (
+    best ?? {
+      cols: 1,
+      rows: 1,
+      capacity: 1,
+      tileWidth: Math.floor(mainWidth),
+      tileHeight: Math.floor(mainHeight),
+    }
+  );
+}
+
+const FALLBACK_GRID: CookGridSpec = {
+  cols: 2,
+  rows: 2,
+  capacity: 4,
+  tileWidth: 160,
+  tileHeight: 140,
+};
+
+function useCookGridSpec() {
+  const [spec, setSpec] = useState<CookGridSpec>(FALLBACK_GRID);
+  const observerRef = useRef<ResizeObserver | null>(null);
+
+  const mainRef = useCallback((node: HTMLElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
+
+    const measure = () => {
+      const rect = node.getBoundingClientRect();
+      const next = computeCookGridSpec(rect.width, rect.height);
+      if (next) setSpec(next);
     };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    observerRef.current = observer;
   }, []);
 
-  return size;
-}
+  useEffect(() => () => observerRef.current?.disconnect(), []);
 
-/** How many ticket tiles fit on screen without any scrolling. */
-function maxVisibleTiles(width: number, height: number) {
-  if (width < 480) return height < 640 ? 4 : 6;
-  if (width < 768) return 6;
-  if (width < 1024) return 9;
-  return 12;
-}
-
-function gridForCount(count: number, width: number) {
-  if (count <= 1) return { cols: 1, rows: 1 };
-  if (count <= 2) return { cols: width < 640 ? 1 : 2, rows: 2 };
-  if (count <= 4) return { cols: 2, rows: 2 };
-  if (count <= 6) return { cols: width < 768 ? 2 : 3, rows: 3 };
-  if (count <= 9) return { cols: 3, rows: 3 };
-  return { cols: width < 1024 ? 3 : 4, rows: Math.ceil(count / (width < 1024 ? 3 : 4)) };
+  return { mainRef, gridSpec: spec };
 }
 
 function loadSavedCategoryFilter(): Set<string> {
@@ -99,7 +153,7 @@ export function CookKitchenDashboard({
   const [now, setNow] = useState(Date.now());
   const [actingId, setActingId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
-  const viewport = useViewportSize();
+  const { mainRef, gridSpec } = useCookGridSpec();
 
   const { alertsEnabled, enableAlerts, enabling } = useStaffNotifications(alerts, user.id);
 
@@ -204,20 +258,19 @@ export function CookKitchenDashboard({
 
   const overdueCount = workItems.filter((row) => row.item.isOverdue).length;
 
-  const maxVisible = maxVisibleTiles(viewport.width, viewport.height);
-  const totalPages = Math.max(1, Math.ceil(workItems.length / maxVisible));
+  const { cols, rows, capacity, tileWidth, tileHeight } = gridSpec;
+  const totalPages = Math.max(1, Math.ceil(workItems.length / capacity));
 
   useEffect(() => {
     setPage((current) => Math.min(current, totalPages - 1));
   }, [totalPages]);
 
   const visibleItems = useMemo(() => {
-    const start = page * maxVisible;
-    return workItems.slice(start, start + maxVisible);
-  }, [workItems, page, maxVisible]);
+    const start = page * capacity;
+    return workItems.slice(start, start + capacity);
+  }, [workItems, page, capacity]);
 
-  const waitingCount = Math.max(0, workItems.length - visibleItems.length);
-  const gridLayout = gridForCount(visibleItems.length, viewport.width);
+  const waitingCount = Math.max(0, workItems.length - (page + 1) * capacity);
 
   const toggleCategoryFilter = (slug: string) => {
     setSelectedCategorySlugs((prev) => {
@@ -232,11 +285,25 @@ export function CookKitchenDashboard({
   const updateItem = async (orderId: string, itemId: string, action: string) => {
     setActingId(itemId);
     try {
-      await fetch(`/api/orders/${orderId}`, {
+      const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, itemId }),
       });
+      if (!res.ok) return;
+
+      if (action === "reject-item") {
+        setTickets((prev) =>
+          prev
+            .map((ticket) =>
+              ticket.id !== orderId
+                ? ticket
+                : { ...ticket, items: ticket.items.filter((item) => item.id !== itemId) },
+            )
+            .filter((ticket) => ticket.items.length > 0),
+        );
+      }
+
       await loadKitchen();
     } catch (error) {
       swallowPollingFetchError(error);
@@ -380,8 +447,8 @@ export function CookKitchenDashboard({
         </div>
       )}
 
-      {/* Work grid — fills all remaining space, no page scroll */}
-      <main className="flex-1 min-h-0 p-1.5 sm:p-2 overflow-hidden">
+      {/* Work grid — fixed slot size per device; tiles never grow beyond capacity layout */}
+      <main ref={mainRef} className="flex-1 min-h-0 p-1.5 sm:p-2 overflow-hidden">
         {!kdsEnabled ? (
           <div className="h-full flex items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-center">
             <p className="text-amber-200 font-medium">Kitchen display is not enabled</p>
@@ -394,22 +461,32 @@ export function CookKitchenDashboard({
           </div>
         ) : (
           <div
-            className="h-full grid gap-1.5 sm:gap-2"
-            style={{
-              gridTemplateColumns: `repeat(${gridLayout.cols}, minmax(0, 1fr))`,
-              gridTemplateRows: `repeat(${gridLayout.rows}, minmax(0, 1fr))`,
-            }}
+            className="h-full flex justify-center items-start overflow-hidden"
+            style={{ gap: GRID_GAP_PX }}
           >
-            {visibleItems.map(({ ticket, item }) => (
-              <CookWorkTile
-                key={item.id}
-                ticket={ticket}
-                item={item}
-                now={now}
-                busy={actingId === item.id}
-                onAction={(action) => void updateItem(ticket.id, item.id, action)}
-              />
-            ))}
+            <div
+              className="grid content-start justify-items-stretch"
+              style={{
+                gridTemplateColumns: `repeat(${cols}, ${tileWidth}px)`,
+                gridTemplateRows: `repeat(${rows}, ${tileHeight}px)`,
+                gap: GRID_GAP_PX,
+                maxWidth: cols * tileWidth + (cols - 1) * GRID_GAP_PX,
+                maxHeight: rows * tileHeight + (rows - 1) * GRID_GAP_PX,
+              }}
+            >
+              {visibleItems.map(({ ticket, item }) => (
+                <CookWorkTile
+                  key={item.id}
+                  ticket={ticket}
+                  item={item}
+                  now={now}
+                  busy={actingId === item.id}
+                  compact={tileHeight < 150}
+                  onAction={(action) => void updateItem(ticket.id, item.id, action)}
+                  style={{ width: tileWidth, height: tileHeight, maxWidth: tileWidth, maxHeight: tileHeight }}
+                />
+              ))}
+            </div>
           </div>
         )}
       </main>
@@ -464,13 +541,17 @@ function CookWorkTile({
   item,
   now,
   busy,
+  compact,
   onAction,
+  style,
 }: {
   ticket: KitchenBoardTicket;
   item: KitchenBoardTicket["items"][number];
   now: number;
   busy: boolean;
+  compact?: boolean;
   onAction: (action: string) => void;
+  style?: CSSProperties;
 }) {
   const remaining = Math.max(
     0,
@@ -480,16 +561,17 @@ function CookWorkTile({
 
   return (
     <div
+      style={style}
       className={cn(
-        "min-h-0 rounded-xl border flex flex-col overflow-hidden",
+        "min-h-0 min-w-0 rounded-xl border flex flex-col overflow-hidden shrink-0",
         item.isOverdue
           ? "border-red-500/60 bg-red-500/15 shadow-[inset_0_0_20px_rgba(239,68,68,0.12)]"
           : "border-white/10 bg-black/30",
       )}
     >
-      <div className="shrink-0 px-2 pt-2 pb-1 flex items-start justify-between gap-1">
+      <div className={cn("shrink-0 px-2 pt-1.5 pb-0.5 flex items-start justify-between gap-1", compact && "pt-1 pb-0")}>
         <div className="min-w-0">
-          <p className="text-2xl sm:text-3xl font-black leading-none truncate">
+          <p className={cn("font-black leading-none truncate", compact ? "text-xl" : "text-2xl sm:text-3xl")}>
             {ticket.locationLabel ?? `T${ticket.tableNumber}`}
           </p>
           <p className="text-[10px] text-zinc-500 truncate">#{ticket.orderNumber}</p>
@@ -505,46 +587,50 @@ function CookWorkTile({
       </div>
 
       <div className="flex-1 min-h-0 px-2 flex items-center">
-        <p className="text-sm sm:text-base font-bold leading-tight line-clamp-2">
+        <p className={cn("font-bold leading-tight line-clamp-2", compact ? "text-xs" : "text-sm sm:text-base")}>
           {item.quantity}x {item.itemName}
         </p>
       </div>
 
-      <div className="shrink-0 p-1.5 grid gap-1 grid-cols-2">
-        {isPending && (
+      <div className={cn("shrink-0 grid gap-1 grid-cols-2", compact ? "p-1" : "p-1.5")}>
+        {isPending ? (
           <button
             type="button"
             disabled={busy}
             onClick={() => onAction("prepare-item")}
-            className="col-span-2 h-11 sm:h-12 rounded-lg bg-sky-500 hover:bg-sky-400 active:scale-[0.98] text-white font-black text-sm sm:text-base flex items-center justify-center gap-1.5 disabled:opacity-50"
+            className={cn(
+              "rounded-lg bg-sky-500 hover:bg-sky-400 active:scale-[0.98] text-white font-black flex items-center justify-center gap-1 disabled:opacity-50",
+              compact ? "h-8 text-xs" : "h-11 sm:h-12 text-sm sm:text-base gap-1.5",
+            )}
           >
-            <Play className="w-5 h-5" />
+            <Play className={compact ? "w-3.5 h-3.5" : "w-5 h-5"} />
             START
           </button>
-        )}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onAction("ready-item")}
-          className={cn(
-            "h-11 sm:h-12 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-white font-black text-sm sm:text-base flex items-center justify-center gap-1.5 disabled:opacity-50",
-            isPending ? "" : "col-span-2",
-          )}
-        >
-          <Flame className="w-5 h-5" />
-          READY
-        </button>
+        ) : null}
         <button
           type="button"
           disabled={busy}
           onClick={() => onAction("reject-item")}
           className={cn(
-            "h-11 sm:h-12 rounded-lg border-2 border-red-500/50 bg-red-500/20 hover:bg-red-500/30 active:scale-[0.98] text-red-200 font-bold text-xs flex items-center justify-center gap-1 disabled:opacity-50",
+            "rounded-lg border-2 border-red-500/50 bg-red-500/20 hover:bg-red-500/30 active:scale-[0.98] text-red-200 font-bold flex items-center justify-center gap-1 disabled:opacity-50",
+            compact ? "h-8 text-[10px]" : "h-11 sm:h-12 text-xs sm:text-sm",
             isPending ? "" : "col-span-2",
           )}
         >
-          <Ban className="w-4 h-4" />
+          <Ban className={compact ? "w-3 h-3" : "w-4 h-4"} />
           OOS
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onAction("ready-item")}
+          className={cn(
+            "col-span-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-white font-black flex items-center justify-center gap-1 disabled:opacity-50",
+            compact ? "h-8 text-xs gap-1" : "h-11 sm:h-12 text-sm sm:text-base gap-1.5",
+          )}
+        >
+          <Flame className={compact ? "w-3.5 h-3.5" : "w-5 h-5"} />
+          READY
         </button>
       </div>
     </div>
