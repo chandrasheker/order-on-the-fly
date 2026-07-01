@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Spinner } from "@/components/ui";
 import { cn, formatCountdown } from "@/lib/utils";
+import { formatCookChannelShort } from "@/lib/order-channel";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
 import { useKitchenTicketAlerts } from "@/hooks/useKitchenTicketAlerts";
 import { useStaffNotifications, type StaffAlertItem } from "@/hooks/useStaffNotifications";
@@ -571,10 +572,13 @@ function CookWorkTile({
     >
       <div className={cn("shrink-0 px-2 pt-1.5 pb-0.5 flex items-start justify-between gap-1", compact && "pt-1 pb-0")}>
         <div className="min-w-0">
-          <p className={cn("font-black leading-none truncate", compact ? "text-xl" : "text-2xl sm:text-3xl")}>
-            {ticket.locationLabel ?? `T${ticket.tableNumber}`}
+          <p className="text-[10px] text-zinc-500 truncate leading-tight">
+            {formatCookChannelShort({
+              orderChannel: ticket.orderChannel,
+              tableNumber: ticket.tableNumber,
+            })}{" "}
+            · #{ticket.orderNumber}
           </p>
-          <p className="text-[10px] text-zinc-500 truncate">#{ticket.orderNumber}</p>
         </div>
         <span
           className={cn(
@@ -586,9 +590,14 @@ function CookWorkTile({
         </span>
       </div>
 
-      <div className="flex-1 min-h-0 px-2 flex items-center">
-        <p className={cn("font-bold leading-tight line-clamp-2", compact ? "text-xs" : "text-sm sm:text-base")}>
-          {item.quantity}x {item.itemName}
+      <div className="flex-1 min-h-0 px-2 flex items-center justify-center">
+        <p
+          className={cn(
+            "font-black leading-tight line-clamp-3 text-center w-full",
+            compact ? "text-base" : "text-lg sm:text-xl md:text-2xl",
+          )}
+        >
+          <span className="text-zinc-400 font-bold">{item.quantity}×</span> {item.itemName}
         </p>
       </div>
 
