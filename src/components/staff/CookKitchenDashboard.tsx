@@ -33,6 +33,38 @@ type WorkItem = {
 
 const KDS_CATEGORY_FILTER_KEY = "kds-category-filter";
 
+function useViewportSize() {
+  const [size, setSize] = useState({ width: 1024, height: 768 });
+
+  useEffect(() => {
+    const update = () => {
+      setSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  return size;
+}
+
+/** How many ticket tiles fit on screen without any scrolling. */
+function maxVisibleTiles(width: number, height: number) {
+  if (width < 480) return height < 640 ? 4 : 6;
+  if (width < 768) return 6;
+  if (width < 1024) return 9;
+  return 12;
+}
+
+function gridForCount(count: number, width: number) {
+  if (count <= 1) return { cols: 1, rows: 1 };
+  if (count <= 2) return { cols: width < 640 ? 1 : 2, rows: 2 };
+  if (count <= 4) return { cols: 2, rows: 2 };
+  if (count <= 6) return { cols: width < 768 ? 2 : 3, rows: 3 };
+  if (count <= 9) return { cols: 3, rows: 3 };
+  return { cols: width < 1024 ? 3 : 4, rows: Math.ceil(count / (width < 1024 ? 3 : 4)) };
+}
+
 function loadSavedCategoryFilter(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
@@ -60,16 +92,20 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [actingId, setActingId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const viewport = useViewportSize();
 
   const { alertsEnabled, enableAlerts, enabling } = useStaffNotifications(alerts, user.id);
 
   useKitchenTicketAlerts(tickets, selectedCategorySlugs);
 
   useEffect(() => {
-    const prev = document.body.style.overflow;
+    const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.body.classList.add("cook-kiosk");
     return () => {
-      document.body.style.overflow = prev;
+      document.body.style.overflow = prevOverflow;
+      document.body.classList.remove("cook-kiosk");
     };
   }, []);
 
@@ -162,13 +198,20 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
 
   const overdueCount = workItems.filter((row) => row.item.isOverdue).length;
 
-  const gridCols = useMemo(() => {
-    const n = workItems.length;
-    if (n <= 1) return 1;
-    if (n <= 4) return 2;
-    if (n <= 9) return 3;
-    return 4;
-  }, [workItems.length]);
+  const maxVisible = maxVisibleTiles(viewport.width, viewport.height);
+  const totalPages = Math.max(1, Math.ceil(workItems.length / maxVisible));
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages - 1));
+  }, [totalPages]);
+
+  const visibleItems = useMemo(() => {
+    const start = page * maxVisible;
+    return workItems.slice(start, start + maxVisible);
+  }, [workItems, page, maxVisible]);
+
+  const waitingCount = Math.max(0, workItems.length - visibleItems.length);
+  const gridLayout = gridForCount(visibleItems.length, viewport.width);
 
   const toggleCategoryFilter = (slug: string) => {
     setSelectedCategorySlugs((prev) => {
@@ -207,7 +250,7 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
 
   if (loading) {
     return (
-      <div className="h-[100dvh] bg-app-shell flex items-center justify-center overflow-hidden">
+      <div className="fixed inset-0 z-[60] bg-app-shell flex items-center justify-center overflow-hidden">
         <Spinner className="w-10 h-10" />
       </div>
     );
@@ -216,7 +259,7 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
   const topAlert = alerts[0];
 
   return (
-    <div className="h-[100dvh] w-full flex flex-col overflow-hidden bg-app-shell text-foreground touch-manipulation">
+    <div className="fixed inset-0 z-[60] w-full flex flex-col overflow-hidden bg-app-shell text-foreground touch-manipulation">
       {/* Top bar — fixed height */}
       <header className="shrink-0 border-b border-white/10 px-2 sm:px-3 py-2 flex items-center gap-2">
         <ChefHat className="w-6 h-6 text-orange-400 shrink-0" />
@@ -224,12 +267,36 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
           <p className="text-sm font-bold truncate leading-tight">{user.restaurantName}</p>
           <p className="text-[11px] text-zinc-500 truncate">
             {workItems.length} to cook
+            {waitingCount > 0 && ` · +${waitingCount} on next page`}
             {readyLabels.length > 0 && ` · ${readyLabels.length} ready`}
             {overdueCount > 0 && (
               <span className="text-red-400 font-semibold"> · {overdueCount} overdue</span>
             )}
           </p>
         </div>
+        {totalPages > 1 && (
+          <div className="shrink-0 flex items-center gap-0.5">
+            <button
+              type="button"
+              disabled={page === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              className="h-9 min-w-9 px-2 rounded-lg bg-white/5 border border-white/10 text-zinc-300 disabled:opacity-30 font-bold text-sm"
+            >
+              ◀
+            </button>
+            <span className="text-[10px] text-zinc-500 tabular-nums min-w-[2.5rem] text-center">
+              {page + 1}/{totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              className="h-9 min-w-9 px-2 rounded-lg bg-white/5 border border-white/10 text-zinc-300 disabled:opacity-30 font-bold text-sm"
+            >
+              ▶
+            </button>
+          </div>
+        )}
         {overdueCount > 0 && (
           <div className="shrink-0 flex items-center gap-1 rounded-lg bg-red-500/20 border border-red-500/40 px-2 py-1">
             <AlertTriangle className="w-4 h-4 text-red-300 animate-pulse" />
@@ -268,7 +335,7 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
 
       {/* Station chips — one row, no wrap scroll on main content */}
       {kdsEnabled && stations.length > 0 && (
-        <div className="shrink-0 border-b border-white/5 px-2 py-1.5 flex gap-1 overflow-x-auto">
+        <div className="shrink-0 border-b border-white/5 px-2 py-1.5 flex flex-wrap gap-1 max-h-14 overflow-hidden">
           <StationChip
             label="All"
             active={selectedCategorySlugs.size === 0}
@@ -313,11 +380,11 @@ export function CookKitchenDashboard({ user, kdsEnabled }: CookKitchenDashboardP
           <div
             className="h-full grid gap-1.5 sm:gap-2"
             style={{
-              gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
-              gridTemplateRows: `repeat(${Math.ceil(workItems.length / gridCols)}, minmax(0, 1fr))`,
+              gridTemplateColumns: `repeat(${gridLayout.cols}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${gridLayout.rows}, minmax(0, 1fr))`,
             }}
           >
-            {workItems.map(({ ticket, item }) => (
+            {visibleItems.map(({ ticket, item }) => (
               <CookWorkTile
                 key={item.id}
                 ticket={ticket}

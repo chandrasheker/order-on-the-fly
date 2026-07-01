@@ -6,7 +6,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 export function FixedThemeToggle() {
   return (
     <div
-      className="fixed top-3 right-3 z-[70] pointer-events-none sm:top-4 sm:right-4"
+      className="fixed-theme-toggle fixed top-3 right-3 z-[70] pointer-events-none sm:top-4 sm:right-4"
       aria-hidden={false}
     >
       <div className="pointer-events-auto">
