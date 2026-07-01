@@ -14,7 +14,6 @@ import {
   QrCode,
   BarChart3,
   Utensils,
-  History,
   Gift,
   TimerOff,
   X,
@@ -31,7 +30,7 @@ import {
   Radio,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
-import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
+import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen } from "@/lib/utils";
 import { canAccessTab, canPerformOrderAction, canAccessAdminMenu, canAccessReports, type StaffTab } from "@/lib/staff-permissions";
 import type { Role } from "@/generated/prisma/client";
 import Link from "next/link";
@@ -198,7 +197,6 @@ export function StaffDashboard() {
   const [user, setUser] = useState<{ id: string; name: string; role: Role; restaurantName: string } | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
-  const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
   const [allowedTabs, setAllowedTabs] = useState<StaffTab[]>(["active"]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [missedTimeline, setMissedTimeline] = useState<MissedTimelineItem[]>([]);
@@ -216,7 +214,7 @@ export function StaffDashboard() {
     useStaffNotifications(alerts, user?.id);
   useStaffReadyAlerts(orders, user?.id);
   const { registerPush } = useStaffPush(Boolean(features.push_alerts));
-  const { printReceipt, autoPrint, kitchenChitPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint, toggleKitchenChitPrint, reprintOrderReceipt, printKitchenChit } = useThermalPrinter();
+  const { printReceipt, autoPrint, kitchenChitPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint, toggleKitchenChitPrint, printKitchenChit } = useThermalPrinter();
   const [printMessage, setPrintMessage] = useState<string | null>(null);
   const [tableOrdersRefreshKey, setTableOrdersRefreshKey] = useState(0);
   const dashAbortRef = useRef<AbortController | null>(null);
@@ -247,7 +245,6 @@ export function StaffDashboard() {
       const data = await dashRes.json();
       setOrders(data.orders);
       setPendingOrders(data.pendingOrders ?? []);
-      setCompletedOrders(data.completedOrders ?? []);
       setAllowedTabs(data.permissions?.tabs ?? ["active"]);
       setAlerts(data.alerts);
       setMissedTimeline(data.missedTimeline ?? []);
@@ -379,16 +376,6 @@ export function StaffDashboard() {
       }
       window.setTimeout(() => setPrintMessage(null), 5000);
     }
-  };
-
-  const handleReprintReceipt = async (orderId: string) => {
-    try {
-      await reprintOrderReceipt(orderId);
-      setPrintMessage("Receipt reprinted.");
-    } catch (error) {
-      setPrintMessage(error instanceof Error ? error.message : "Reprint failed.");
-    }
-    window.setTimeout(() => setPrintMessage(null), 5000);
   };
 
   const dismissAlert = async (alertId: string) => {
@@ -798,26 +785,6 @@ export function StaffDashboard() {
               </button>
             )}
 
-            {showTab("completed") && (
-              <button
-                onClick={() => setViewMode("completed")}
-                className={cn(
-                  "text-left rounded-2xl border p-4 transition-all",
-                  viewMode === "completed"
-                    ? "border-blue-500/50 bg-blue-500/10"
-                    : "border-white/10 bg-white/5 hover:border-white/20"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <History className="w-5 h-5 text-blue-400" />
-                  <div>
-                    <p className="text-xs text-zinc-500">Completed Orders</p>
-                    <p className="text-xl font-bold">{stats.completedOrders}</p>
-                  </div>
-                </div>
-              </button>
-            )}
-
             {showTab("revenue") && (
               <button
                 type="button"
@@ -834,6 +801,9 @@ export function StaffDashboard() {
                   <div>
                     <p className="text-xs text-zinc-500">Revenue Today</p>
                     <p className="text-xl font-bold">{formatCurrency(stats.revenue)}</p>
+                    <p className="text-xs text-emerald-400/90">
+                      {stats.completedOrders} paid order{stats.completedOrders === 1 ? "" : "s"}
+                    </p>
                   </div>
                 </div>
               </button>
@@ -989,25 +959,15 @@ export function StaffDashboard() {
             <p className="text-sm text-zinc-400 mb-4">
               Today&apos;s revenue from paid orders only (served items, out-of-stock excluded)
             </p>
-            <Card className="p-5 mb-4">
-              <p className="text-sm text-zinc-500">Total Revenue</p>
-              <p className="text-3xl font-bold text-emerald-400">{formatCurrency(stats?.revenue ?? 0)}</p>
-              <p className="text-xs text-zinc-500 mt-1">{stats?.completedOrders ?? 0} paid orders today</p>
+            <Card className="p-8 text-center">
+              <p className="text-sm text-zinc-500">Total revenue</p>
+              <p className="text-4xl font-bold text-emerald-400 mt-1">
+                {formatCurrency(stats?.revenue ?? 0)}
+              </p>
+              <p className="text-sm text-zinc-400 mt-3">
+                {stats?.completedOrders ?? 0} paid order{(stats?.completedOrders ?? 0) === 1 ? "" : "s"} today
+              </p>
             </Card>
-            <div className="space-y-3">
-              {completedOrders.length === 0 ? (
-                <Card className="p-8 text-center text-zinc-400">No paid orders yet today</Card>
-              ) : (
-                completedOrders.map((order) => (
-                  <CompletedOrderRow
-                    key={order.id}
-                    order={order}
-                    canReprint={Boolean(features.thermal_receipts)}
-                    onReprint={handleReprintReceipt}
-                  />
-                ))
-              )}
-            </div>
           </>
         )}
 
@@ -1047,31 +1007,6 @@ export function StaffDashboard() {
                     />
                   ),
                 )}
-              </div>
-            )}
-          </>
-        )}
-
-        {viewMode === "completed" && (
-          <>
-            <p className="text-sm text-zinc-400 mb-4">
-              Today&apos;s completed orders — served and paid
-            </p>
-            {completedOrders.length === 0 ? (
-              <Card className="p-12 text-center">
-                <History className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-                <p className="text-zinc-400">No completed orders yet today.</p>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {completedOrders.map((order) => (
-                  <CompletedOrderRow
-                    key={order.id}
-                    order={order}
-                    canReprint={Boolean(features.thermal_receipts)}
-                    onReprint={handleReprintReceipt}
-                  />
-                ))}
               </div>
             )}
           </>
@@ -1614,110 +1549,5 @@ function PendingPaymentCard({
         </Button>
       )}
     </motion.div>
-  );
-}
-
-function CompletedOrderRow({
-  order,
-  canReprint,
-  onReprint,
-}: {
-  order: Order;
-  canReprint?: boolean;
-  onReprint?: (orderId: string) => void;
-}) {
-  const total =
-    order.total ??
-    sumOrderRevenue(
-      order.items.map((i) => ({
-        unitPrice: i.unitPrice ?? 0,
-        quantity: i.quantity,
-        status: i.status,
-      }))
-    );
-
-  return (
-    <Card className="p-4">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="text-lg font-bold">Table {order.table.number}</span>
-            <span className="text-zinc-500">#{order.orderNumber}</span>
-            <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
-            {order.paidAt && (
-              <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30">Paid</Badge>
-            )}
-          </div>
-          <p className="text-xs text-zinc-500 mb-3">
-            {new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            {order.customerName && ` · ${order.customerName}`}
-            {order.placedByName && ` · Placed by ${order.placedByName}`}
-            {order.paidAt &&
-              ` · Paid ${new Date(order.paidAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
-            {order.paidByName && ` by ${order.paidByName}`}
-          </p>
-          <div className="space-y-1">
-            {order.items.map((item) => {
-              const lineTotal = orderItemLineTotal({
-                unitPrice: item.unitPrice ?? 0,
-                quantity: item.quantity,
-                status: item.status,
-              });
-              return (
-                <div key={item.id} className="flex justify-between text-sm gap-2">
-                  <span
-                    className={
-                      item.status === "UNAVAILABLE" ? "text-zinc-500" : "text-zinc-300"
-                    }
-                  >
-                    {item.quantity}x {item.itemName}
-                    {item.status === "SERVED" && (
-                      <span className="text-zinc-500 ml-2">
-                        {item.servedByName ? `${item.servedByName}` : "served"}
-                        {item.servedAt &&
-                          ` ${new Date(item.servedAt).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}`}
-                      </span>
-                    )}
-                    {item.status === "UNAVAILABLE" && (
-                      <span className="text-amber-500/80 ml-2">not served — out of stock</span>
-                    )}
-                  </span>
-                  {item.unitPrice !== undefined && (
-                    <span
-                      className={
-                        item.status === "UNAVAILABLE"
-                          ? "text-zinc-600 line-through shrink-0"
-                          : "text-zinc-400 shrink-0"
-                      }
-                    >
-                      {item.status === "UNAVAILABLE"
-                        ? formatCurrency(0)
-                        : formatCurrency(lineTotal)}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div className="text-right sm:pl-4 sm:border-l sm:border-white/10 space-y-2">
-          <p className="text-xs text-zinc-500">Bill total</p>
-          <p className="text-xl font-bold text-emerald-400">{formatCurrency(total)}</p>
-          {canReprint && order.paidAt && onReprint && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="w-full sm:w-auto"
-              onClick={() => void onReprint(order.id)}
-            >
-              Reprint receipt
-            </Button>
-          )}
-        </div>
-      </div>
-    </Card>
   );
 }
