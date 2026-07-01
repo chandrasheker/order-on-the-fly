@@ -3,18 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/init-db.js && next dev",
-    "dev:single": "RESTAURANT_CONFIG=examples/tenant-single.config.json node scripts/init-db.js && next dev",
-    "dev:dual": "RESTAURANT_CONFIG=examples/tenant-dual.config.json node scripts/init-db.js && next dev",
-    "dev:triple": "RESTAURANT_CONFIG=examples/tenant-triple.config.json node scripts/init-db.js && next dev",
-    "dev:quad": "RESTAURANT_CONFIG=examples/tenant-quad.config.json node scripts/init-db.js && next dev",
+    "dev": "node scripts/init-db.js && node scripts/run-with-mem.js npx next dev",
+    "dev:single": "RESTAURANT_CONFIG=examples/tenant-single.config.json node scripts/init-db.js && node scripts/run-with-mem.js npx next dev",
+    "dev:dual": "RESTAURANT_CONFIG=examples/tenant-dual.config.json node scripts/init-db.js && node scripts/run-with-mem.js npx next dev",
+    "dev:triple": "RESTAURANT_CONFIG=examples/tenant-triple.config.json node scripts/init-db.js && node scripts/run-with-mem.js npx next dev",
+    "dev:quad": "RESTAURANT_CONFIG=examples/tenant-quad.config.json node scripts/init-db.js && node scripts/run-with-mem.js npx next dev",
     "dev:clean": "node scripts/start-server.js",
     "start:clean": "node scripts/start-server.js --pull",
     "start:clean:keep-db": "node scripts/start-server.js --pull --no-clean",
-    "build": "next build",
+    "build": "node scripts/build-sequential.js",
+    "build:next": "node scripts/run-with-mem.js npx next build --webpack",
+    "typecheck": "node scripts/run-with-mem.js npx tsc --noEmit",
     "db:generate": "prisma generate",
-    "start": "next start",
-    "lint": "eslint",
+    "start": "node scripts/run-with-mem.js npx next start",
+    "lint": "node scripts/run-with-mem.js npx eslint",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:setup": "node scripts/init-db.js",
@@ -38,7 +40,7 @@
     "printer:agent": "node services/printer-agent/index.mjs",
     "worker": "node scripts/worker.mjs",
     "jobs:process": "curl -s -X POST http://localhost:3000/api/jobs/process",
-    "postinstall": "prisma generate"
+    "postinstall": "node scripts/run-with-mem.js npx prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

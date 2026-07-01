@@ -27,12 +27,8 @@ function prismaCliArgs() {
 
 function runPrisma(subcommand) {
   const args = subcommand.trim().split(/\s+/);
-  const prismaBin = path.join(ROOT, "node_modules", "prisma", "build", "index.js");
-  if (!fs.existsSync(prismaBin)) {
-    execSync(`npx prisma ${subcommand}`, { stdio: "inherit", cwd: ROOT, env: process.env });
-    return;
-  }
-  const result = spawnSync(process.execPath, [prismaBin, ...args, ...prismaCliArgs()], {
+  const runWithMem = path.join(ROOT, "scripts", "run-with-mem.js");
+  const result = spawnSync(process.execPath, [runWithMem, "npx", "prisma", ...args, ...prismaCliArgs()], {
     stdio: "inherit",
     cwd: ROOT,
     env: process.env,
@@ -43,20 +39,15 @@ function runPrisma(subcommand) {
 }
 
 function runTsx(scriptRelativePath) {
-  const scriptPath = path.join(ROOT, scriptRelativePath);
-  const tsxCli = path.join(ROOT, "node_modules", "tsx", "dist", "cli.mjs");
-  if (fs.existsSync(tsxCli)) {
-    const result = spawnSync(process.execPath, [tsxCli, scriptPath], {
-      stdio: "inherit",
-      cwd: ROOT,
-      env: process.env,
-    });
-    if (result.status !== 0) {
-      throw new Error(`${scriptRelativePath} failed`);
-    }
-    return;
+  const runWithMem = path.join(ROOT, "scripts", "run-with-mem.js");
+  const result = spawnSync(process.execPath, [runWithMem, "npx", "tsx", scriptRelativePath], {
+    stdio: "inherit",
+    cwd: ROOT,
+    env: process.env,
+  });
+  if (result.status !== 0) {
+    throw new Error(`${scriptRelativePath} failed`);
   }
-  execSync(`npx tsx ${scriptRelativePath}`, { stdio: "inherit", cwd: ROOT, env: process.env });
 }
 
 function schemaPath() {
