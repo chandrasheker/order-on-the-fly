@@ -9,7 +9,7 @@ import {
 } from "@/lib/order-service";
 import { transitionOrderItemDirect, InvalidOrderTransitionError } from "@/domains/orders/transitions";
 import { requestOrderPayment } from "@/lib/payment-service";
-import { recordFullOrderPayment, recordOrderPayment, recordTableTabFullPayment, orderItemHasPayment, finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
+import { recordFullOrderPayment, recordOrderPayment, recordTableTabFullPayment, orderItemHasPayment } from "@/lib/payment-allocation-service";
 import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
@@ -355,7 +355,6 @@ export async function PATCH(
 
     await clearAlertsForOrderItem(itemId);
     await syncOrderStatus(id);
-    await finalizeOrderIfSettled(id);
 
     logInfo("api:orders/[id]", "Item marked unavailable", { orderId: id, itemId });
     return NextResponse.json({ success: true });
