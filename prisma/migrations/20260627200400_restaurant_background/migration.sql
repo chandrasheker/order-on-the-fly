@@ -1,7 +1,7 @@
 -- AlterTable
 ALTER TABLE "Restaurant" ADD COLUMN "backgroundImageUrl" TEXT;
 
--- Varanasi demo: Street View of Varanasi Hotel V
+-- Dvadtech demo: Street View of Dvadtech Hotel V
 UPDATE "Restaurant"
-SET "backgroundImageUrl" = '/restaurants/varanasi-hotel-background.jpg'
-WHERE "slug" = 'varanasi';
+SET "backgroundImageUrl" = '/restaurants/dvadtech-hotel-background.jpg'
+WHERE "slug" = 'dvadtech';

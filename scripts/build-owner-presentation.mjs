@@ -9,8 +9,8 @@ import path from "path";
 
 const BASE = "http://localhost:3000";
 const OUT = path.join(process.cwd(), "presentation", "screenshots");
-const SLUG = "varanasi";
-const TABLE_TOKEN = "varanasi-table-1";
+const SLUG = "dvadtech";
+const TABLE_TOKEN = "dvadtech-table-1";
 
 mkdirSync(OUT, { recursive: true });
 
@@ -31,7 +31,7 @@ async function shot(page, name, url, opts = {}) {
 
 async function staffLogin(page) {
   await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
-  await page.fill('input[type="email"]', "owner@varanasi.com");
+  await page.fill('input[type="email"]', "owner@dvadtech.com");
   await page.fill('input[type="password"]', "admin123");
   await page.click('button[type="submit"]');
   await page.waitForURL("**/staff/dashboard**", { timeout: 30000 });
@@ -68,7 +68,7 @@ async function main() {
   await shot(mobile, "01-customer-checkin", null, { waitMs: 300 });
 
   await mobile.goto(`${BASE}/order/${SLUG}/${TABLE_TOKEN}`, { waitUntil: "networkidle" });
-  await mobile.waitForSelector("text=Varanasi Restaurant", { timeout: 30000 });
+  await mobile.waitForSelector("text=Dvadtech Restaurant", { timeout: 30000 });
   await mobile.waitForTimeout(1500);
   await shot(mobile, "02-customer-menu", null, { waitMs: 500 });
 

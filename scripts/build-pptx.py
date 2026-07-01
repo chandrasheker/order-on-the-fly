@@ -345,10 +345,10 @@ def build():
     # 17 Demo
     s = prs.slides.add_slide(blank)
     set_bg(s)
-    add_title(s, "Live demo credentials", "Varanasi Restaurant demo")
+    add_title(s, "Live demo credentials", "Dvadtech Restaurant demo")
     add_bullets(s, [
-        "Staff login: owner@varanasi.com / admin123",
-        "Super admin: admin@varanasi.com / admin@varanasi → /platform/login",
+        "Staff login: owner@dvadtech.com / admin123",
+        "Super admin: admin@dvadtech.com / admin@dvadtech → /platform/login",
         "Customer: scan Table 1 QR from staff dashboard",
         "",
         "Documentation:",
