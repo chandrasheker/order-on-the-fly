@@ -40,19 +40,21 @@ export function generateRewardCode() {
 }
 
 export function getBaseUrl() {
-  // Table QR codes use this value only — there is no LAN / eth auto-detection.
-  // Set NEXT_PUBLIC_APP_URL in .env (shell exports and .env.local override .env).
+  // Prefer APP_URL when available (runtime). NEXT_PUBLIC_* is compile-time inlined by Next/Turbopack.
   const raw =
+    process.env.APP_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
     "http://localhost:3000";
   return raw.replace(/\/+$/, "");
 }
 
+/** @deprecated Server routes should use `@/lib/server-app-url` instead. */
 export function getTableCheckInUrl(slug: string, qrToken: string) {
   return `${getBaseUrl()}/order/${slug}/${qrToken}/check-in`;
 }
 
+/** @deprecated Server routes should use `@/lib/server-app-url` instead. */
 export function getTableOrderUrl(slug: string, qrToken: string) {
   return getTableCheckInUrl(slug, qrToken);
 }

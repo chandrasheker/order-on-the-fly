@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getTableOrderUrl } from "@/lib/utils";
+import { getTableOrderUrl } from "@/lib/server-app-url";
 
 export async function GET() {
   const session = await requireSession(["OWNER", "MANAGER"]);

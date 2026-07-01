@@ -165,15 +165,19 @@ console.log("Database ready.");
 console.log(`Config: ${path.relative(ROOT, deployment.configPath)} (${deployment.restaurants.length} restaurant(s))`);
 console.log(`Tenant: ${deployment.tenant.name} (${deployment.tenant.slug})`);
 
-const qrBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+const qrBaseUrl = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 const configAppUrl = deployment.app.url.replace(/\/$/, "");
-console.log(`QR / guest URLs use: ${qrBaseUrl}`);
+console.log(`QR / guest URLs use: ${qrBaseUrl} (APP_URL — read at runtime)`);
 if (configAppUrl !== qrBaseUrl) {
   console.warn(
-    `⚠️  restaurant config app.url (${configAppUrl}) differs from NEXT_PUBLIC_APP_URL (${qrBaseUrl}). ` +
-      "Table QR codes always use NEXT_PUBLIC_APP_URL. Update .env or app.url so they match.",
+    `⚠️  restaurant config app.url (${configAppUrl}) differs from APP_URL (${qrBaseUrl}). ` +
+      "Table QR codes use APP_URL from .env.",
   );
 }
+console.log(
+  "Tip: if you change NEXT_PUBLIC_APP_URL, restart dev — APP_URL is synced automatically. " +
+    "Run `rm -rf .next` only if client bundles still show an old URL.",
+);
 
 for (const r of deployment.restaurants) {
   console.log(`Staff login (${r.name}): ${r.primaryOwner.email}`);
