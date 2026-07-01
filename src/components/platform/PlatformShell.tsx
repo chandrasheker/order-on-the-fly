@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
-import { ChevronRight, LogOut, Shield } from "lucide-react";
+import { ArrowLeft, ChevronRight, LogOut, Shield } from "lucide-react";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 interface PlatformShellProps {
@@ -11,6 +11,8 @@ interface PlatformShellProps {
   title: string;
   subtitle?: string;
   breadcrumb?: { label: string; href?: string }[];
+  backHref?: string;
+  backLabel?: string;
   children: React.ReactNode;
   actions?: React.ReactNode;
 }
@@ -20,6 +22,8 @@ export function PlatformShell({
   title,
   subtitle,
   breadcrumb,
+  backHref,
+  backLabel,
   children,
   actions,
 }: PlatformShellProps) {
@@ -39,9 +43,20 @@ export function PlatformShell({
       <header className="border-b border-white/5 px-4 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
-              <Shield className="w-5 h-5 text-violet-400" />
-            </div>
+            {backHref ? (
+              <Link
+                href={backHref}
+                aria-label={backLabel ?? "Back"}
+                title={backLabel ?? "Back"}
+                className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center shrink-0 hover:bg-white/10 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Link>
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
+                <Shield className="w-5 h-5 text-violet-400" />
+              </div>
+            )}
             <div className="min-w-0">
               <h1 className="text-xl font-bold truncate">{title}</h1>
               <p className="text-sm text-zinc-400 truncate">

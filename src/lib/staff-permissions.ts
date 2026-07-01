@@ -3,7 +3,6 @@ import type { Role } from "@/generated/prisma/client";
 export type StaffTab =
   | "active"
   | "pending"
-  | "completed"
   | "revenue"
   | "overdue"
   | "missed"
@@ -21,9 +20,9 @@ export type OrderAction =
   | "record-payment";
 
 const TAB_ACCESS: Record<Role, StaffTab[]> = {
-  OWNER: ["active", "pending", "completed", "revenue", "overdue", "missed", "tables_today", "alerts", "offline"],
-  MANAGER: ["active", "pending", "completed", "revenue", "overdue", "missed", "tables_today", "alerts", "offline"],
-  COOK: ["active", "completed", "overdue", "missed", "alerts"],
+  OWNER: ["active", "pending", "revenue", "overdue", "missed", "tables_today", "alerts", "offline"],
+  MANAGER: ["active", "pending", "revenue", "overdue", "missed", "tables_today", "alerts", "offline"],
+  COOK: ["active", "revenue", "overdue", "missed", "alerts"],
   SERVER: ["active", "pending", "overdue", "tables_today", "alerts", "offline"],
 };
 

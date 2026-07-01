@@ -121,6 +121,8 @@ export function PlatformTenantWorkspace() {
       admin={admin}
       title={tenant.name}
       subtitle={`${tenant.plan} · ${tenant.subscriptionStatus} · ${tenant.restaurants.length} restaurant${tenant.restaurants.length === 1 ? "" : "s"}${!tenant.isEnabled ? " · DISABLED" : ""}`}
+      backHref="/platform"
+      backLabel="All tenants"
       breadcrumb={[
         { label: "All tenants", href: "/platform" },
         { label: tenant.name },
