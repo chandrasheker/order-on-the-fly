@@ -18,12 +18,17 @@ export function TableOrderingPanel() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/tables/manage");
-    if (res.ok) {
-      const json = await res.json();
-      setTables(json.tables ?? []);
+    try {
+      const res = await fetch("/api/tables/manage");
+      if (res.ok) {
+        const json = await res.json();
+        setTables(json.tables ?? []);
+      }
+    } catch {
+      /* ignore transient network errors during dev reload or polling */
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
