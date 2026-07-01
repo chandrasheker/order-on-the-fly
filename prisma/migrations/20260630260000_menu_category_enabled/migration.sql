@@ -1,0 +1,1 @@
+ALTER TABLE "MenuCategory" ADD COLUMN "isEnabled" BOOLEAN NOT NULL DEFAULT true;

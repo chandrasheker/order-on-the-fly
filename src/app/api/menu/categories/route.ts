@@ -74,6 +74,7 @@ export async function PATCH(req: NextRequest) {
     const category = await updateMenuCategory(session.restaurantId, categoryId, {
       name: body.name != null ? String(body.name) : undefined,
       icon: body.icon !== undefined ? (body.icon == null ? null : String(body.icon)) : undefined,
+      isEnabled: body.isEnabled !== undefined ? Boolean(body.isEnabled) : undefined,
     });
     scheduleMenuSync(session.restaurantId);
     return NextResponse.json({ category });

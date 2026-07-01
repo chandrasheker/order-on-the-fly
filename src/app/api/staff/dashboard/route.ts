@@ -22,32 +22,33 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const restaurant = await prisma.restaurant.findUnique({
-    where: { id: session.restaurantId },
-    select: { id: true, slug: true },
-  });
-  if (!restaurant) {
-    return NextResponse.json(
-      { error: "Session expired. Please sign in again.", code: "RESTAURANT_NOT_FOUND" },
-      { status: 401 },
-    );
-  }
-
-  const today = todayDateString();
-  const features = await getRestaurantFeatureFlags(session.restaurantId);
-
   try {
-    await ensureServiceTables(session.restaurantId, session.restaurantSlug);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Setup failed";
-    if (message.includes("Restaurant not found")) {
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: session.restaurantId },
+      select: { id: true, slug: true },
+    });
+    if (!restaurant) {
       return NextResponse.json(
         { error: "Session expired. Please sign in again.", code: "RESTAURANT_NOT_FOUND" },
         { status: 401 },
       );
     }
-    throw error;
-  }
+
+    const today = todayDateString();
+    const features = await getRestaurantFeatureFlags(session.restaurantId);
+
+    try {
+      await ensureServiceTables(session.restaurantId, session.restaurantSlug);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Setup failed";
+      if (message.includes("Restaurant not found")) {
+        return NextResponse.json(
+          { error: "Session expired. Please sign in again.", code: "RESTAURANT_NOT_FOUND" },
+          { status: 401 },
+        );
+      }
+      throw error;
+    }
   if (features.aggregator_inbox) {
     const { ensureAggregatorConnectionRows } = await import("@/lib/aggregator-connection-service");
     await ensureAggregatorConnectionRows(session.restaurantId);
@@ -171,4 +172,11 @@ export async function GET() {
       unreadAlerts: alerts.length,
     },
   });
+  } catch (error) {
+    console.error("staff/dashboard failed:", error);
+    return NextResponse.json(
+      { error: "Dashboard temporarily unavailable", code: "DASHBOARD_ERROR" },
+      { status: 503 },
+    );
+  }
 }

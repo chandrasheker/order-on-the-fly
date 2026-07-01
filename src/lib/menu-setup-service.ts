@@ -74,7 +74,7 @@ export async function createMenuCategory(
 export async function updateMenuCategory(
   restaurantId: string,
   categoryId: string,
-  input: { name?: string; icon?: string | null },
+  input: { name?: string; icon?: string | null; isEnabled?: boolean },
 ) {
   const category = await prisma.menuCategory.findFirst({
     where: { id: categoryId, restaurantId },
@@ -87,6 +87,7 @@ export async function updateMenuCategory(
     data: {
       name,
       ...(input.icon !== undefined && { icon: input.icon?.trim() || "🍽️" }),
+      ...(input.isEnabled !== undefined && { isEnabled: input.isEnabled }),
     },
     include: { items: { orderBy: { sortOrder: "asc" } } },
   });

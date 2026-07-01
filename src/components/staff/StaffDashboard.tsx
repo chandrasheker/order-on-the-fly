@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell,
@@ -209,6 +209,8 @@ export function StaffDashboard() {
   const { registerPush } = useStaffPush(Boolean(features.push_alerts));
   const { printReceipt, autoPrint, kitchenChitPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint, toggleKitchenChitPrint, reprintOrderReceipt, printKitchenChit } = useThermalPrinter();
   const [printMessage, setPrintMessage] = useState<string | null>(null);
+  const dashAbortRef = useRef<AbortController | null>(null);
+  const dashFailCountRef = useRef(0);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -216,8 +218,17 @@ export function StaffDashboard() {
   }, []);
 
   const fetchDashboard = useCallback(async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+
+    dashAbortRef.current?.abort();
+    const controller = new AbortController();
+    dashAbortRef.current = controller;
+
     try {
-      const dashRes = await fetch("/api/staff/dashboard");
+      const dashRes = await fetch("/api/staff/dashboard", {
+        signal: controller.signal,
+        cache: "no-store",
+      });
       if (dashRes.status === 401) {
         router.push("/");
         return;
@@ -234,8 +245,13 @@ export function StaffDashboard() {
       setTableSwitchRequests(data.tableSwitchRequests ?? []);
       setStats(data.stats);
       setFeatures(data.features ?? {});
+      dashFailCountRef.current = 0;
     } catch (error) {
-      console.error("Dashboard fetch failed:", error);
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      dashFailCountRef.current += 1;
+      if (dashFailCountRef.current <= 2) {
+        console.warn("Dashboard refresh unavailable — will retry automatically");
+      }
     }
   }, [router]);
 
@@ -264,15 +280,20 @@ export function StaffDashboard() {
     void fetchData();
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.hidden) return;
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
       void fetchDashboard();
     }, 8000);
     const onVisible = () => {
       if (!document.hidden) void fetchDashboard();
     };
+    const onOnline = () => void fetchDashboard();
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
     return () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+      dashAbortRef.current?.abort();
     };
   }, [fetchData, fetchDashboard]);
 

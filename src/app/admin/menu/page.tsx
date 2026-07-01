@@ -8,10 +8,10 @@ import {
   ChevronDown,
   ChevronUp,
   FolderPlus,
+  Monitor,
   Plus,
+  Printer,
   Sparkles,
-  ToggleLeft,
-  ToggleRight,
   Trash2,
 } from "lucide-react";
 import { Button, Card, Spinner, Badge, Input } from "@/components/ui";
@@ -30,6 +30,7 @@ interface Category {
   name: string;
   slug: string;
   icon: string | null;
+  isEnabled: boolean;
   items: MenuItem[];
 }
 
@@ -149,11 +150,16 @@ export default function MenuManagePage() {
     rewardBeverageLabel: "",
   });
   const [savingRewards, setSavingRewards] = useState(false);
+  const [restaurantSlug, setRestaurantSlug] = useState("");
+  const [restaurantName, setRestaurantName] = useState("");
+  const [togglingCategoryId, setTogglingCategoryId] = useState<string | null>(null);
+  const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
 
   const fetchMenu = useCallback(async () => {
-    const [menuRes, settingsRes] = await Promise.all([
+    const [menuRes, settingsRes, meRes] = await Promise.all([
       fetch("/api/menu/manage"),
       fetch("/api/rewards/settings"),
+      fetch("/api/auth/me"),
     ]);
     if (!menuRes.ok) {
       router.push("/");
@@ -164,6 +170,11 @@ export default function MenuManagePage() {
     if (settingsRes.ok) {
       const s = await settingsRes.json();
       setRewardSettings(s.settings);
+    }
+    if (meRes.ok) {
+      const me = await meRes.json();
+      setRestaurantSlug(me.user?.restaurantSlug ?? "");
+      setRestaurantName(me.user?.restaurantName ?? "");
     }
     setLoading(false);
   }, [router]);
@@ -270,12 +281,36 @@ export default function MenuManagePage() {
   };
 
   const toggleAvailability = async (itemId: string, isAvailable: boolean) => {
+    setTogglingItemId(itemId);
     await fetch("/api/menu/manage", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ itemId, isAvailable: !isAvailable }),
     });
+    setTogglingItemId(null);
     await fetchMenu();
+  };
+
+  const toggleCategoryEnabled = async (category: Category) => {
+    setTogglingCategoryId(category.id);
+    await fetch("/api/menu/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categoryId: category.id, isEnabled: !category.isEnabled }),
+    });
+    setTogglingCategoryId(null);
+    flash(category.isEnabled ? `Disabled ${category.name}` : `Enabled ${category.name}`);
+    await fetchMenu();
+  };
+
+  const openDigitalDisplay = () => {
+    if (!restaurantSlug) return;
+    window.open(`/display/menu/${restaurantSlug}`, "_blank", "noopener,noreferrer");
+  };
+
+  const openPrintMenu = () => {
+    if (!restaurantSlug) return;
+    window.open(`/display/menu/${restaurantSlug}/print`, "_blank", "noopener,noreferrer");
   };
 
   const updateItem = async (
@@ -341,10 +376,21 @@ export default function MenuManagePage() {
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold">Menu builder</h1>
             <p className="text-sm text-zinc-400">
-              Add categories (Biryanis, Tea, Snacks…) and items — changes show on customer QR menu
-              right away
+              Add categories and items — disable temporarily to hide from QR menu and digital boards
             </p>
           </div>
+          {restaurantSlug && (
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <Button type="button" variant="secondary" size="sm" onClick={openDigitalDisplay}>
+                <Monitor className="w-4 h-4" />
+                Digital display
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={openPrintMenu}>
+                <Printer className="w-4 h-4" />
+                Print menu
+              </Button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -357,6 +403,34 @@ export default function MenuManagePage() {
           >
             {error || message}
           </div>
+        )}
+
+        {restaurantSlug && (
+          <Card className="p-5 border border-cyan-500/20 bg-cyan-500/5 space-y-3">
+            <div>
+              <h2 className="font-semibold text-lg flex items-center gap-2">
+                <Monitor className="w-5 h-5 text-cyan-400" />
+                Digital menu board
+              </h2>
+              <p className="text-sm text-zinc-400 mt-1">
+                Open on a TV or tablet at {restaurantName || "your restaurant"}. It refreshes every
+                30 seconds and only shows enabled categories with live items.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={openDigitalDisplay}>
+                <Monitor className="w-4 h-4" />
+                Open display screen
+              </Button>
+              <Button type="button" variant="secondary" onClick={openPrintMenu}>
+                <Printer className="w-4 h-4" />
+                Print menu (PDF)
+              </Button>
+            </div>
+            <p className="text-xs text-zinc-500 break-all">
+              Display path: /display/menu/{restaurantSlug}
+            </p>
+          </Card>
         )}
 
         <Card className="p-5 space-y-4 border border-orange-500/20">
@@ -430,7 +504,7 @@ export default function MenuManagePage() {
           categories.map((cat) => {
             const isOpen = expanded[cat.id] ?? true;
             return (
-              <Card key={cat.id} className="overflow-hidden">
+              <Card key={cat.id} className={`overflow-hidden ${!cat.isEnabled ? "opacity-70" : ""}`}>
                 <div className="flex items-center gap-2 p-4 border-b border-white/5">
                   <button
                     type="button"
@@ -442,6 +516,7 @@ export default function MenuManagePage() {
                       <h2 className="font-semibold text-lg truncate">{cat.name}</h2>
                       <p className="text-xs text-zinc-500">
                         {cat.items.length} item{cat.items.length === 1 ? "" : "s"}
+                        {!cat.isEnabled ? " · hidden from menu" : ""}
                         {cat.slug === "todays-special" ? " · only one live special at a time" : ""}
                       </p>
                     </div>
@@ -451,6 +526,19 @@ export default function MenuManagePage() {
                       <ChevronDown className="w-5 h-5 text-zinc-500 shrink-0" />
                     )}
                   </button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={cat.isEnabled ? "secondary" : "success"}
+                    disabled={togglingCategoryId === cat.id}
+                    onClick={() => void toggleCategoryEnabled(cat)}
+                  >
+                    {togglingCategoryId === cat.id
+                      ? "…"
+                      : cat.isEnabled
+                        ? "Disable"
+                        : "Enable"}
+                  </Button>
                   <button
                     type="button"
                     onClick={() => void deleteCategory(cat)}
@@ -477,6 +565,7 @@ export default function MenuManagePage() {
                         <ItemRow
                           key={item.id}
                           item={item}
+                          toggling={togglingItemId === item.id}
                           onToggle={toggleAvailability}
                           onUpdate={updateItem}
                           onDelete={deleteItem}
@@ -556,17 +645,19 @@ export default function MenuManagePage() {
 
 function ItemRow({
   item,
+  toggling,
   onToggle,
   onUpdate,
   onDelete,
 }: {
   item: MenuItem;
+  toggling: boolean;
   onToggle: (id: string, available: boolean) => void;
   onUpdate: (id: string, field: "name" | "price" | "prepTimeMinutes", value: string) => void;
   onDelete: (id: string) => void;
 }) {
   return (
-    <Card className="p-3 flex flex-col sm:flex-row sm:items-center gap-3 bg-white/[0.02]">
+    <Card className={`p-3 flex flex-col sm:flex-row sm:items-center gap-3 bg-white/[0.02] ${!item.isAvailable ? "opacity-75" : ""}`}>
       <div className="flex-1 grid sm:grid-cols-[1fr_6rem_5rem] gap-2">
         <Input
           defaultValue={item.name}
@@ -603,7 +694,7 @@ function ItemRow({
           title="Prep minutes"
         />
       </div>
-      <div className="flex items-center gap-2 justify-between sm:justify-end shrink-0">
+      <div className="flex items-center gap-2 justify-between sm:justify-end shrink-0 flex-wrap">
         <Badge
           className={
             item.isAvailable
@@ -611,25 +702,23 @@ function ItemRow({
               : "bg-red-500/15 text-red-400 border-red-500/30"
           }
         >
-          {item.isAvailable ? "Live" : "Hidden"}
+          {item.isAvailable ? "Live" : "Disabled"}
         </Badge>
         <span className="text-xs text-zinc-500">{formatCurrency(item.price)}</span>
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant={item.isAvailable ? "secondary" : "success"}
+          disabled={toggling}
           onClick={() => onToggle(item.id, item.isAvailable)}
-          className="p-1"
-          title={item.isAvailable ? "Hide from menu" : "Show on menu"}
         >
-          {item.isAvailable ? (
-            <ToggleRight className="w-7 h-7 text-emerald-400" />
-          ) : (
-            <ToggleLeft className="w-7 h-7 text-zinc-500" />
-          )}
-        </button>
+          {toggling ? "…" : item.isAvailable ? "Disable" : "Enable"}
+        </Button>
         <button
           type="button"
           onClick={() => onDelete(item.id)}
           className="p-1 text-zinc-500 hover:text-red-400"
+          title="Delete item"
         >
           <Trash2 className="w-4 h-4" />
         </button>
