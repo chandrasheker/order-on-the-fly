@@ -577,6 +577,13 @@ export function StaffDashboard() {
                     <Radio className="w-4 h-4" />
                   </Link>
                 )}
+                <Link
+                  href="/admin/platform"
+                  className="p-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300"
+                  title="Analytics, forecasts, API keys, recipes, branches"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                </Link>
               </>
             )}
             {user && canAccessReports(user.role) && (
