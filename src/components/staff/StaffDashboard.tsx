@@ -220,6 +220,7 @@ export function StaffDashboard() {
   const { printReceipt, autoPrint, kitchenChitPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint, toggleKitchenChitPrint, reprintOrderReceipt, printKitchenChit } = useThermalPrinter();
   const [printMessage, setPrintMessage] = useState<string | null>(null);
   const [tableOrdersRefreshKey, setTableOrdersRefreshKey] = useState(0);
+  const [payingKey, setPayingKey] = useState<string | null>(null);
   const dashAbortRef = useRef<AbortController | null>(null);
   const dashFailCountRef = useRef(0);
 
@@ -348,22 +349,34 @@ export function StaffDashboard() {
   ) => {
     if (!res.ok) {
       alert(json.error || "Could not record payment");
-      fetchData();
+      await fetchData();
       return;
     }
 
-    fetchData();
+    await fetchData();
 
     if (printerSupported && autoPrint && json.receipt) {
-      try {
-        await printReceipt(json.receipt);
-        setPrintMessage("Receipt sent to printer.");
-      } catch (error) {
-        setPrintMessage(
-          error instanceof Error ? error.message : "Payment saved, but receipt print failed.",
-        );
-      }
-      window.setTimeout(() => setPrintMessage(null), 5000);
+      void (async () => {
+        try {
+          await printReceipt(json.receipt!);
+          setPrintMessage("Receipt sent to printer.");
+        } catch (error) {
+          setPrintMessage(
+            error instanceof Error ? error.message : "Payment saved, but receipt print failed.",
+          );
+        }
+        window.setTimeout(() => setPrintMessage(null), 5000);
+      })();
+    }
+  };
+
+  const runPayment = async (key: string, action: () => Promise<void>) => {
+    if (payingKey) return;
+    setPayingKey(key);
+    try {
+      await action();
+    } finally {
+      setPayingKey(null);
     }
   };
 
@@ -1036,7 +1049,9 @@ export function StaffDashboard() {
                       key={`tab-${tableOrders[0]!.table.number}`}
                       orders={tableOrders}
                       role={role!}
+                      payingKey={payingKey}
                       onPaymentComplete={handlePaymentComplete}
+                      runPayment={runPayment}
                     />
                   ) : (
                     <PendingPaymentCard
@@ -1044,7 +1059,9 @@ export function StaffDashboard() {
                       order={tableOrders[0]!}
                       role={role!}
                       splitBillEnabled={Boolean(features.split_bill)}
+                      payingKey={payingKey}
                       onPaymentComplete={handlePaymentComplete}
+                      runPayment={runPayment}
                     />
                   ),
                 )}
@@ -1410,15 +1427,39 @@ function ActiveOrderCard({
 function TableTabPendingCard({
   orders,
   role,
+  payingKey,
   onPaymentComplete,
+  runPayment,
 }: {
   orders: Order[];
   role: Role;
+  payingKey: string | null;
   onPaymentComplete: (res: Response, json: { error?: string; receipt?: ReceiptPayload }) => Promise<void>;
+  runPayment: (key: string, action: () => Promise<void>) => Promise<void>;
 }) {
   const anchor = orders[0]!;
-  const total = orders.reduce((sum, order) => sum + (order.total ?? 0), 0);
+  const total = orders.reduce(
+    (sum, order) => sum + (order.paymentSummary?.remaining ?? order.total ?? 0),
+    0,
+  );
   const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
+  const tableKey = `tab-${anchor.table.number}`;
+
+  const payOrder = (orderId: string, payTab: boolean) => {
+    void runPayment(`${tableKey}-${orderId}`, async () => {
+      try {
+        const res = await fetch(`/api/orders/${orderId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "mark-paid", method: "UPI", ...(payTab ? { payTab: true } : {}) }),
+        });
+        const json = await res.json().catch(() => ({}));
+        await onPaymentComplete(res, json);
+      } catch (error) {
+        swallowPollingFetchError(error);
+      }
+    });
+  };
 
   return (
     <motion.div
@@ -1438,13 +1479,28 @@ function TableTabPendingCard({
       </div>
 
       <div className="space-y-3 mb-4">
-        {orders.map((order) => (
+        {orders.map((order) => {
+          const due = order.paymentSummary?.remaining ?? order.total ?? 0;
+          return (
           <div key={order.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
-            <p className="text-xs text-zinc-500 mb-2">
-              Order #{order.orderNumber}
-              {order.customerName ? ` · ${order.customerName}` : ""}
-              {order.placedByName ? ` · staff: ${order.placedByName}` : ""}
-            </p>
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <p className="text-xs text-zinc-500">
+                Order #{order.orderNumber}
+                {order.customerName ? ` · ${order.customerName}` : ""}
+                {order.placedByName ? ` · staff: ${order.placedByName}` : ""}
+              </p>
+              {canPay && due > 0.01 && orders.length > 1 && (
+                <Button
+                  variant="success"
+                  size="sm"
+                  className="shrink-0 bg-emerald-600 hover:bg-emerald-500 text-xs px-2 py-1 h-auto"
+                  disabled={Boolean(payingKey)}
+                  onClick={() => payOrder(order.id, false)}
+                >
+                  Pay {formatCurrency(due)}
+                </Button>
+              )}
+            </div>
             <div className="space-y-1">
               {order.items.map((item) => (
                 <div key={item.id} className="flex justify-between text-sm">
@@ -1460,7 +1516,8 @@ function TableTabPendingCard({
               ))}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
@@ -1473,21 +1530,10 @@ function TableTabPendingCard({
           variant="success"
           size="sm"
           className="w-full bg-emerald-600 hover:bg-emerald-500"
-          onClick={async () => {
-            try {
-              const res = await fetch(`/api/orders/${anchor.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "mark-paid", method: "UPI", payTab: true }),
-              });
-              const json = await res.json().catch(() => ({}));
-              await onPaymentComplete(res, json);
-            } catch (error) {
-              swallowPollingFetchError(error);
-            }
-          }}
+          disabled={Boolean(payingKey) || total <= 0.01}
+          onClick={() => payOrder(anchor.id, true)}
         >
-          Mark entire table paid
+          Mark entire table paid · {formatCurrency(total)}
         </Button>
       )}
     </motion.div>
@@ -1498,16 +1544,37 @@ function PendingPaymentCard({
   order,
   role,
   splitBillEnabled,
+  payingKey,
   onPaymentComplete,
+  runPayment,
 }: {
   order: Order;
   role: Role;
   splitBillEnabled: boolean;
+  payingKey: string | null;
   onPaymentComplete: (res: Response, json: { error?: string; receipt?: ReceiptPayload }) => Promise<void>;
+  runPayment: (key: string, action: () => Promise<void>) => Promise<void>;
 }) {
-  const summary = splitBillEnabled ? order.paymentSummary : null;
+  const summary = order.paymentSummary;
   const total = summary?.remaining ?? order.total ?? 0;
   const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
+  const paymentKey = `order-${order.id}`;
+
+  const payFull = () => {
+    void runPayment(paymentKey, async () => {
+      try {
+        const res = await fetch(`/api/orders/${order.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "mark-paid", method: "UPI" }),
+        });
+        const json = await res.json().catch(() => ({}));
+        await onPaymentComplete(res, json);
+      } catch (error) {
+        swallowPollingFetchError(error);
+      }
+    });
+  };
 
   return (
     <motion.div
@@ -1558,33 +1625,24 @@ function PendingPaymentCard({
         <span className="text-lg font-bold text-yellow-400">{formatCurrency(total)}</span>
       </div>
 
-      {canPay && summary && (
+      {canPay && summary && splitBillEnabled && (
         <SplitPaymentPanel
           orderId={order.id}
           orderNumber={order.orderNumber}
           tableNumber={order.table.number}
           summary={summary}
+          disabled={Boolean(payingKey)}
           onPaymentComplete={onPaymentComplete}
+          runPayment={runPayment}
         />
       )}
-      {canPay && !summary && (
+      {canPay && (!splitBillEnabled || !summary) && (
         <Button
           variant="success"
           size="sm"
           className="w-full bg-emerald-600 hover:bg-emerald-500"
-          onClick={async () => {
-            try {
-              const res = await fetch(`/api/orders/${order.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "mark-paid", method: "UPI" }),
-              });
-              const json = await res.json().catch(() => ({}));
-              await onPaymentComplete(res, json);
-            } catch (error) {
-              swallowPollingFetchError(error);
-            }
-          }}
+          disabled={Boolean(payingKey) || total <= 0.01}
+          onClick={payFull}
         >
           <CircleDollarSign className="w-4 h-4" /> Pay full {formatCurrency(total)}
         </Button>

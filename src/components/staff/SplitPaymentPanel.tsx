@@ -37,22 +37,25 @@ interface SplitPaymentPanelProps {
   orderNumber: number;
   tableNumber: number;
   summary?: PaymentSummary | null;
+  disabled?: boolean;
   onPaymentComplete: (
     res: Response,
     json: { error?: string; receipt?: ReceiptPayload },
   ) => Promise<void>;
+  runPayment: (key: string, action: () => Promise<void>) => Promise<void>;
 }
 
 export function SplitPaymentPanel({
   orderId,
   summary,
+  disabled = false,
   onPaymentComplete,
+  runPayment,
 }: SplitPaymentPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [splitCount, setSplitCount] = useState(2);
   const [method, setMethod] = useState<"UPI" | "CASH" | "CARD">("UPI");
-  const [busy, setBusy] = useState(false);
 
   if (!summary || summary.remaining <= 0) return null;
 
@@ -73,22 +76,21 @@ export function SplitPaymentPanel({
     });
   };
 
-  const submitPayment = async (body: Record<string, unknown>) => {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/orders/${orderId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json().catch(() => ({}));
-      setSelectedItems(new Set());
-      await onPaymentComplete(res, json);
-    } catch (error) {
-      swallowPollingFetchError(error);
-    } finally {
-      setBusy(false);
-    }
+  const submitPayment = (body: Record<string, unknown>) => {
+    void runPayment(`order-${orderId}`, async () => {
+      try {
+        const res = await fetch(`/api/orders/${orderId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const json = await res.json().catch(() => ({}));
+        setSelectedItems(new Set());
+        await onPaymentComplete(res, json);
+      } catch (error) {
+        swallowPollingFetchError(error);
+      }
+    });
   };
 
   return (
@@ -103,8 +105,8 @@ export function SplitPaymentPanel({
         variant="success"
         size="sm"
         className="w-full bg-emerald-600 hover:bg-emerald-500"
-        disabled={busy}
-        onClick={() => void submitPayment({ action: "mark-paid", method })}
+        disabled={disabled}
+        onClick={() => submitPayment({ action: "mark-paid", method })}
       >
         <CircleDollarSign className="w-4 h-4" /> Pay full {formatCurrency(summary.remaining)}
       </Button>
@@ -148,9 +150,9 @@ export function SplitPaymentPanel({
                 variant="secondary"
                 size="sm"
                 className="w-full mt-2"
-                disabled={busy}
+                disabled={disabled}
                 onClick={() =>
-                  void submitPayment({
+                  submitPayment({
                     action: "record-payment",
                     amount: selectedTotal,
                     method,
@@ -180,9 +182,9 @@ export function SplitPaymentPanel({
               variant="secondary"
               size="sm"
               className="w-full mt-2"
-              disabled={busy}
+              disabled={disabled}
               onClick={() =>
-                void submitPayment({
+                submitPayment({
                   action: "record-payment",
                   amount: splitAmount,
                   method,
