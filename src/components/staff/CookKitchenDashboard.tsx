@@ -511,40 +511,37 @@ function CookWorkTile({
       </div>
 
       <div className="shrink-0 p-1.5 grid gap-1 grid-cols-2">
-        {isPending && (
+        {isPending ? (
           <button
             type="button"
             disabled={busy}
             onClick={() => onAction("prepare-item")}
-            className="col-span-2 h-11 sm:h-12 rounded-lg bg-sky-500 hover:bg-sky-400 active:scale-[0.98] text-white font-black text-sm sm:text-base flex items-center justify-center gap-1.5 disabled:opacity-50"
+            className="h-11 sm:h-12 rounded-lg bg-sky-500 hover:bg-sky-400 active:scale-[0.98] text-white font-black text-sm sm:text-base flex items-center justify-center gap-1.5 disabled:opacity-50"
           >
             <Play className="w-5 h-5" />
             START
           </button>
-        )}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onAction("ready-item")}
-          className={cn(
-            "h-11 sm:h-12 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-white font-black text-sm sm:text-base flex items-center justify-center gap-1.5 disabled:opacity-50",
-            isPending ? "" : "col-span-2",
-          )}
-        >
-          <Flame className="w-5 h-5" />
-          READY
-        </button>
+        ) : null}
         <button
           type="button"
           disabled={busy}
           onClick={() => onAction("reject-item")}
           className={cn(
-            "h-11 sm:h-12 rounded-lg border-2 border-red-500/50 bg-red-500/20 hover:bg-red-500/30 active:scale-[0.98] text-red-200 font-bold text-xs flex items-center justify-center gap-1 disabled:opacity-50",
+            "h-11 sm:h-12 rounded-lg border-2 border-red-500/50 bg-red-500/20 hover:bg-red-500/30 active:scale-[0.98] text-red-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-1 disabled:opacity-50",
             isPending ? "" : "col-span-2",
           )}
         >
           <Ban className="w-4 h-4" />
           OOS
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onAction("ready-item")}
+          className="col-span-2 h-11 sm:h-12 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-white font-black text-sm sm:text-base flex items-center justify-center gap-1.5 disabled:opacity-50"
+        >
+          <Flame className="w-5 h-5" />
+          READY
         </button>
       </div>
     </div>
