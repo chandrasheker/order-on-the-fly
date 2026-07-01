@@ -125,6 +125,66 @@ export async function playOverdueChime() {
   }
 }
 
+/** Bright double ping when a new kitchen ticket arrives. */
+export async function playNewKitchenChime() {
+  if (typeof window === "undefined") return;
+  try {
+    const ctx = getAudioContext();
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const tones = [659, 880];
+    for (let i = 0; i < tones.length; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.value = tones[i]!;
+      const t = ctx.currentTime + i * 0.14;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.28, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.24);
+    }
+
+    if (navigator.vibrate) {
+      navigator.vibrate([120, 60, 120]);
+    }
+  } catch {
+    // audio blocked
+  }
+}
+
+/** Distinct ascending tone when an item is ready to bump for staff. */
+export async function playReadyBumpChime() {
+  if (typeof window === "undefined") return;
+  try {
+    const ctx = getAudioContext();
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(440, ctx.currentTime);
+    osc.frequency.setValueAtTime(587, ctx.currentTime + 0.1);
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.2);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.5);
+
+    if (navigator.vibrate) {
+      navigator.vibrate([200, 80, 200]);
+    }
+  } catch {
+    // audio blocked
+  }
+}
+
 export function showStaffBrowserNotification(
   title: string,
   body: string,
