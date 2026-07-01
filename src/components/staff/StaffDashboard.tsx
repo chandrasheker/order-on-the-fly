@@ -22,6 +22,7 @@ import {
   Volume2,
   Wallet,
   CircleDollarSign,
+  IndianRupee,
   ArrowRightLeft,
   LayoutGrid,
   Phone,
@@ -126,6 +127,7 @@ interface Alert {
 interface Stats {
   activeOrders: number;
   pendingPayments: number;
+  pendingPaymentsAmount: number;
   completedOrders: number;
   todayOrders: number;
   revenue: number;
@@ -786,6 +788,11 @@ export function StaffDashboard() {
                   <div>
                     <p className="text-xs text-zinc-500">Pending Payments</p>
                     <p className="text-xl font-bold">{stats.pendingPayments}</p>
+                    {stats.pendingPaymentsAmount > 0 && (
+                      <p className="text-xs text-yellow-400/90">
+                        {formatCurrency(stats.pendingPaymentsAmount)} due
+                      </p>
+                    )}
                   </div>
                 </div>
               </button>
@@ -823,7 +830,7 @@ export function StaffDashboard() {
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <CircleDollarSign className="w-5 h-5 text-emerald-400" />
+                  <IndianRupee className="w-5 h-5 text-emerald-400" />
                   <div>
                     <p className="text-xs text-zinc-500">Revenue Today</p>
                     <p className="text-xl font-bold">{formatCurrency(stats.revenue)}</p>
@@ -1008,6 +1015,12 @@ export function StaffDashboard() {
           <>
             <p className="text-sm text-zinc-400 mb-4">
               Served orders awaiting payment — multiple rounds on the same table are combined until paid
+              {stats?.pendingPaymentsAmount ? (
+                <>
+                  {" "}
+                  · <span className="text-yellow-400">{formatCurrency(stats.pendingPaymentsAmount)} total due</span>
+                </>
+              ) : null}
             </p>
             {pendingOrders.length === 0 ? (
               <Card className="p-12 text-center">

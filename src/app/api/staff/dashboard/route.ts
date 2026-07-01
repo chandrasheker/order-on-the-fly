@@ -126,6 +126,15 @@ export async function GET() {
     pendingWithPayments = pendingWithTotals.filter((order) => !order.paidAt);
   }
 
+  type PendingOrder = (typeof pendingWithPayments)[number] & {
+    paymentSummary?: { remaining: number } | null;
+  };
+
+  const pendingPaymentsAmount = pendingWithPayments.reduce(
+    (sum, order) => sum + ((order as PendingOrder).paymentSummary?.remaining ?? order.total ?? 0),
+    0,
+  );
+
   const roleTabs = getTabsForRole(session.role).filter((tab) => {
     if (tab === "offline" && !features.phone_orders) return false;
     return true;
@@ -169,6 +178,7 @@ export async function GET() {
     stats: {
       activeOrders: orders.length,
       pendingPayments: pendingWithPayments.length,
+      pendingPaymentsAmount,
       completedOrders: completedOrders.length,
       todayOrders: orderCount,
       revenue: todayRevenue,
