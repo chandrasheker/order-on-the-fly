@@ -70,7 +70,9 @@ function computeSummaryFromOrder(
     total,
     paid,
     remaining: Math.max(0, total - paid),
-    fullyPaid: (total <= 0 && paid === 0) || (total > 0 && paid >= total - 0.01),
+    fullyPaid:
+      order.status === "SERVED" &&
+      ((total <= 0 && paid === 0) || (total > 0 && paid >= total - 0.01)),
     items: itemSummaries,
     payments: order.payments.map((p) => ({
       id: p.id,
@@ -210,13 +212,14 @@ export async function finalizeOrderIfSettled(
     select: { id: true, paidAt: true, tableId: true, status: true },
   });
   if (!order || order.paidAt) return false;
+  if (order.status !== "SERVED") return false;
 
   const summary = await getOrderPaymentSummary(orderId);
   if (!summary) return false;
 
   const shouldClose =
-    summary.fullyPaid ||
-    (summary.total <= 0 && order.status === "SERVED");
+    (summary.total > 0 && summary.paid >= summary.total - 0.01) ||
+    summary.total <= 0;
 
   if (!shouldClose) return false;
 
