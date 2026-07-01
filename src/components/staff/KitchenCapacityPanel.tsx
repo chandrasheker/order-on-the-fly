@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Pause, Play, ChefHat } from "lucide-react";
+import { Pause, Play, ChefHat, ChevronDown, ChevronUp } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,7 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
   const [message, setMessage] = useState("");
   const [threshold, setThreshold] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   const load = useCallback(async () => {
     if (!enabled) return;
@@ -68,24 +69,35 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
   return (
     <div
       className={cn(
-        "mb-6 p-4 rounded-2xl border",
+        "h-full p-4 rounded-2xl border",
         paused ? "border-amber-500/40 bg-amber-500/10" : "border-white/10 bg-white/5",
       )}
     >
-      <div className="flex items-center gap-2 mb-3">
-        <ChefHat className={cn("w-5 h-5", paused ? "text-amber-300" : "text-zinc-400")} />
-        <div>
-          <p className="font-semibold text-white">Kitchen load control</p>
-          <p className="text-xs text-zinc-400">
-            {paused
-              ? "QR orders paused"
-              : "Accepting orders"}
-            {state.overdueCount != null && ` · ${state.overdueCount} overdue`}
-          </p>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <ChefHat className={cn("w-5 h-5 shrink-0", paused ? "text-amber-300" : "text-zinc-400")} />
+          <div className="min-w-0">
+            <p className="font-semibold text-white">Kitchen load control</p>
+            <p className="text-xs text-zinc-400">
+              {paused ? "QR orders paused" : "Accepting orders"}
+              {state.overdueCount != null && ` · ${state.overdueCount} overdue`}
+            </p>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((open) => !open)}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 shrink-0"
+          aria-expanded={expanded}
+        >
+          {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          {expanded ? "Collapse" : "Expand"}
+        </button>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-3 mb-3">
+      {expanded && (
+        <>
+      <div className="grid grid-cols-1 gap-3 mb-3">
         <div>
           <label className="text-xs text-zinc-500 block mb-1">Pause message (guests see this)</label>
           <Input
@@ -123,6 +135,8 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
           </Button>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

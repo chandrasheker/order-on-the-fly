@@ -648,9 +648,12 @@ export function StaffDashboard() {
             {printMessage}
           </div>
         )}
-        {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
-
-        <KitchenCapacityPanel enabled={Boolean(features.kitchen_capacity)} />
+        {(user && canManageTableOrdering(user.role)) || features.kitchen_capacity ? (
+          <div className="grid lg:grid-cols-2 gap-4 mb-6 items-start">
+            {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
+            <KitchenCapacityPanel enabled={Boolean(features.kitchen_capacity)} />
+          </div>
+        ) : null}
         <GuestRequestsPanel enabled={Boolean(features.call_waiter)} />
 
         {tableSwitchRequests.length > 0 && (
