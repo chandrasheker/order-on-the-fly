@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bluetooth, Printer, Loader2, ChefHat } from "lucide-react";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -32,6 +32,21 @@ export function ThermalPrinterButton({
 }: ThermalPrinterButtonProps) {
   const [open, setOpen] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const closeOnOutside = (event: MouseEvent | PointerEvent) => {
+      const target = event.target as Node;
+      if (containerRef.current && !containerRef.current.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutside);
+    return () => document.removeEventListener("pointerdown", closeOnOutside);
+  }, [open]);
 
   if (!supported) return null;
 
@@ -45,7 +60,7 @@ export function ThermalPrinterButton({
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
