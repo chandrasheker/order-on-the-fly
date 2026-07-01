@@ -52,11 +52,20 @@ export function KitchenTicketBoard({
   return (
     <div className={cn("grid gap-4", isCook ? "grid-cols-1 xl:grid-cols-3" : "grid-cols-1 lg:grid-cols-3")}>
       {COLUMNS.map((col) => {
-        const colItems = tickets.flatMap((ticket) =>
-          ticket.items
-            .filter((item) => item.status === col.key && matchesCategoryFilter(item.categorySlug))
-            .map((item) => ({ ticket, item })),
-        );
+        const colItems = tickets
+          .flatMap((ticket) =>
+            ticket.items
+              .filter((item) => item.status === col.key && matchesCategoryFilter(item.categorySlug))
+              .map((item) => ({ ticket, item })),
+          )
+          .sort((a, b) => {
+            if (a.item.isOverdue !== b.item.isOverdue) {
+              return a.item.isOverdue ? -1 : 1;
+            }
+            return (
+              new Date(a.item.expectedReadyAt).getTime() - new Date(b.item.expectedReadyAt).getTime()
+            );
+          });
 
         return (
           <section
@@ -114,11 +123,14 @@ export function KitchenTicketBoard({
                       </div>
                       <span
                         className={cn(
-                          "font-mono font-semibold shrink-0",
+                          "font-mono font-semibold shrink-0 flex items-center gap-1",
                           isCook ? "text-sm" : "text-xs",
                           item.isOverdue ? "text-red-300" : "text-zinc-400",
                         )}
                       >
+                        {item.isOverdue && (
+                          <AlertTriangle className={cn(isCook ? "w-4 h-4" : "w-3 h-3")} />
+                        )}
                         {item.isOverdue ? "OVERDUE" : remaining > 0 ? formatCountdown(remaining) : "Due now"}
                       </span>
                     </div>

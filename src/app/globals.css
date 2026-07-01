@@ -124,3 +124,14 @@ select option {
   background-color: var(--background);
   color: var(--foreground);
 }
+
+/* Cook kiosk — one fixed screen; site footer is embedded in the cook UI */
+body.cook-kiosk {
+  overflow: hidden;
+}
+
+body.cook-kiosk > .site-footer-global,
+body.cook-kiosk footer.site-footer-global,
+body.cook-kiosk .fixed-theme-toggle {
+  display: none !important;
+}

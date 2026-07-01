@@ -25,7 +25,7 @@ export async function GET() {
   try {
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: session.restaurantId },
-      select: { id: true, slug: true },
+      select: { id: true, slug: true, name: true, logoUrl: true },
     });
     if (!restaurant) {
       return NextResponse.json(
@@ -45,6 +45,10 @@ export async function GET() {
         alerts: [],
         permissions: { tabs: [], role: session.role },
         features,
+        restaurant: {
+          name: restaurant.name,
+          logoUrl: restaurant.logoUrl,
+        },
         missedTimeline: [],
         missedSummary: [],
         tableSwitchRequests: [],
