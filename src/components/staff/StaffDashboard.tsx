@@ -27,6 +27,7 @@ import {
   Phone,
   Plug,
   ClipboardList,
+  Radio,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
@@ -48,6 +49,9 @@ import {
   canAccessFloorPlan,
   canPlaceOfflineOrder,
 } from "@/lib/staff-permissions";
+import { GuestRequestsPanel } from "@/components/staff/GuestRequestsPanel";
+import { KitchenCapacityPanel } from "@/components/staff/KitchenCapacityPanel";
+import { useStaffPush } from "@/hooks/useStaffPush";
 import type { ReceiptPayload } from "@/lib/receipt-service";
 
 interface OrderItem {
@@ -173,6 +177,12 @@ type RestaurantFeatures = {
   tip_pooling?: boolean;
   guest_crm?: boolean;
   audit_log?: boolean;
+  promotions_engine?: boolean;
+  menu_modifiers?: boolean;
+  call_waiter?: boolean;
+  kitchen_capacity?: boolean;
+  payment_webhooks?: boolean;
+  push_alerts?: boolean;
 };
 
 export function StaffDashboard() {
@@ -196,6 +206,7 @@ export function StaffDashboard() {
 
   const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
     useStaffNotifications(alerts);
+  const { registerPush } = useStaffPush(Boolean(features.push_alerts));
   const { printReceipt, autoPrint, kitchenChitPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint, toggleKitchenChitPrint, reprintOrderReceipt, printKitchenChit } = useThermalPrinter();
   const [printMessage, setPrintMessage] = useState<string | null>(null);
 
@@ -412,7 +423,10 @@ export function StaffDashboard() {
               <Button
                 type="button"
                 size="sm"
-                onClick={() => void enableAlerts()}
+                onClick={async () => {
+                  await enableAlerts();
+                  if (features.push_alerts) await registerPush();
+                }}
                 disabled={enabling}
                 className="shrink-0 w-full sm:w-auto"
               >
@@ -475,7 +489,10 @@ export function StaffDashboard() {
             {!alertsEnabled && (
               <button
                 type="button"
-                onClick={() => void enableAlerts()}
+                onClick={async () => {
+                  await enableAlerts();
+                  if (features.push_alerts) await registerPush();
+                }}
                 disabled={enabling}
                 className="p-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 disabled:opacity-50"
                 title="Enable sound alerts"
@@ -546,6 +563,20 @@ export function StaffDashboard() {
                     <ClipboardList className="w-4 h-4" />
                   </Link>
                 )}
+                {(features.promotions_engine ||
+                  features.menu_modifiers ||
+                  features.call_waiter ||
+                  features.kitchen_capacity ||
+                  features.payment_webhooks ||
+                  features.push_alerts) && (
+                  <Link
+                    href="/admin/realtime"
+                    className="p-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300"
+                    title="Promotions, modifiers, kitchen, payments, push alerts"
+                  >
+                    <Radio className="w-4 h-4" />
+                  </Link>
+                )}
               </>
             )}
             {user && canAccessReports(user.role) && (
@@ -581,6 +612,9 @@ export function StaffDashboard() {
           </div>
         )}
         {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
+
+        <KitchenCapacityPanel enabled={Boolean(features.kitchen_capacity)} />
+        <GuestRequestsPanel enabled={Boolean(features.call_waiter)} />
 
         {tableSwitchRequests.length > 0 && (
           <div className="mb-6 p-4 rounded-2xl border border-sky-500/30 bg-sky-500/10">

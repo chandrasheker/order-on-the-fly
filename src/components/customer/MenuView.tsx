@@ -6,13 +6,30 @@ import { Plus, Minus, ShoppingBag, Flame, ChevronLeft, ChevronRight, ChevronDown
 import { formatCurrency, getPrepTimeLabel, cn } from "@/lib/utils";
 import { Button, Badge, Input } from "@/components/ui";
 import { useCartStore, type CartItem } from "@/store/cart";
+import { ModifierPickerModal } from "@/components/customer/ModifierPickerModal";
 
 interface MenuCartControls {
   items: CartItem[];
-  addItem: (item: Omit<CartItem, "quantity">) => void;
-  updateQuantity: (menuItemId: string, quantity: number) => void;
+  addItem: (item: Omit<CartItem, "quantity" | "lineId"> & { lineId?: string }) => void;
+  updateQuantity: (lineId: string, quantity: number) => void;
   total: () => number;
   maxPrepTime: () => number;
+}
+
+interface ModifierOption {
+  id: string;
+  name: string;
+  priceDelta: number;
+  isDefault: boolean;
+}
+
+interface ModifierGroup {
+  id: string;
+  name: string;
+  required: boolean;
+  minSelect: number;
+  maxSelect: number;
+  options: ModifierOption[];
 }
 
 interface MenuItem {
@@ -24,6 +41,7 @@ interface MenuItem {
   isVeg: boolean;
   isSpicy: boolean;
   isAvailable: boolean;
+  modifierGroups?: ModifierGroup[];
 }
 
 interface Category {
@@ -38,11 +56,15 @@ function MenuItemCard({
   item,
   inCart,
   onAdd,
+  onAddWithModifiers,
+  hasModifiers,
   onUpdateQty,
 }: {
   item: MenuItem;
   inCart: { quantity: number } | undefined;
   onAdd: () => void;
+  onAddWithModifiers?: () => void;
+  hasModifiers?: boolean;
   onUpdateQty: (qty: number) => void;
 }) {
   return (
@@ -93,11 +115,11 @@ function MenuItemCard({
         ) : (
           <button
             type="button"
-            onClick={onAdd}
+            onClick={hasModifiers && onAddWithModifiers ? onAddWithModifiers : onAdd}
             className="px-4 py-2.5 rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/30 text-sm font-medium active:bg-orange-500/30"
           >
             <Plus className="w-4 h-4 inline mr-1" />
-            Add
+            {hasModifiers ? "Customize" : "Add"}
           </button>
         )}
       </div>
@@ -132,6 +154,7 @@ export function MenuView({
   const customerCart = useCartStore();
   const { items, addItem, updateQuantity, total, maxPrepTime } = cart ?? customerCart;
   const cartCount = items.reduce((s, i) => s + i.quantity, 0);
+  const [pickerItem, setPickerItem] = useState<MenuItem | null>(null);
 
   const updateScrollHints = useCallback(() => {
     const el = tabsRef.current;
@@ -405,22 +428,34 @@ export function MenuView({
                 >
                   <div className="space-y-3 pb-2">
                     {cat.items.map((item) => {
-                      const inCart = items.find((i) => i.menuItemId === item.id);
+                      const inCartLines = items.filter((i) => i.menuItemId === item.id);
+                      const inCartQty = inCartLines.reduce((s, i) => s + i.quantity, 0);
+                      const hasModifiers = Boolean(item.modifierGroups?.length);
+                      const firstLine = inCartLines[0];
                       return (
                         <MenuItemCard
                           key={item.id}
                           item={item}
-                          inCart={inCart}
+                          inCart={inCartQty > 0 ? { quantity: inCartQty } : undefined}
+                          hasModifiers={hasModifiers}
                           onAdd={() => {
                             if (!canOrder) return;
                             addItem({
                               menuItemId: item.id,
                               name: item.name,
                               price: item.price,
+                              basePrice: item.price,
                               prepTimeMinutes: item.prepTimeMinutes,
                             });
                           }}
-                          onUpdateQty={(qty) => canOrder && updateQuantity(item.id, qty)}
+                          onAddWithModifiers={() => {
+                            if (!canOrder) return;
+                            setPickerItem(item);
+                          }}
+                          onUpdateQty={(qty) => {
+                            if (!canOrder || !firstLine) return;
+                            updateQuantity(firstLine.lineId, qty);
+                          }}
                         />
                       );
                     })}
@@ -458,6 +493,29 @@ export function MenuView({
               </Button>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {pickerItem && pickerItem.modifierGroups && (
+          <ModifierPickerModal
+            itemName={pickerItem.name}
+            basePrice={pickerItem.price}
+            groups={pickerItem.modifierGroups}
+            onClose={() => setPickerItem(null)}
+            onConfirm={(selectedIds, labels, totalPrice) => {
+              addItem({
+                menuItemId: pickerItem.id,
+                name: pickerItem.name,
+                price: totalPrice,
+                basePrice: pickerItem.price,
+                prepTimeMinutes: pickerItem.prepTimeMinutes,
+                modifierOptionIds: selectedIds,
+                modifierLabels: labels,
+              });
+              setPickerItem(null);
+            }}
+          />
         )}
       </AnimatePresence>
     </div>

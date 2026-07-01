@@ -27,7 +27,13 @@ export type FeatureKey =
   | "tip_pooling"
   | "guest_crm"
   | "audit_log"
-  | "custom_background";
+  | "custom_background"
+  | "promotions_engine"
+  | "menu_modifiers"
+  | "call_waiter"
+  | "kitchen_capacity"
+  | "payment_webhooks"
+  | "push_alerts";
 
 export interface FeatureDefinition {
   key: FeatureKey;
@@ -177,6 +183,48 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
     key: "custom_background",
     name: "Custom guest page background",
     problem: "Upload a branded photo shown behind the customer ordering screen.",
+    tier: "premium",
+    defaultEnabled: false,
+  },
+  {
+    key: "promotions_engine",
+    name: "Promotions & combos",
+    problem: "Happy hour, coupon codes, BOGO, category discounts, and combo meals.",
+    tier: "premium",
+    defaultEnabled: false,
+  },
+  {
+    key: "menu_modifiers",
+    name: "Menu modifiers & variants",
+    problem: "Size, spice level, add-ons with accurate pricing on every order.",
+    tier: "premium",
+    defaultEnabled: false,
+  },
+  {
+    key: "call_waiter",
+    name: "Call waiter & guest requests",
+    problem: "Guests tap for water, bill, or server from their phone.",
+    tier: "premium",
+    defaultEnabled: false,
+  },
+  {
+    key: "kitchen_capacity",
+    name: "Kitchen load control",
+    problem: "Pause QR orders when kitchen is overloaded; auto-pause on overdue backlog.",
+    tier: "premium",
+    defaultEnabled: false,
+  },
+  {
+    key: "payment_webhooks",
+    name: "Auto payment confirmation",
+    problem: "Razorpay / PhonePe / Paytm webhooks mark bills paid automatically.",
+    tier: "premium",
+    defaultEnabled: false,
+  },
+  {
+    key: "push_alerts",
+    name: "Push & SMS staff alerts",
+    problem: "Web push and SMS when tab is closed — new orders, guest calls, payments.",
     tier: "premium",
     defaultEnabled: false,
   },

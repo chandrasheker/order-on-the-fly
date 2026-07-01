@@ -88,6 +88,33 @@ enum AuditActionType {
   STOCK_ADJUST
 }
 
+enum PromotionType {
+  PERCENT
+  FIXED
+  BOGO
+  CATEGORY_PERCENT
+}
+
+enum GuestServiceType {
+  CALL_WAITER
+  REQUEST_BILL
+  WATER
+  REFILL
+  OTHER
+}
+
+enum GuestServiceStatus {
+  PENDING
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum PaymentGatewayProvider {
+  RAZORPAY
+  PHONEPE
+  PAYTM
+}
+
 model Restaurant {
   id                    String         @id @default(cuid())
   name                  String
@@ -113,6 +140,15 @@ model Restaurant {
   receiptFooter         String?
   featureFlags          String         @default("{}")
   aggregatorWebhookSecret String?
+  kitchenPaused         Boolean        @default(false)
+  kitchenPauseMessage   String?
+  kitchenAutoPauseOverdueThreshold Int   @default(0)
+  paymentGatewayProvider PaymentGatewayProvider?
+  paymentGatewayKeyId   String?
+  paymentGatewaySecretEnc String?
+  paymentWebhookSecret  String?
+  pushAlertsEnabled     Boolean        @default(true)
+  smsAlertsEnabled      Boolean        @default(true)
   createdAt             DateTime       @default(now())
   users                 User[]
   tables                Table[]
@@ -130,6 +166,12 @@ model Restaurant {
   guestProfiles         GuestProfile[]
   auditLogs             AuditLog[]
   tipPoolPayouts        TipPoolPayout[]
+  promotions            Promotion[]
+  comboMeals            ComboMeal[]
+  modifierGroups        ModifierGroup[]
+  guestServiceRequests  GuestServiceRequest[]
+  pushSubscriptions     PushSubscription[]
+  paymentWebhookEvents  PaymentWebhookEvent[]
 }
 
 model User {
@@ -184,6 +226,7 @@ model Table {
   sourceSwitchRequests TableSwitchRequest[] @relation("SourceTableSwitchRequests")
   targetSwitchRequests TableSwitchRequest[] @relation("TargetTableSwitchRequests")
   reservations         Reservation[]
+  guestServiceRequests GuestServiceRequest[]
 
   @@unique([restaurantId, number])
 }
@@ -258,6 +301,8 @@ model MenuItem {
   categoryId      String
   category        MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   orderItems      OrderItem[]
+  modifierGroups  MenuItemModifierGroup[]
+  comboMealItems  ComboMealItem[]
 }
 
 model Order {
@@ -287,6 +332,8 @@ model Order {
   paidByName         String?
   tipAmount          Float       @default(0)
   discountAmount     Float       @default(0)
+  promoCode          String?
+  promoDiscount      Float       @default(0)
   compReason         String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
@@ -390,6 +437,7 @@ model OrderItem {
   menuItem        MenuItem        @relation(fields: [menuItemId], references: [id])
   unitPrice       Float
   itemName        String
+  modifiersJson   String?
   paymentAllocations PaymentAllocation[]
 }
 
@@ -538,4 +586,144 @@ model TipPoolPayout {
   createdAt     DateTime   @default(now())
 
   @@index([restaurantId, periodStart])
+}
+
+model Promotion {
+  id             String         @id @default(cuid())
+  restaurantId   String
+  restaurant     Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name           String
+  type           PromotionType
+  value          Float          @default(0)
+  code           String?
+  categorySlug   String?
+  menuItemId     String?
+  comboMealId    String?
+  minOrderAmount Float          @default(0)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  daysOfWeek     String?
+  startHour      Int?
+  endHour        Int?
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([restaurantId, isActive])
+  @@index([restaurantId, code])
+}
+
+model ComboMeal {
+  id           String          @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  comboPrice   Float
+  imageUrl     String?
+  isAvailable  Boolean         @default(true)
+  sortOrder    Int             @default(0)
+  items        ComboMealItem[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([restaurantId])
+}
+
+model ComboMealItem {
+  id         String   @id @default(cuid())
+  comboMealId String
+  comboMeal  ComboMeal @relation(fields: [comboMealId], references: [id], onDelete: Cascade)
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  quantity   Int      @default(1)
+
+  @@index([comboMealId])
+}
+
+model ModifierGroup {
+  id           String                  @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant              @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  required     Boolean                 @default(false)
+  minSelect    Int                     @default(0)
+  maxSelect    Int                     @default(1)
+  sortOrder    Int                     @default(0)
+  options      ModifierOption[]
+  menuItems    MenuItemModifierGroup[]
+  createdAt    DateTime                @default(now())
+
+  @@index([restaurantId])
+}
+
+model ModifierOption {
+  id         String        @id @default(cuid())
+  groupId    String
+  group      ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name       String
+  priceDelta Float         @default(0)
+  isDefault  Boolean       @default(false)
+  sortOrder  Int           @default(0)
+
+  @@index([groupId])
+}
+
+model MenuItemModifierGroup {
+  menuItemId      String
+  menuItem        MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  modifierGroupId String
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+
+  @@id([menuItemId, modifierGroupId])
+}
+
+model GuestServiceRequest {
+  id                   String             @id @default(cuid())
+  restaurantId         String
+  restaurant           Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tableId              String
+  table                Table              @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  sessionKey           String?
+  type                 GuestServiceType
+  message              String?
+  status               GuestServiceStatus @default(PENDING)
+  acknowledgedByUserId String?
+  acknowledgedByName   String?
+  createdAt            DateTime           @default(now())
+  acknowledgedAt       DateTime?
+  resolvedAt           DateTime?
+
+  @@index([restaurantId, status])
+}
+
+model PushSubscription {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  userId       String?
+  endpoint     String     @unique
+  p256dh       String
+  auth         String
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId])
+}
+
+model PaymentWebhookEvent {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  provider     String
+  externalId   String
+  amount       Float
+  tableId      String?
+  orderId      String?
+  status       String     @default("RECEIVED")
+  payload      String?
+  processedAt  DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@unique([provider, externalId])
+  @@index([restaurantId, createdAt])
 }
