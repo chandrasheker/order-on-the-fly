@@ -5,6 +5,7 @@ import {
   getNotificationPermission,
   playAlarmBuzzer,
   playOverdueChime,
+  playReadyBumpChime,
   readStaffAlertsEnabled,
   requestStaffNotificationPermission,
   showStaffBrowserNotification,
@@ -18,9 +19,14 @@ export interface StaffAlertItem {
   type: string;
   message: string;
   tableNumber: number;
+  targetUserId?: string | null;
+  categorySlug?: string | null;
 }
 
-export function useStaffNotifications(alerts: StaffAlertItem[]) {
+export function useStaffNotifications(
+  alerts: StaffAlertItem[],
+  currentUserId?: string | null,
+) {
   const seenIdsRef = useRef<Set<string>>(new Set());
   const seededRef = useRef(false);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
@@ -62,7 +68,7 @@ export function useStaffNotifications(alerts: StaffAlertItem[]) {
       if (perm === "granted") {
         showStaffBrowserNotification(
           "Alerts enabled",
-          "Buzzer will sound when a table rings for service or items go overdue."
+          "You will hear chimes for new kitchen tickets (by category) and when your orders are ready to bump."
         );
         setStatusMessage("Alerts enabled — sound and notifications are on.");
       } else if (perm === "denied") {
@@ -101,6 +107,18 @@ export function useStaffNotifications(alerts: StaffAlertItem[]) {
     for (const alert of newAlerts) {
       seenIdsRef.current.add(alert.id);
 
+      if (alert.type === "NEW_KITCHEN_ITEM") {
+        continue;
+      }
+
+      if (
+        alert.targetUserId &&
+        currentUserId &&
+        alert.targetUserId !== currentUserId
+      ) {
+        continue;
+      }
+
       if (alert.type === "ALARM") {
         if (permission === "granted") {
           showStaffBrowserNotification(
@@ -119,6 +137,15 @@ export function useStaffNotifications(alerts: StaffAlertItem[]) {
           );
         }
         void playOverdueChime();
+      } else if (alert.type === "ITEM_READY") {
+        if (permission === "granted") {
+          showStaffBrowserNotification(
+            `Ready to bump — Table ${alert.tableNumber}`,
+            alert.message,
+            { tag: `item-ready-${alert.id}`, urgent: true },
+          );
+        }
+        void playReadyBumpChime();
       } else if (alert.type === "PAYMENT") {
         if (permission === "granted") {
           showStaffBrowserNotification(
@@ -134,7 +161,7 @@ export function useStaffNotifications(alerts: StaffAlertItem[]) {
         });
       }
     }
-  }, [alerts, alertsEnabled, permission]);
+  }, [alerts, alertsEnabled, permission, currentUserId]);
 
   return {
     alertsEnabled,

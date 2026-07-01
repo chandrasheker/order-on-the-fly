@@ -64,7 +64,12 @@ export async function GET() {
       getPendingPaymentOrders(session.restaurantId),
       getCompletedOrders(session.restaurantId),
       prisma.alert.findMany({
-        where: { restaurantId: session.restaurantId, isRead: false },
+        where: {
+          restaurantId: session.restaurantId,
+          isRead: false,
+          type: { not: "NEW_KITCHEN_ITEM" },
+          OR: [{ targetUserId: null }, { targetUserId: session.id }],
+        },
         orderBy: { createdAt: "desc" },
         take: 20,
       }),

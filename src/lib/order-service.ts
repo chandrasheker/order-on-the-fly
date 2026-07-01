@@ -409,6 +409,9 @@ export async function createOrderForTable(params: {
   const { clearTableCartDraft } = await import("@/lib/table-cart-draft-service");
   await clearTableCartDraft({ tableId: table.id });
 
+  const { createNewKitchenItemAlertsForOrder } = await import("@/lib/kitchen-alert-service");
+  void createNewKitchenItemAlertsForOrder(order.id);
+
   return { order, total };
 }
 

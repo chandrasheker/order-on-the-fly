@@ -17,6 +17,9 @@ import { useRouter } from "next/navigation";
 import { Button, Badge, Spinner } from "@/components/ui";
 import { cn, formatCountdown } from "@/lib/utils";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
+import { useKitchenTicketAlerts } from "@/hooks/useKitchenTicketAlerts";
+import { useStaffNotifications } from "@/hooks/useStaffNotifications";
+import { Bell, Volume2 } from "lucide-react";
 
 type KitchenItem = {
   id: string;
@@ -72,6 +75,12 @@ export default function KitchenClient() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [role, setRole] = useState<string>("COOK");
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
+    useStaffNotifications([], userId);
+
+  useKitchenTicketAlerts(tickets, selectedCategorySlugs);
 
   const loadKitchen = useCallback(async () => {
     if (isClientOffline()) return;
@@ -114,6 +123,7 @@ export default function KitchenClient() {
       if (meRes.ok) {
         const me = await meRes.json();
         setRole(me.user?.role ?? "COOK");
+        setUserId(me.user?.id ?? null);
       }
       await loadKitchen();
     } catch (error) {
@@ -254,6 +264,27 @@ export default function KitchenClient() {
           </div>
         </div>
       </header>
+
+      {showEnableBanner && (
+        <div className="border-b border-orange-500/30 bg-orange-500/10 px-4 py-3">
+          <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-start gap-2 text-sm text-orange-100">
+              <Bell className="w-4 h-4 mt-0.5 shrink-0" />
+              <p>
+                Enable kitchen alerts to hear a chime when new tickets arrive for your selected
+                categories.
+              </p>
+            </div>
+            <Button size="sm" onClick={() => void enableAlerts()} disabled={enabling}>
+              <Volume2 className="w-4 h-4" />
+              {enabling ? "Enabling…" : "Enable alerts"}
+            </Button>
+          </div>
+          {statusMessage && (
+            <p className="max-w-[1600px] mx-auto mt-2 text-xs text-orange-200/80">{statusMessage}</p>
+          )}
+        </div>
+      )}
 
       <main className="max-w-[1600px] mx-auto p-4">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

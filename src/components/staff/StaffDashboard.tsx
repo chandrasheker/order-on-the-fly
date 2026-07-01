@@ -36,6 +36,7 @@ import type { Role } from "@/generated/prisma/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
+import { useStaffReadyAlerts } from "@/hooks/useStaffReadyAlerts";
 import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
 import { SplitPaymentPanel } from "@/components/staff/SplitPaymentPanel";
 import { AggregatorInboxBanner } from "@/components/staff/AggregatorInboxBanner";
@@ -79,7 +80,7 @@ interface Order {
   status: string;
   alarmTriggered: boolean;
   paidAt?: string | null;
-  table: { number: number };
+  table: { number: number; assignedServerId?: string | null };
   items: OrderItem[];
   createdAt: string;
   total?: number;
@@ -107,6 +108,7 @@ interface Order {
     }>;
   } | null;
   placedByName?: string | null;
+  placedByUserId?: string | null;
   paidByName?: string | null;
 }
 
@@ -117,6 +119,8 @@ interface Alert {
   tableNumber: number;
   isRead: boolean;
   createdAt: string;
+  targetUserId?: string | null;
+  categorySlug?: string | null;
 }
 
 interface Stats {
@@ -189,7 +193,7 @@ type RestaurantFeatures = {
 
 export function StaffDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<{ name: string; role: Role; restaurantName: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; name: string; role: Role; restaurantName: string } | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
   const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
@@ -207,7 +211,8 @@ export function StaffDashboard() {
   const [features, setFeatures] = useState<RestaurantFeatures>({});
 
   const { alertsEnabled, showEnableBanner, enableAlerts, enabling, statusMessage } =
-    useStaffNotifications(alerts);
+    useStaffNotifications(alerts, user?.id);
+  useStaffReadyAlerts(orders, user?.id);
   const { registerPush } = useStaffPush(Boolean(features.push_alerts));
   const { printReceipt, autoPrint, kitchenChitPrint, supported: printerSupported, connect, deviceName, lastError, printing, status, toggleAutoPrint, toggleKitchenChitPrint, reprintOrderReceipt, printKitchenChit } = useThermalPrinter();
   const [printMessage, setPrintMessage] = useState<string | null>(null);

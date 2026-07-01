@@ -654,10 +654,13 @@ model Alert {
   branchId     String?
   branch       Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  targetUserId   String?
+  categorySlug   String?
   isRead       Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   @@index([restaurantId, isRead])
+  @@index([targetUserId])
 }
 
 model Reservation {

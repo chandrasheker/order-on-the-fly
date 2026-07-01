@@ -99,6 +99,20 @@ export async function transitionOrderItem(params: {
         itemId: params.itemId,
       },
     });
+
+    const readyItem = await prisma.orderItem.findUnique({
+      where: { id: params.itemId },
+      select: { itemName: true, quantity: true },
+    });
+    if (readyItem) {
+      const { notifyItemReadyStaff } = await import("@/lib/kitchen-alert-service");
+      void notifyItemReadyStaff({
+        orderId: params.orderId,
+        orderItemId: params.itemId,
+        itemName: readyItem.itemName,
+        quantity: readyItem.quantity,
+      });
+    }
   }
 
   return { from, to, orderStatus };
