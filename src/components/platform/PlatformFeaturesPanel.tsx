@@ -159,13 +159,13 @@ export function PlatformFeaturesPanel() {
 
         return (
           <Card key={restaurant.id} className="overflow-hidden">
-            <button
-              type="button"
-              onClick={() => toggleExpanded(restaurant.id)}
-              className="w-full p-5 flex flex-wrap items-center justify-between gap-3 text-left hover:bg-white/[0.02] transition-colors"
-              aria-expanded={open}
-            >
-              <div className="flex items-center gap-2 min-w-0">
+            <div className="p-5 flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => toggleExpanded(restaurant.id)}
+                className="flex flex-1 items-center gap-2 min-w-0 text-left hover:opacity-80 transition-opacity"
+                aria-expanded={open}
+              >
                 {open ? (
                   <ChevronUp className="w-5 h-5 text-zinc-400 shrink-0" />
                 ) : (
@@ -180,8 +180,8 @@ export function PlatformFeaturesPanel() {
                     {restaurant.slug} · {enabledCount}/{toggleable.length} premium & roadmap enabled
                   </p>
                 </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              </button>
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="secondary"
                   size="sm"
@@ -210,7 +210,7 @@ export function PlatformFeaturesPanel() {
                   )}
                 </Button>
               </div>
-            </button>
+            </div>
 
             {open && (
             <div className="px-5 pb-5 space-y-5 border-t border-white/5 pt-5">
