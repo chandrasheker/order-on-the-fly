@@ -4,6 +4,7 @@ import { createOrderForTable, OrderCreationError } from "@/lib/order-service";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { isTablePaymentBlocked } from "@/lib/payment-service";
+import { getTableTabPaymentSummary } from "@/lib/table-tab-service";
 import { todayDateString } from "@/lib/utils";
 import { requireSession } from "@/lib/auth";
 
@@ -136,9 +137,18 @@ export async function GET(req: NextRequest) {
       include: { items: { include: { menuItem: true } } },
       orderBy: { createdAt: "desc" },
     });
+    const tabSummary = await getTableTabPaymentSummary(table.id);
     return NextResponse.json({
       orders,
       paymentBlocked: await isTablePaymentBlocked(table.id),
+      tabPaymentPending: tabSummary.paymentRequested,
+      tabSummary: {
+        billTotal: tabSummary.billTotal,
+        paidTotal: tabSummary.paidTotal,
+        remaining: tabSummary.remaining,
+        paymentRequested: tabSummary.paymentRequested,
+        orderCount: tabSummary.orderCount,
+      },
     });
   }
 

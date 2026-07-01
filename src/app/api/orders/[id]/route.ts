@@ -127,7 +127,7 @@ export async function PATCH(
       success: true,
       paymentRequestedAt: result.paymentRequestedAt,
       billTotal: result.billTotal,
-      tableBlocked: true,
+      consolidated: result.consolidated,
     });
   }
 

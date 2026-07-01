@@ -9,6 +9,7 @@ import { Input, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useStaffCartStore } from "@/store/staff-cart";
 import { useOfflineOrderSync } from "@/hooks/useOfflineOrderSync";
+import { useCartDraftSync } from "@/hooks/useCartDraftSync";
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 
 type OrderMode = "walkin" | "takeaway" | "delivery";
@@ -114,6 +115,13 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
 
   const { online, pendingCount, queueOrder, syncPending, cachedMenu, storeMenu } =
     useOfflineOrderSync(true, undefined);
+
+  useCartDraftSync({
+    enabled: Boolean(tableId) && mode === "walkin",
+    source: "STAFF",
+    tableId,
+    items,
+  });
 
   const loadMenu = useCallback(async () => {
     setLoadingMenu(true);

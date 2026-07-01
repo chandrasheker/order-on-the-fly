@@ -324,14 +324,16 @@ export function OrderTracker({
         );
       })}
 
-      {paymentOrders.map((order) => {
-        const billTotal = customerOrderBillTotal(order.items);
-        const unavailableItems = order.items.filter((i) => i.status === "UNAVAILABLE");
-        const paymentPending = Boolean(order.paymentRequestedAt);
+      {paymentOrders.length > 0 && (() => {
+        const consolidatedTotal = paymentOrders.reduce(
+          (sum, order) => sum + customerOrderBillTotal(order.items),
+          0,
+        );
+        const paymentPending = paymentOrders.some((o) => Boolean(o.paymentRequestedAt));
+        const anchorOrder = paymentOrders[0]!;
 
         return (
           <motion.div
-            key={order.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className={`rounded-2xl border backdrop-blur-xl p-5 ${
@@ -340,19 +342,13 @@ export function OrderTracker({
                 : "border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-white/5"
             }`}
           >
-            {unavailableItems.length > 0 && (
-              <div className="mb-4 p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-100 text-sm">
-                <p className="font-medium flex items-center gap-2">
-                  <Ban className="w-4 h-4 shrink-0" />
-                  {unavailableItems.length} item{unavailableItems.length > 1 ? "s were" : " was"}{" "}
-                  out of stock — not charged
-                </p>
-              </div>
-            )}
-
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-sm text-zinc-400">Order #{order.orderNumber}</p>
+                <p className="text-sm text-zinc-400">
+                  {paymentOrders.length === 1
+                    ? `Order #${anchorOrder.orderNumber}`
+                    : `Table bill · ${paymentOrders.length} orders`}
+                </p>
                 <Badge
                   className={
                     paymentPending
@@ -360,56 +356,41 @@ export function OrderTracker({
                       : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
                   }
                 >
-                  {paymentPending ? "Awaiting payment confirmation" : "All served — ready to pay"}
+                  {paymentPending
+                    ? "Awaiting payment confirmation"
+                    : "All served — ready to pay"}
                 </Badge>
               </div>
               <div className="text-right">
                 <p className="text-xs text-zinc-500">Bill total</p>
-                <p className="text-xl font-bold text-emerald-400">{formatCurrency(billTotal)}</p>
+                <p className="text-xl font-bold text-emerald-400">
+                  {formatCurrency(consolidatedTotal)}
+                </p>
               </div>
             </div>
 
-            <div className="space-y-2 mb-4">
-              {order.items.map((item) => {
-                const isServed = item.status === "SERVED";
-                const isUnavailable = item.status === "UNAVAILABLE";
-                const lineTotal = (item.unitPrice ?? 0) * item.quantity;
-
-                return (
-                  <div
-                    key={item.id}
-                    className={`flex items-center justify-between py-2 px-3 rounded-xl ${
-                      isUnavailable
-                        ? "bg-amber-500/10 border border-amber-500/30"
-                        : "bg-black/40 border border-white/5 opacity-70"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      {isUnavailable ? (
-                        <Ban className="w-4 h-4 text-amber-400 shrink-0" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      )}
-                      <span
-                        className={`text-sm truncate ${
-                          isUnavailable
-                            ? "text-amber-100"
-                            : "text-zinc-400 line-through decoration-zinc-500"
-                        }`}
-                      >
-                        {item.quantity}x {item.itemName}
-                      </span>
-                    </div>
-                    <span
-                      className={`text-xs shrink-0 ml-2 ${
-                        isUnavailable ? "text-amber-300" : "text-zinc-500 line-through"
-                      }`}
-                    >
-                      {isUnavailable ? "Not served" : formatCurrency(lineTotal)}
-                    </span>
+            <div className="space-y-3 mb-4">
+              {paymentOrders.map((order) => (
+                <div key={order.id} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                  <p className="text-xs text-zinc-500 mb-2">Order #{order.orderNumber}</p>
+                  <div className="space-y-1">
+                    {order.items.map((item) => {
+                      const isUnavailable = item.status === "UNAVAILABLE";
+                      const lineTotal = (item.unitPrice ?? 0) * item.quantity;
+                      return (
+                        <div key={item.id} className="flex items-center justify-between text-sm">
+                          <span className={isUnavailable ? "text-amber-300" : "text-zinc-400"}>
+                            {item.quantity}x {item.itemName}
+                          </span>
+                          <span className={isUnavailable ? "text-amber-300" : "text-zinc-500"}>
+                            {isUnavailable ? "Not served" : formatCurrency(lineTotal)}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
 
             {paymentPending ? (
@@ -417,16 +398,16 @@ export function OrderTracker({
                 <div className="p-3 rounded-xl bg-yellow-500/15 border border-yellow-500/30 text-yellow-100 text-sm text-center">
                   <p className="font-medium">Payment pending</p>
                   <p className="text-yellow-200/80 text-xs mt-1">
-                    Staff has been notified. Please complete payment
-                    {paymentQrUrl ? " via PhonePe or with staff" : " with staff"} — this table is
-                    locked until your bill is confirmed.
+                    Staff has been notified. Complete payment
+                    {paymentQrUrl ? " via PhonePe or with staff" : " with staff"}. You can still
+                    order more — new items will be added to this bill.
                   </p>
                 </div>
                 {paymentQrUrl && (
                   <Button
                     variant="secondary"
                     className="w-full"
-                    onClick={() => openPayModal(order)}
+                    onClick={() => openPayModal(anchorOrder)}
                   >
                     View PhonePe QR again
                   </Button>
@@ -437,31 +418,39 @@ export function OrderTracker({
                 <Button
                   variant="success"
                   className="w-full bg-emerald-600 hover:bg-emerald-500"
-                  disabled={payingId === order.id}
+                  disabled={Boolean(payingId)}
                   onClick={() =>
-                    paymentQrUrl ? openPayModal(order) : requestPaymentOffline(order)
+                    paymentQrUrl ? openPayModal(anchorOrder) : requestPaymentOffline(anchorOrder)
                   }
                 >
                   <CircleDollarSign className="w-4 h-4" />
-                  {payingId === order.id ? "Processing..." : `Pay ${formatCurrency(billTotal)}`}
+                  {payingId ? "Processing..." : `Pay ${formatCurrency(consolidatedTotal)}`}
                 </Button>
                 <p className="text-xs text-zinc-500 text-center mt-2">
-                  {paymentQrUrl
-                    ? "Scan PhonePe QR to pay, or alert staff after paying"
-                    : "Alert staff to collect payment at the table"}
+                  {paymentOrders.length > 1
+                    ? "One combined bill for all rounds at your table"
+                    : paymentQrUrl
+                      ? "Scan PhonePe QR to pay, or alert staff after paying"
+                      : "Alert staff to collect payment at the table"}
                 </p>
               </>
             )}
           </motion.div>
         );
-      })}
+      })()}
 
       {payModalOrder && (
         <PaymentModal
-          orderNumber={payModalOrder.orderNumber}
-          billTotal={customerOrderBillTotal(payModalOrder.items)}
+          orderNumber={
+            paymentOrders.length > 1 ? 0 : payModalOrder.orderNumber
+          }
+          billTotal={paymentOrders.reduce(
+            (sum, order) => sum + customerOrderBillTotal(order.items),
+            0,
+          )}
+          consolidated={paymentOrders.length > 1}
           paymentQrUrl={paymentQrUrl}
-          confirming={payingId === payModalOrder.id}
+          confirming={Boolean(payingId)}
           onClose={() => setPayModalOrder(null)}
           onConfirm={confirmPaymentRequest}
         />

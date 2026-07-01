@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { PaymentMethod } from "@/generated/prisma/client";
 import { clearPaymentAlerts } from "@/lib/payment-service";
-import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
 
 type OrderItemRow = {
@@ -230,7 +229,16 @@ export async function finalizeOrderIfSettled(
     },
   });
   await clearPaymentAlerts(orderId);
-  await maybeAutoCloseTableAfterPayment(order.tableId);
+  const orderRow = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { tableId: true },
+  });
+  if (orderRow) {
+    const { onTabPaymentProgress } = await import("@/lib/payment-service");
+    await onTabPaymentProgress(orderRow.tableId);
+    const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
+    await maybeAutoCloseTableAfterPayment(orderRow.tableId);
+  }
   return true;
 }
 
@@ -359,6 +367,9 @@ export async function recordOrderPayment(params: {
 
     if (result.fullyPaid) {
       await clearPaymentAlerts(result.orderId);
+      const { onTabPaymentProgress } = await import("@/lib/payment-service");
+      await onTabPaymentProgress(result.tableId);
+      const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
       await maybeAutoCloseTableAfterPayment(result.tableId);
     }
 

@@ -8,6 +8,7 @@ import { CircleDollarSign, X, Smartphone } from "lucide-react";
 interface PaymentModalProps {
   orderNumber: number;
   billTotal: number;
+  consolidated?: boolean;
   paymentQrUrl?: string | null;
   onClose: () => void;
   onConfirm: () => void;
@@ -17,6 +18,7 @@ interface PaymentModalProps {
 export function PaymentModal({
   orderNumber,
   billTotal,
+  consolidated = false,
   paymentQrUrl,
   onClose,
   onConfirm,
@@ -37,7 +39,9 @@ export function PaymentModal({
       >
         <div className="flex items-start justify-between mb-4">
           <div>
-            <p className="text-xs text-zinc-500 uppercase tracking-wide">Order #{orderNumber}</p>
+            <p className="text-xs text-zinc-500 uppercase tracking-wide">
+              {consolidated ? "Combined table bill" : `Order #${orderNumber}`}
+            </p>
             <h3 className="text-xl font-bold text-white mt-1">
               Pay {formatCurrency(billTotal)}
             </h3>
@@ -78,7 +82,7 @@ export function PaymentModal({
               {confirming ? "Notifying staff..." : "I've paid — notify staff"}
             </Button>
             <p className="text-xs text-zinc-500 text-center">
-              Staff will verify your payment and confirm. This table stays locked until then.
+              Staff will verify your payment. You can keep ordering — new items join this bill.
             </p>
           </>
         ) : (
@@ -100,7 +104,7 @@ export function PaymentModal({
               {confirming ? "Alerting server..." : `Pay ${formatCurrency(billTotal)} — alert server`}
             </Button>
             <p className="text-xs text-zinc-500 text-center">
-              New orders are blocked on this table until staff marks your bill as paid.
+              You can keep ordering while payment is pending — all rounds stay on one bill.
             </p>
           </>
         )}
