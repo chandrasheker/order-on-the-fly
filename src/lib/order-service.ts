@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { isOrderItemOpen, todayDateString, sumOrderRevenue } from "@/lib/utils";
+import { isOrderItemOpen, todayDateString, sumOrderRevenue, formatCurrency } from "@/lib/utils";
+import { maybeAutoPauseKitchen } from "@/lib/kitchen-capacity-service";
 import { clearPaymentAlerts } from "@/lib/payment-service";
 import { maybeAutoCloseTableAfterPayment } from "@/lib/table-ordering-service";
 import { finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
@@ -8,6 +9,14 @@ import { scheduleAggregatorStatusPush } from "@/lib/aggregator-sync-service";
 import { decrementInventoryForOrder } from "@/lib/inventory-service";
 import { touchGuestProfile } from "@/lib/guest-crm-service";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { assertKitchenAcceptingOrders } from "@/lib/kitchen-capacity-service";
+import {
+  validateAndPriceModifiers,
+  modifiersToJson,
+  formatModifiersNotes,
+} from "@/lib/modifier-service";
+import { resolvePromotionForOrder } from "@/lib/promotion-service";
+import { dispatchRealtimeNotifications } from "@/lib/outbound-notification-service";
 import type { OrderChannel } from "@/generated/prisma/client";
 
 export async function clearAlertsForOrderItem(orderItemId: string) {
@@ -106,6 +115,12 @@ export type CreateOrderItemInput = {
   menuItemId: string;
   quantity: number;
   notes?: string;
+  modifierOptionIds?: string[];
+};
+
+export type CreateComboMealInput = {
+  comboMealId: string;
+  quantity: number;
 };
 
 export class OrderCreationError extends Error {
@@ -128,8 +143,10 @@ export async function createOrderForTable(params: {
   externalOrderId?: string | null;
   orderNotes?: string | null;
   items: CreateOrderItemInput[];
+  comboMeals?: CreateComboMealInput[];
   placedByUserId?: string | null;
   placedByName?: string | null;
+  promoCode?: string | null;
 }) {
   const {
     tableId,
@@ -140,11 +157,13 @@ export async function createOrderForTable(params: {
     externalOrderId,
     orderNotes,
     items,
+    comboMeals = [],
     placedByUserId,
     placedByName,
+    promoCode,
   } = params;
 
-  if (!items.length) {
+  if (!items.length && !comboMeals.length) {
     throw new OrderCreationError("Order must include at least one item");
   }
 
@@ -155,6 +174,13 @@ export async function createOrderForTable(params: {
 
   if (!table) {
     throw new OrderCreationError("Table not found", 404);
+  }
+
+  if (!placedByUserId) {
+    const kitchen = await assertKitchenAcceptingOrders(restaurantId);
+    if (!kitchen.ok) {
+      throw new OrderCreationError(kitchen.error, 503, kitchen.code);
+    }
   }
 
   const { isTablePaymentBlocked } = await import("@/lib/payment-service");
@@ -174,21 +200,63 @@ export async function createOrderForTable(params: {
         : channelForTableKind(table.kind, table.serviceLabel)
       : channelForTableKind(table.kind, table.serviceLabel));
 
+  const comboRows =
+    comboMeals.length > 0
+      ? await prisma.comboMeal.findMany({
+          where: {
+            id: { in: comboMeals.map((c) => c.comboMealId) },
+            restaurantId,
+            isAvailable: true,
+          },
+          include: {
+            items: { include: { menuItem: { include: { category: { select: { slug: true } } } } } },
+          },
+        })
+      : [];
+
+  if (comboRows.length !== comboMeals.length) {
+    throw new OrderCreationError("Some combo meals are unavailable", 400);
+  }
+
+  const comboDerivedItems: CreateOrderItemInput[] = [];
+  for (const comboInput of comboMeals) {
+    const combo = comboRows.find((c) => c.id === comboInput.comboMealId)!;
+    const listTotal = combo.items.reduce(
+      (s, i) => s + i.menuItem.price * i.quantity,
+      0,
+    );
+    const ratio = listTotal > 0 ? combo.comboPrice / listTotal : 1;
+    for (const ci of combo.items) {
+      if (!ci.menuItem.isAvailable) {
+        throw new OrderCreationError(`${combo.name}: ${ci.menuItem.name} is unavailable`, 400);
+      }
+      comboDerivedItems.push({
+        menuItemId: ci.menuItemId,
+        quantity: ci.quantity * comboInput.quantity,
+        notes: `Combo: ${combo.name}`,
+        modifierOptionIds: [],
+      });
+    }
+  }
+
+  const allItems = [...items, ...comboDerivedItems];
+
   const menuItems = await prisma.menuItem.findMany({
     where: {
-      id: { in: items.map((i) => i.menuItemId) },
+      id: { in: allItems.map((i) => i.menuItemId) },
       isAvailable: true,
       category: { restaurantId },
     },
+    include: { category: { select: { slug: true } } },
   });
 
-  if (menuItems.length !== items.length) {
+  if (menuItems.length !== new Set(allItems.map((i) => i.menuItemId)).size) {
     throw new OrderCreationError("Some items are unavailable", 400);
   }
 
   const inventoryOn = await isFeatureEnabled(restaurantId, "inventory_86");
   if (inventoryOn) {
-    for (const item of items) {
+    for (const item of allItems) {
       const menuItem = menuItems.find((m) => m.id === item.menuItemId)!;
       if (menuItem.trackInventory && menuItem.stockQuantity != null) {
         if (menuItem.stockQuantity < item.quantity) {
@@ -205,17 +273,71 @@ export async function createOrderForTable(params: {
   const orderNumber = await getNextOrderNumber(restaurantId);
   const now = new Date();
 
-  const orderItemsData = items.map((item) => {
+  const pricedLines: Array<{
+    menuItem: (typeof menuItems)[number];
+    quantity: number;
+    unitPrice: number;
+    notes: string | null;
+    modifiersJson: string | null;
+  }> = [];
+
+  for (const item of allItems) {
     const menuItem = menuItems.find((m) => m.id === item.menuItemId)!;
-    const expectedReadyAt = new Date(now.getTime() + menuItem.prepTimeMinutes * 60 * 1000);
-    return {
-      menuItemId: menuItem.id,
+    const { modifiers, extraTotal } = await validateAndPriceModifiers(
+      restaurantId,
+      menuItem.id,
+      item.modifierOptionIds ?? [],
+    );
+    const modNotes = formatModifiersNotes(modifiers);
+    const combinedNotes = [item.notes?.trim(), modNotes].filter(Boolean).join(" · ") || null;
+    pricedLines.push({
+      menuItem,
       quantity: item.quantity,
-      prepTimeMinutes: menuItem.prepTimeMinutes,
+      unitPrice: menuItem.price + extraTotal,
+      notes: combinedNotes,
+      modifiersJson: modifiersToJson(modifiers),
+    });
+  }
+
+  let comboDiscount = 0;
+  for (const comboInput of comboMeals) {
+    const combo = comboRows.find((c) => c.id === comboInput.comboMealId)!;
+    const listTotal = combo.items.reduce((s, ci) => {
+      const line = pricedLines.find(
+        (l) => l.menuItem.id === ci.menuItemId && l.notes?.includes(`Combo: ${combo.name}`),
+      );
+      const unit = line?.unitPrice ?? ci.menuItem.price;
+      return s + unit * ci.quantity * comboInput.quantity;
+    }, 0);
+    const targetTotal = combo.comboPrice * comboInput.quantity;
+    comboDiscount += Math.max(0, listTotal - targetTotal);
+  }
+
+  const promoLines = pricedLines.map((line) => ({
+    menuItemId: line.menuItem.id,
+    categorySlug: line.menuItem.category.slug,
+    quantity: line.quantity,
+    lineTotal: line.unitPrice * line.quantity,
+  }));
+
+  const { promo, discount: promoDiscountRaw } = await resolvePromotionForOrder({
+    restaurantId,
+    promoCode,
+    lines: promoLines,
+  });
+  const promoDiscount = promoDiscountRaw + comboDiscount;
+
+  const orderItemsData = pricedLines.map((line) => {
+    const expectedReadyAt = new Date(now.getTime() + line.menuItem.prepTimeMinutes * 60 * 1000);
+    return {
+      menuItemId: line.menuItem.id,
+      quantity: line.quantity,
+      prepTimeMinutes: line.menuItem.prepTimeMinutes,
       expectedReadyAt,
-      unitPrice: menuItem.price,
-      itemName: menuItem.name,
-      notes: item.notes,
+      unitPrice: line.unitPrice,
+      itemName: line.menuItem.name,
+      notes: line.notes,
+      modifiersJson: line.modifiersJson,
     };
   });
 
@@ -233,6 +355,9 @@ export async function createOrderForTable(params: {
       status: "PENDING",
       placedByUserId: placedByUserId ?? null,
       placedByName: placedByName ?? null,
+      promoCode: promo?.code ?? null,
+      promoDiscount,
+      discountAmount: promoDiscount,
       items: { create: orderItemsData },
     },
     include: {
@@ -241,11 +366,14 @@ export async function createOrderForTable(params: {
     },
   });
 
-  const total = order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const total = Math.max(
+    0,
+    order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0) - promoDiscount,
+  );
 
   void decrementInventoryForOrder(
     table.restaurantId,
-    items.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity }))
+    allItems.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity }))
   );
 
   void touchGuestProfile({
@@ -253,6 +381,15 @@ export async function createOrderForTable(params: {
     phone: customerPhone,
     name: customerName,
     orderTotal: total,
+  });
+
+  void dispatchRealtimeNotifications({
+    restaurantId: table.restaurantId,
+    type: "NEW_ORDER",
+    title: `New order #${order.orderNumber}`,
+    body: `Table ${table.number} — ${formatCurrency(total)}`,
+    tableNumber: table.number,
+    urgent: true,
   });
 
   return { order, total };
@@ -283,6 +420,10 @@ export async function checkOverdueItems(restaurantId: string, force = false) {
       order: { include: { table: true } },
     },
   });
+
+  if (overdueItems.length > 0) {
+    void maybeAutoPauseKitchen(restaurantId);
+  }
 
   for (const item of overdueItems) {
     const minutesLate = minutesLateFromExpected(item.expectedReadyAt, now);

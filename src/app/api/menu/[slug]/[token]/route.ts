@@ -4,6 +4,9 @@ import { logApiError, logApiRequest, logWarn } from "@/lib/logger";
 import { isTablePaymentBlocked } from "@/lib/payment-service";
 import { getPaymentQrPublicUrl, paymentQrExists } from "@/lib/payment-qr-storage";
 import { getCustomerBackgroundImageUrl } from "@/lib/branding-service";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import { listActivePromotions, listComboMeals } from "@/lib/promotion-service";
+import { getKitchenCapacityState } from "@/lib/kitchen-capacity-service";
 
 export async function GET(
   _req: NextRequest,
@@ -42,16 +45,70 @@ export async function GET(
       return NextResponse.json({ error: "Table not found" }, { status: 404 });
     }
 
-    const categories = await prisma.menuCategory.findMany({
-      where: { restaurantId: restaurant.id },
-      include: {
-        items: {
-          where: { isAvailable: true },
-          orderBy: { sortOrder: "asc" },
+    const [
+      categories,
+      promotionsOn,
+      modifiersOn,
+      callWaiterOn,
+      kitchenOn,
+      promotions,
+      combos,
+      kitchenState,
+      modifierLinks,
+    ] = await Promise.all([
+      prisma.menuCategory.findMany({
+        where: { restaurantId: restaurant.id },
+        include: {
+          items: {
+            where: { isAvailable: true },
+            orderBy: { sortOrder: "asc" },
+          },
         },
-      },
-      orderBy: { sortOrder: "asc" },
-    });
+        orderBy: { sortOrder: "asc" },
+      }),
+      isFeatureEnabled(restaurant.id, "promotions_engine"),
+      isFeatureEnabled(restaurant.id, "menu_modifiers"),
+      isFeatureEnabled(restaurant.id, "call_waiter"),
+      isFeatureEnabled(restaurant.id, "kitchen_capacity"),
+      isFeatureEnabled(restaurant.id, "promotions_engine").then((on) =>
+        on ? listActivePromotions(restaurant.id) : [],
+      ),
+      isFeatureEnabled(restaurant.id, "promotions_engine").then((on) =>
+        on ? listComboMeals(restaurant.id) : [],
+      ),
+      isFeatureEnabled(restaurant.id, "kitchen_capacity").then((on) =>
+        on ? getKitchenCapacityState(restaurant.id) : { paused: false, message: null, overdueCount: 0 },
+      ),
+      isFeatureEnabled(restaurant.id, "menu_modifiers").then((on) =>
+        on
+          ? prisma.menuItemModifierGroup.findMany({
+              where: { menuItem: { category: { restaurantId: restaurant.id } } },
+              include: {
+                modifierGroup: {
+                  include: { options: { orderBy: { sortOrder: "asc" } } },
+                },
+              },
+            })
+          : [],
+      ),
+    ]);
+
+    const modifiersByItem = new Map<string, Array<(typeof modifierLinks)[number]["modifierGroup"]>>();
+    if (modifiersOn) {
+      for (const link of modifierLinks) {
+        const list = modifiersByItem.get(link.menuItemId) ?? [];
+        list.push(link.modifierGroup);
+        modifiersByItem.set(link.menuItemId, list);
+      }
+    }
+
+    const enrichedCategories = categories.map((cat) => ({
+      ...cat,
+      items: cat.items.map((item) => ({
+        ...item,
+        modifierGroups: modifiersByItem.get(item.id) ?? [],
+      })),
+    }));
 
     const paymentBlocked = await isTablePaymentBlocked(table.id);
     const hasPaymentQr = await paymentQrExists(restaurant.id);
@@ -72,7 +129,27 @@ export async function GET(
       },
       table: { id: table.id, number: table.number, qrToken: table.qrToken },
       paymentBlocked,
-      categories: categories.filter((c) => c.items.length > 0),
+      features: {
+        promotions: promotionsOn,
+        modifiers: modifiersOn,
+        callWaiter: callWaiterOn,
+        kitchenCapacity: kitchenOn,
+      },
+      kitchenPaused: kitchenOn ? kitchenState.paused : false,
+      kitchenPauseMessage: kitchenOn ? kitchenState.message : null,
+      promotions: promotionsOn
+        ? promotions.map((p) => ({
+            id: p.id,
+            name: p.name,
+            type: p.type,
+            value: p.value,
+            code: p.code,
+            categorySlug: p.categorySlug,
+            minOrderAmount: p.minOrderAmount,
+          }))
+        : [],
+      combos: promotionsOn ? combos : [],
+      categories: enrichedCategories.filter((c) => c.items.length > 0),
     });
   } catch (error) {
     logApiError("menu/[slug]/[token]", "GET", error, { slug });

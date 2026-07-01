@@ -53,6 +53,9 @@ function isPublicApi(pathname: string, request: NextRequest) {
   if (pathname === "/api/platform/auth/login" && request.method === "POST") return true;
   if (/^\/api\/webhooks\/orders\/[^/]+$/.test(pathname) && request.method === "POST") return true;
   if (/^\/api\/webhooks\/(swiggy|zomato)\/[^/]+$/.test(pathname) && request.method === "POST") return true;
+  if (/^\/api\/webhooks\/payment\/[^/]+$/.test(pathname) && request.method === "POST") return true;
+  if (pathname === "/api/guest/service-request" && request.method === "POST") return true;
+  if (pathname === "/api/push/vapid" && request.method === "GET") return true;
   if (/^\/api\/orders\/[^/]+$/.test(pathname) && request.method === "PATCH") {
     return true;
   }

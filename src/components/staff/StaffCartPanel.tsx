@@ -10,8 +10,8 @@ type StaffCartPanelProps = {
   total: number;
   maxPrepTime: number;
   placing: boolean;
-  onUpdateQuantity: (menuItemId: string, quantity: number) => void;
-  onUpdateNotes: (menuItemId: string, notes: string) => void;
+  onUpdateQuantity: (lineId: string, quantity: number) => void;
+  onUpdateNotes: (lineId: string, notes: string) => void;
   onPlaceOrder: () => void;
   className?: string;
 };
@@ -33,7 +33,7 @@ export function StaffCartPanel({
       <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-4 space-y-3">
         <p className="text-sm font-semibold text-violet-200">Current order</p>
         {items.map((item) => (
-          <div key={item.menuItemId} className="rounded-xl bg-black/20 border border-white/10 p-3 space-y-2">
+          <div key={item.lineId} className="rounded-xl bg-black/20 border border-white/10 p-3 space-y-2">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-medium text-white">{item.name}</p>
@@ -44,7 +44,7 @@ export function StaffCartPanel({
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => onUpdateQuantity(item.menuItemId, item.quantity - 1)}
+                  onClick={() => onUpdateQuantity(item.lineId, item.quantity - 1)}
                   className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"
                 >
                   <Minus className="w-3.5 h-3.5" />
@@ -52,7 +52,7 @@ export function StaffCartPanel({
                 <span className="w-5 text-center font-bold text-white">{item.quantity}</span>
                 <button
                   type="button"
-                  onClick={() => onUpdateQuantity(item.menuItemId, item.quantity + 1)}
+                  onClick={() => onUpdateQuantity(item.lineId, item.quantity + 1)}
                   className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-white"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -64,7 +64,7 @@ export function StaffCartPanel({
               <Input
                 placeholder="Special instructions (e.g. less spicy, no onion)"
                 value={item.notes ?? ""}
-                onChange={(e) => onUpdateNotes(item.menuItemId, e.target.value)}
+                onChange={(e) => onUpdateNotes(item.lineId, e.target.value)}
                 className="h-9 text-sm"
               />
             </div>

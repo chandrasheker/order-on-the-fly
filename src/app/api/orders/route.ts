@@ -10,9 +10,9 @@ import { requireSession } from "@/lib/auth";
 export async function POST(req: NextRequest) {
   logApiRequest("orders", "POST");
   try {
-    const { tableToken, customerName, items, sessionKey } = await req.json();
+    const { tableToken, customerName, items, comboMeals, promoCode, sessionKey } = await req.json();
 
-    if (!tableToken || !items?.length) {
+    if (!tableToken || (!items?.length && !comboMeals?.length)) {
       return NextResponse.json({ error: "Invalid order data" }, { status: 400 });
     }
 
@@ -52,11 +52,26 @@ export async function POST(req: NextRequest) {
       tableId: table.id,
       restaurantId: table.restaurantId,
       customerName,
-      items: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
-        menuItemId: item.menuItemId,
-        quantity: item.quantity,
-        notes: item.notes,
-      })),
+      promoCode: promoCode ?? null,
+      items: (items ?? []).map(
+        (item: {
+          menuItemId: string;
+          quantity: number;
+          notes?: string;
+          modifierOptionIds?: string[];
+        }) => ({
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+          notes: item.notes,
+          modifierOptionIds: item.modifierOptionIds,
+        }),
+      ),
+      comboMeals: (comboMeals ?? []).map(
+        (c: { comboMealId: string; quantity: number }) => ({
+          comboMealId: c.comboMealId,
+          quantity: Number(c.quantity ?? 1),
+        }),
+      ),
     });
 
     logInfo("api:orders", "Order created", {

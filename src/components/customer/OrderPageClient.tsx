@@ -15,6 +15,12 @@ import { useTableSession } from "@/hooks/useTableSession";
 import { UtensilsCrossed, Sparkles, Users, Heart, QrCode, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 
+import { CallWaiterBar } from "@/components/customer/CallWaiterBar";
+import { KitchenPausedBanner } from "@/components/customer/KitchenPausedBanner";
+import { PromoCodeInput } from "@/components/customer/PromoCodeInput";
+import { ComboMealsSection } from "@/components/customer/ComboMealsSection";
+import { CustomerPageBackground } from "@/components/customer/CustomerPageBackground";
+
 interface Props {
   slug: string;
   token: string;
@@ -30,7 +36,23 @@ interface RestaurantData {
   paymentQrUrl?: string | null;
 }
 
-import { CustomerPageBackground } from "@/components/customer/CustomerPageBackground";
+interface MenuFeatures {
+  promotions?: boolean;
+  modifiers?: boolean;
+  callWaiter?: boolean;
+  kitchenCapacity?: boolean;
+}
+
+interface ComboMeal {
+  id: string;
+  name: string;
+  description: string | null;
+  comboPrice: number;
+  items: Array<{
+    menuItem: { id: string; name: string; price: number; isAvailable: boolean };
+    quantity: number;
+  }>;
+}
 
 interface LastOrder {
   id: string;
@@ -43,7 +65,12 @@ export function OrderPageClient({ slug, token }: Props) {
     restaurant: RestaurantData;
     table: { number: number };
     categories: Parameters<typeof MenuView>[0]["categories"];
+    features?: MenuFeatures;
+    kitchenPaused?: boolean;
+    kitchenPauseMessage?: string | null;
+    combos?: ComboMeal[];
   } | null>(null);
+  const [comboCart, setComboCart] = useState<Array<{ comboMealId: string; quantity: number }>>([]);
   const [orders, setOrders] = useState<Parameters<typeof OrderTracker>[0]["orders"]>([]);
   const [lastOrder, setLastOrder] = useState<LastOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,14 +82,22 @@ export function OrderPageClient({ slug, token }: Props) {
   const [showThankYou, setShowThankYou] = useState(false);
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { customerName, setCustomerName, items, clearCart } = useCartStore();
+  const { customerName, setCustomerName, items, promoCode, clearCart } = useCartStore();
   const tableSession = useTableSession(token, slug);
 
   const fetchMenu = useCallback(async () => {
     const res = await fetch(`/api/menu/${slug}/${token}`);
     if (res.ok) {
       const json = await res.json();
-      setData(json);
+      setData({
+        restaurant: json.restaurant,
+        table: json.table,
+        categories: json.categories,
+        features: json.features,
+        kitchenPaused: json.kitchenPaused,
+        kitchenPauseMessage: json.kitchenPauseMessage,
+        combos: json.combos,
+      });
       setPaymentBlocked(Boolean(json.paymentBlocked));
     }
     setLoading(false);
@@ -143,7 +178,7 @@ export function OrderPageClient({ slug, token }: Props) {
   }, []);
 
   const placeOrder = async () => {
-    if (!items.length || !tableSession.canOrder || !tableSession.sessionKey) return;
+    if ((!items.length && !comboCart.length) || !tableSession.canOrder || !tableSession.sessionKey) return;
     setOrdering(true);
     setOrderError("");
     try {
@@ -155,11 +190,14 @@ export function OrderPageClient({ slug, token }: Props) {
           tableToken: token,
           sessionKey: tableSession.sessionKey,
           customerName: customerName || undefined,
+          promoCode: promoCode || undefined,
           items: items.map((i) => ({
             menuItemId: i.menuItemId,
             quantity: i.quantity,
             notes: i.notes,
+            modifierOptionIds: i.modifierOptionIds,
           })),
+          comboMeals: comboCart,
         }),
       });
       if (res.ok) {
@@ -170,6 +208,7 @@ export function OrderPageClient({ slug, token }: Props) {
           orderNumber: json.order.orderNumber,
         });
         clearCart();
+        setComboCart([]);
         setOrderPlaced(true);
         setTimeout(() => setOrderPlaced(false), 3000);
         fetchOrders();
@@ -180,6 +219,18 @@ export function OrderPageClient({ slug, token }: Props) {
     } finally {
       setOrdering(false);
     }
+  };
+
+  const addCombo = (comboMealId: string) => {
+    setComboCart((prev) => {
+      const existing = prev.find((c) => c.comboMealId === comboMealId);
+      if (existing) {
+        return prev.map((c) =>
+          c.comboMealId === comboMealId ? { ...c, quantity: c.quantity + 1 } : c,
+        );
+      }
+      return [...prev, { comboMealId, quantity: 1 }];
+    });
   };
 
   if (loading || tableSession.loading) {
@@ -211,7 +262,7 @@ export function OrderPageClient({ slug, token }: Props) {
   const hasPaymentOrders = orders.some((o) => shouldShowCustomerPaymentOrder(o));
   const hasVisibleOrders = hasActiveOrders || hasPaymentOrders;
   const latestOrderId = orders[0]?.id;
-  const canOrder = tableSession.canOrder && !paymentBlocked;
+  const canOrder = tableSession.canOrder && !paymentBlocked && !data?.kitchenPaused;
   const showOrderingGate =
     !canOrder &&
     !paymentBlocked &&
@@ -330,6 +381,21 @@ export function OrderPageClient({ slug, token }: Props) {
           </div>
         )}
 
+        {data.features?.kitchenCapacity && (
+          <KitchenPausedBanner
+            paused={Boolean(data.kitchenPaused)}
+            message={data.kitchenPauseMessage}
+          />
+        )}
+
+        {data.features?.callWaiter && tableSession.diningVerified && (
+          <CallWaiterBar
+            tableToken={token}
+            sessionKey={tableSession.sessionKey}
+            enabled={Boolean(data.features.callWaiter)}
+          />
+        )}
+
         {showNameInput && canOrder && (
           <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
             <label className="text-sm text-zinc-400 mb-2 block">Your name (optional)</label>
@@ -400,6 +466,24 @@ export function OrderPageClient({ slug, token }: Props) {
               rewardBeverageLabel: data.restaurant.rewardBeverageLabel,
             }}
           />
+        )}
+
+        {data.features?.promotions && canOrder && !showThankYou && (
+          <PromoCodeInput enabled={Boolean(data.features.promotions)} />
+        )}
+
+        {data.features?.promotions && (data.combos?.length ?? 0) > 0 && !showThankYou && (
+          <ComboMealsSection
+            combos={data.combos ?? []}
+            canOrder={canOrder}
+            onAddCombo={addCombo}
+          />
+        )}
+
+        {comboCart.length > 0 && (
+          <p className="text-sm text-center text-orange-300">
+            {comboCart.length} combo{comboCart.length > 1 ? "s" : ""} ready to order
+          </p>
         )}
 
         <div id="customer-menu">

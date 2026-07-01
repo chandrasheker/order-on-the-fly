@@ -69,6 +69,12 @@ These are **off by default**. Enable when the customer pays for the add-on.
 | `phone_orders` | Walk-in, **takeaway**, and **delivery** orders | Staff dashboard → **Remote orders** |
 | `gst_receipts` | GSTIN, tax rate, compliant receipt footer | Admin → QR codes → receipt settings |
 | `custom_background` | Branded photo behind the customer ordering screen | Admin → QR codes → Guest page background |
+| `promotions_engine` | Happy hour, coupon codes, BOGO, category discounts, combo meals | Admin → **Real-time ops** → Promotions & Combos |
+| `menu_modifiers` | Size, spice, add-ons with price deltas on every order | Admin → **Real-time ops** → Modifiers; guest customize flow |
+| `call_waiter` | Guest taps for water, bill, or server from their phone | Guest ordering screen; staff dashboard guest requests panel |
+| `kitchen_capacity` | Pause QR orders when overloaded; auto-pause on overdue backlog | Admin → **Real-time ops** → Kitchen; staff dashboard panel |
+| `payment_webhooks` | Razorpay / PhonePe / Paytm auto-confirm payments | Admin → **Real-time ops** → Payments; `POST /api/webhooks/payment/{slug}` |
+| `push_alerts` | Web push + SMS when tab closed — orders, guest calls, payments | Staff dashboard → Enable alerts; `.env` VAPID + SMS keys |
 | `aggregator_inbox` | **Swiggy / Zomato automatic sync** (credentials + webhook) | Admin → **Integrations** |
 
 See **[AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md)** for what owners need from Swiggy/Zomato partner teams.
