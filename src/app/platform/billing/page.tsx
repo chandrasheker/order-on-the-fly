@@ -5,6 +5,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Card, Spinner } from "@/components/ui";
 import { PlatformShell } from "@/components/platform/PlatformShell";
 
+type TenantBillingState = {
+  demoPackUsedAt: string | null;
+  demoExpiresAt: string | null;
+  isDemoActive: boolean;
+  canEnableDemo: boolean;
+  canSelectPlan: boolean;
+  billingLockedReason: string | null;
+};
+
 type TenantBilling = {
   id: string;
   name: string;
@@ -12,6 +21,8 @@ type TenantBilling = {
   plan: string;
   subscriptionStatus: string;
   billingEmail: string | null;
+  demoPackUsedAt: string | null;
+  demoExpiresAt: string | null;
   restaurants: Array<{ id: string; name: string; slug: string }>;
   subscriptions: Array<{
     id: string;
@@ -20,6 +31,7 @@ type TenantBilling = {
     currentPeriodEnd: string | null;
     createdAt: string;
   }>;
+  billing: TenantBillingState;
 };
 
 const PLANS = ["STARTER", "PRO", "ENTERPRISE"] as const;
@@ -47,7 +59,9 @@ function PlatformBillingContent() {
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
+  const [activatingDemo, setActivatingDemo] = useState(false);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const loadTenants = useCallback(async () => {
     const me = await fetch("/api/platform/auth/me");
@@ -88,22 +102,43 @@ function PlatformBillingContent() {
   const upgrade = async (plan: string) => {
     setUpgrading(true);
     setMessage("");
+    setError("");
     const res = await fetch("/api/platform/billing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenantId: selectedId, plan }),
+      body: JSON.stringify({ tenantId: selectedId, plan, action: "set_plan" }),
     });
     const json = await res.json();
     setUpgrading(false);
     if (!res.ok) {
-      setMessage(json.error || "Upgrade failed");
+      setError(json.error || "Upgrade failed");
       return;
     }
-    setMessage(`Plan updated to ${plan}`);
+    setMessage(`Plan updated to ${plan}. Features for all restaurants under this tenant now match ${plan}.`);
+    await loadTenants();
+  };
+
+  const activateDemo = async () => {
+    setActivatingDemo(true);
+    setMessage("");
+    setError("");
+    const res = await fetch("/api/platform/billing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenantId: selectedId, action: "activate_demo" }),
+    });
+    const json = await res.json();
+    setActivatingDemo(false);
+    if (!res.ok) {
+      setError(json.error || "Could not activate demo pack");
+      return;
+    }
+    setMessage("7-day demo pack activated. Premium features are enabled until the demo ends.");
     await loadTenants();
   };
 
   const tenant = tenants.find((t) => t.id === selectedId);
+  const billing = tenant?.billing;
 
   if (loading) {
     return (
@@ -128,8 +163,9 @@ function PlatformBillingContent() {
     >
       <div className="space-y-6 max-w-3xl">
         <p className="text-sm text-zinc-400">
-          Billing is managed per tenant. Select a tenant below — restaurants under that tenant share
-          one subscription.
+          Billing is managed per tenant. Enable the one-time 7-day demo pack first, or choose a paid
+          plan after the demo ends. Restaurants under the tenant share one subscription and feature
+          set.
         </p>
 
         <div className="flex flex-wrap gap-2">
@@ -137,7 +173,11 @@ function PlatformBillingContent() {
             <button
               key={t.id}
               type="button"
-              onClick={() => setSelectedId(t.id)}
+              onClick={() => {
+                setSelectedId(t.id);
+                setMessage("");
+                setError("");
+              }}
               className={`px-3 py-1.5 rounded-full text-sm ${selectedId === t.id ? "bg-violet-500" : "bg-white/5"}`}
             >
               {t.name}
@@ -145,40 +185,106 @@ function PlatformBillingContent() {
           ))}
         </div>
 
-        {tenant && (
+        {tenant && billing && (
           <>
             <Card className="p-5 space-y-2">
               <p className="text-sm text-zinc-500">Current plan</p>
               <p className="text-3xl font-bold">{tenant.plan}</p>
               <p className="text-sm text-zinc-400">Status: {tenant.subscriptionStatus}</p>
+              {billing.isDemoActive && billing.demoExpiresAt && (
+                <p className="text-sm text-amber-300">
+                  Demo pack active until {new Date(billing.demoExpiresAt).toLocaleString()}
+                </p>
+              )}
+              {tenant.demoPackUsedAt && !billing.isDemoActive && (
+                <p className="text-sm text-zinc-500">
+                  Demo pack used on {new Date(tenant.demoPackUsedAt).toLocaleDateString()} (cannot
+                  be re-enabled)
+                </p>
+              )}
               <p className="text-sm text-zinc-400">Billing: {tenant.billingEmail ?? "—"}</p>
-              <p className="text-sm text-zinc-400">{tenant.restaurants.length} restaurant(s) on this tenant</p>
+              <p className="text-sm text-zinc-400">
+                {tenant.restaurants.length} restaurant(s) on this tenant
+              </p>
             </Card>
 
-            <Card className="p-5 space-y-3">
-              <p className="font-semibold">Change plan</p>
-              <div className="flex flex-wrap gap-2">
-                {PLANS.map((plan) => (
-                  <Button
-                    key={plan}
-                    variant={tenant.plan === plan ? "primary" : "secondary"}
-                    disabled={upgrading || tenant.plan === plan}
-                    onClick={() => void upgrade(plan)}
-                  >
-                    {plan}
-                  </Button>
-                ))}
-              </div>
-              {message && <p className="text-sm text-emerald-400">{message}</p>}
-            </Card>
+            {billing.canEnableDemo && (
+              <Card className="p-5 space-y-3 border border-violet-500/30">
+                <p className="font-semibold">7-day demo pack (free, one-time)</p>
+                <p className="text-sm text-zinc-400">
+                  Unlocks premium features across every restaurant in this tenant for 7 days. Once
+                  activated, the demo pack cannot be enabled again for this tenant.
+                </p>
+                <Button disabled={activatingDemo} onClick={() => void activateDemo()}>
+                  {activatingDemo ? "Activating…" : "Enable 7-day demo pack"}
+                </Button>
+              </Card>
+            )}
+
+            {billing.isDemoActive && billing.billingLockedReason && (
+              <Card className="p-5 space-y-2 border border-amber-500/30">
+                <p className="font-semibold text-amber-200">Demo in progress</p>
+                <p className="text-sm text-zinc-400">{billing.billingLockedReason}</p>
+                <p className="text-sm text-zinc-500">
+                  Paid plan selection unlocks automatically when the demo period ends.
+                </p>
+              </Card>
+            )}
+
+            {billing.canSelectPlan ? (
+              <Card className="p-5 space-y-3">
+                <p className="font-semibold">Choose a plan</p>
+                {tenant.subscriptionStatus === "EXPIRED" && (
+                  <p className="text-sm text-zinc-400">
+                    The demo has ended. Select a paid plan to restore features for this tenant.
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {PLANS.map((plan) => (
+                    <Button
+                      key={plan}
+                      variant={tenant.plan === plan && tenant.subscriptionStatus === "ACTIVE" ? "primary" : "secondary"}
+                      disabled={upgrading || (tenant.plan === plan && tenant.subscriptionStatus === "ACTIVE")}
+                      onClick={() => void upgrade(plan)}
+                    >
+                      {plan}
+                    </Button>
+                  ))}
+                </div>
+              </Card>
+            ) : (
+              !billing.canEnableDemo &&
+              !billing.isDemoActive && (
+                <Card className="p-5 space-y-2">
+                  <p className="font-semibold">Plan selection</p>
+                  <p className="text-sm text-zinc-400">
+                    Paid plans are available here after the demo period ends or once billing is
+                    activated for this tenant.
+                  </p>
+                </Card>
+              )
+            )}
+
+            {(message || error) && (
+              <p className={`text-sm ${error ? "text-red-400" : "text-emerald-400"}`}>
+                {error || message}
+              </p>
+            )}
 
             <Card className="p-5">
               <p className="font-semibold mb-3">Subscription history</p>
               <ul className="space-y-2 text-sm">
                 {tenant.subscriptions.map((s) => (
                   <li key={s.id} className="flex justify-between border-b border-white/5 pb-2">
-                    <span>{s.plan} · {s.status}</span>
-                    <span className="text-zinc-500">{new Date(s.createdAt).toLocaleDateString()}</span>
+                    <span>
+                      {s.plan} · {s.status}
+                      {s.currentPeriodEnd
+                        ? ` · until ${new Date(s.currentPeriodEnd).toLocaleDateString()}`
+                        : ""}
+                    </span>
+                    <span className="text-zinc-500">
+                      {new Date(s.createdAt).toLocaleDateString()}
+                    </span>
                   </li>
                 ))}
               </ul>
