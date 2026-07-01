@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, CreditCard } from "lucide-react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Card, Spinner } from "@/components/ui";
+import { PlatformShell } from "@/components/platform/PlatformShell";
 
 type TenantBilling = {
   id: string;
@@ -26,7 +25,24 @@ type TenantBilling = {
 const PLANS = ["STARTER", "PRO", "ENTERPRISE"] as const;
 
 export default function PlatformBillingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-app-shell">
+          <Spinner className="w-8 h-8" />
+        </div>
+      }
+    >
+      <PlatformBillingContent />
+    </Suspense>
+  );
+}
+
+function PlatformBillingContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const presetTenantId = searchParams.get("tenantId") ?? "";
+  const [admin, setAdmin] = useState<{ name: string; email: string } | null>(null);
   const [tenants, setTenants] = useState<TenantBilling[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -39,6 +55,9 @@ export default function PlatformBillingPage() {
       router.push("/platform/login");
       return;
     }
+    const meJson = await me.json();
+    setAdmin(meJson.admin);
+
     const listRes = await fetch("/api/platform/tenants");
     if (listRes.ok) {
       const json = await listRes.json();
@@ -49,12 +68,18 @@ export default function PlatformBillingPage() {
           return r.ok ? (await r.json()).tenant : null;
         }),
       );
-      const rows = details.filter(Boolean) as TenantBilling[];
+      const rows = (details.filter(Boolean) as TenantBilling[]).sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
       setTenants(rows);
-      if (rows[0]) setSelectedId(rows[0].id);
+      if (presetTenantId && rows.some((t) => t.id === presetTenantId)) {
+        setSelectedId(presetTenantId);
+      } else if (rows[0]) {
+        setSelectedId(rows[0].id);
+      }
     }
     setLoading(false);
-  }, [router]);
+  }, [router, presetTenantId]);
 
   useEffect(() => {
     void loadTenants();
@@ -89,16 +114,24 @@ export default function PlatformBillingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <header className="border-b border-white/10 px-4 py-4 max-w-3xl mx-auto flex items-center gap-3">
-        <Link href="/platform/tenants" className="p-2 rounded-xl bg-white/5">
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
-        <CreditCard className="w-5 h-5 text-violet-400" />
-        <h1 className="text-lg font-bold">Billing portal</h1>
-      </header>
+    <PlatformShell
+      admin={admin}
+      title="Billing"
+      subtitle={tenant ? tenant.name : "Subscription plans per tenant"}
+      breadcrumb={[
+        { label: "All tenants", href: "/platform" },
+        ...(tenant
+          ? [{ label: tenant.name, href: `/platform/tenants/${tenant.id}` }]
+          : []),
+        { label: "Billing" },
+      ]}
+    >
+      <div className="space-y-6 max-w-3xl">
+        <p className="text-sm text-zinc-400">
+          Billing is managed per tenant. Select a tenant below — restaurants under that tenant share
+          one subscription.
+        </p>
 
-      <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         <div className="flex flex-wrap gap-2">
           {tenants.map((t) => (
             <button
@@ -152,7 +185,7 @@ export default function PlatformBillingPage() {
             </Card>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </PlatformShell>
   );
 }

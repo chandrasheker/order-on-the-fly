@@ -24,7 +24,7 @@ type RestaurantFeatures = {
   features: FeatureRow[];
 };
 
-export function PlatformFeaturesPanel() {
+export function PlatformFeaturesPanel({ tenantId }: { tenantId: string }) {
   const [restaurants, setRestaurants] = useState<RestaurantFeatures[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Record<FeatureKey, boolean>>>({});
   const [loading, setLoading] = useState(true);
@@ -44,7 +44,7 @@ export function PlatformFeaturesPanel() {
   } = useRestaurantSearch(restaurants);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/platform/features");
+    const res = await fetch(`/api/platform/features?tenantId=${encodeURIComponent(tenantId)}`);
     if (!res.ok) {
       setLoading(false);
       return;
@@ -61,7 +61,7 @@ export function PlatformFeaturesPanel() {
     }
     setDrafts(next);
     setLoading(false);
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     load();

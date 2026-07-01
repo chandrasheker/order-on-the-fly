@@ -182,8 +182,6 @@ async function main() {
   if (pc) {
     for (const ep of [
       "/api/platform/auth/me",
-      "/api/platform/staff-config",
-      "/api/platform/features",
       "/api/platform/tenants",
     ]) {
       const res = await getWithCookie(ep, pc);
@@ -195,6 +193,14 @@ async function main() {
     record("Platform tenants list", tenants.res.ok && tenantId, tenantId?.slice(0, 8));
 
     if (tenantId) {
+      for (const ep of [
+        `/api/platform/staff-config?tenantId=${tenantId}`,
+        `/api/platform/features?tenantId=${tenantId}`,
+      ]) {
+        const res = await getWithCookie(ep, pc);
+        record(`GET ${ep.split("?")[0]} (tenant)`, res.ok, String(res.status));
+      }
+
       const res = await getWithCookie(`/api/platform/tenants/${tenantId}/overview`, pc);
       record("Tenant overview", res.ok, String(res.status));
 

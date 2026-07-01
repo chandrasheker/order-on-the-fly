@@ -9,7 +9,7 @@ import {
 import { ALL_FEATURE_KEYS, type FeatureKey } from "@/lib/feature-catalog";
 import { logApiRequest, logInfo } from "@/lib/logger";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,7 +17,24 @@ export async function GET() {
 
   logApiRequest("platform/features", "GET");
 
+  const tenantId = req.nextUrl.searchParams.get("tenantId");
+  if (!tenantId) {
+    return NextResponse.json(
+      { error: "tenantId query parameter is required" },
+      { status: 400 },
+    );
+  }
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true },
+  });
+  if (!tenant) {
+    return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+  }
+
   const restaurants = await prisma.restaurant.findMany({
+    where: { tenantId },
     orderBy: { name: "asc" },
     select: { id: true, name: true, slug: true, featureFlags: true },
   });
