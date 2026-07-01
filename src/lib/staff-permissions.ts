@@ -4,7 +4,6 @@ export type StaffTab =
   | "active"
   | "pending"
   | "revenue"
-  | "finished"
   | "overdue"
   | "missed"
   | "tables_today"
@@ -23,7 +22,7 @@ export type OrderAction =
 const TAB_ACCESS: Record<Role, StaffTab[]> = {
   OWNER: ["active", "pending", "revenue", "overdue", "missed", "tables_today", "alerts", "offline"],
   MANAGER: ["active", "pending", "revenue", "overdue", "missed", "tables_today", "alerts", "offline"],
-  COOK: ["active", "finished", "overdue", "missed", "alerts"],
+  COOK: [],
   SERVER: ["active", "pending", "overdue", "tables_today", "alerts", "offline"],
 };
 

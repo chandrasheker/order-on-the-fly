@@ -601,20 +601,6 @@ export async function getPendingPaymentOrders(restaurantId: string) {
   return orders.filter((o) => sumOrderRevenue(o.items) > 0);
 }
 
-export async function getFinishedKitchenItemsForCook(restaurantId: string, userId: string) {
-  return prisma.orderItem.findMany({
-    where: {
-      order: { restaurantId, date: todayDateString() },
-      status: { in: ["SERVED", "UNAVAILABLE"] },
-      OR: [{ preparedByUserId: userId }, { readyByUserId: userId }],
-    },
-    include: {
-      order: { include: { table: true } },
-    },
-    orderBy: [{ servedAt: "desc" }, { id: "desc" }],
-  });
-}
-
 export async function getCompletedOrders(restaurantId: string, limit = 50) {
   return prisma.order.findMany({
     where: {

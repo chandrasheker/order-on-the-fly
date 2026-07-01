@@ -56,6 +56,7 @@ import { KitchenCapacityPanel } from "@/components/staff/KitchenCapacityPanel";
 import { useStaffPush } from "@/hooks/useStaffPush";
 import type { ReceiptPayload } from "@/lib/receipt-service";
 import { isClientOffline, isNetworkFetchError, swallowPollingFetchError } from "@/lib/client-fetch";
+import { CookKitchenDashboard } from "@/components/staff/CookKitchenDashboard";
 
 interface OrderItem {
   id: string;
@@ -130,25 +131,9 @@ interface Stats {
   completedOrders: number;
   todayOrders: number;
   revenue: number;
-  finishedKitchenItems?: number;
-  finishedKitchenOrders?: number;
   overdueCount: number;
   missedTimelineCount: number;
   unreadAlerts: number;
-}
-
-interface FinishedKitchenItem {
-  id: string;
-  itemName: string;
-  quantity: number;
-  status: string;
-  preparedByName: string | null;
-  readyByName: string | null;
-  servedByName: string | null;
-  servedAt: string | null;
-  orderId: string;
-  orderNumber: number;
-  tableNumber: number;
 }
 
 interface MissedTimelineItem {
@@ -213,7 +198,6 @@ export function StaffDashboard() {
   const [user, setUser] = useState<{ id: string; name: string; role: Role; restaurantName: string } | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
-  const [finishedKitchenItems, setFinishedKitchenItems] = useState<FinishedKitchenItem[]>([]);
   const [allowedTabs, setAllowedTabs] = useState<StaffTab[]>(["active"]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [missedTimeline, setMissedTimeline] = useState<MissedTimelineItem[]>([]);
@@ -262,7 +246,6 @@ export function StaffDashboard() {
       const data = await dashRes.json();
       setOrders(data.orders);
       setPendingOrders(data.pendingOrders ?? []);
-      setFinishedKitchenItems(data.finishedKitchenItems ?? []);
       setAllowedTabs(data.permissions?.tabs ?? ["active"]);
       setAlerts(data.alerts);
       setMissedTimeline(data.missedTimeline ?? []);
@@ -448,32 +431,24 @@ export function StaffDashboard() {
     );
   }, [pendingOrders]);
 
-  const finishedByOrder = useMemo(() => {
-    const groups = new Map<
-      string,
-      { orderId: string; orderNumber: number; tableNumber: number; items: FinishedKitchenItem[] }
-    >();
-    for (const item of finishedKitchenItems) {
-      const existing = groups.get(item.orderId);
-      if (existing) {
-        existing.items.push(item);
-      } else {
-        groups.set(item.orderId, {
-          orderId: item.orderId,
-          orderNumber: item.orderNumber,
-          tableNumber: item.tableNumber,
-          items: [item],
-        });
-      }
-    }
-    return Array.from(groups.values()).sort((a, b) => b.orderNumber - a.orderNumber);
-  }, [finishedKitchenItems]);
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-app-shell">
         <Spinner className="w-8 h-8" />
       </div>
+    );
+  }
+
+  if (user?.role === "COOK") {
+    return (
+      <CookKitchenDashboard
+        user={{
+          id: user.id,
+          name: user.name,
+          restaurantName: user.restaurantName,
+        }}
+        kdsEnabled={Boolean(features.kds)}
+      />
     );
   }
 
@@ -824,30 +799,6 @@ export function StaffDashboard() {
               </button>
             )}
 
-            {showTab("finished") && (
-              <button
-                type="button"
-                onClick={() => setViewMode("finished")}
-                className={cn(
-                  "text-left rounded-2xl border p-4 transition-all",
-                  viewMode === "finished"
-                    ? "border-blue-500/50 bg-blue-500/10"
-                    : "border-white/10 bg-white/5 hover:border-white/20"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-blue-400" />
-                  <div>
-                    <p className="text-xs text-zinc-500">Finished Today</p>
-                    <p className="text-xl font-bold">{stats.finishedKitchenItems ?? 0}</p>
-                    <p className="text-xs text-blue-400/90">
-                      {stats.finishedKitchenOrders ?? 0} order{(stats.finishedKitchenOrders ?? 0) === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                </div>
-              </button>
-            )}
-
             {showTab("revenue") && (
               <button
                 type="button"
@@ -1000,14 +951,6 @@ export function StaffDashboard() {
                   View pending payments →
                 </button>
                 )}
-                {showTab("finished") && (
-                  <button
-                    onClick={() => setViewMode("finished")}
-                    className="text-sm text-blue-400 hover:text-blue-300"
-                  >
-                    View finished items →
-                  </button>
-                )}
               </Card>
             ) : (
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1022,32 +965,6 @@ export function StaffDashboard() {
                 ))}
               </div>
             )}
-          </>
-        )}
-
-        {viewMode === "finished" && showTab("finished") && (
-          <>
-            <p className="text-sm text-zinc-400 mb-4">
-              Items you started or marked ready that are now served (or out of stock) — no payment details
-            </p>
-            <Card className="p-5 mb-4">
-              <p className="text-sm text-zinc-500">Your kitchen work today</p>
-              <p className="text-3xl font-bold text-blue-400">{stats?.finishedKitchenItems ?? 0}</p>
-              <p className="text-xs text-zinc-500 mt-1">
-                {stats?.finishedKitchenOrders ?? 0} order{(stats?.finishedKitchenOrders ?? 0) === 1 ? "" : "s"} · prep / ready / served by staff
-              </p>
-            </Card>
-            <div className="space-y-3">
-              {finishedByOrder.length === 0 ? (
-                <Card className="p-8 text-center text-zinc-400">
-                  No finished items yet today. Items appear here after staff serves them.
-                </Card>
-              ) : (
-                finishedByOrder.map((group) => (
-                  <FinishedKitchenOrderCard key={group.orderId} group={group} />
-                ))
-              )}
-            </div>
           </>
         )}
 
@@ -1646,54 +1563,5 @@ function PendingPaymentCard({
         </Button>
       )}
     </motion.div>
-  );
-}
-
-function FinishedKitchenOrderCard({
-  group,
-}: {
-  group: {
-    orderId: string;
-    orderNumber: number;
-    tableNumber: number;
-    items: FinishedKitchenItem[];
-  };
-}) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center gap-3 mb-3">
-        <span className="text-lg font-bold">Table {group.tableNumber}</span>
-        <span className="text-zinc-500">#{group.orderNumber}</span>
-        <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30">
-          {group.items.length} item{group.items.length === 1 ? "" : "s"}
-        </Badge>
-      </div>
-      <div className="space-y-2">
-        {group.items.map((item) => (
-          <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
-            <p className="text-sm font-medium text-zinc-200">
-              {item.quantity}x {item.itemName}
-            </p>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
-              {item.preparedByName && <span>Prep: {item.preparedByName}</span>}
-              {item.readyByName && <span>Ready: {item.readyByName}</span>}
-              {item.status === "SERVED" && (
-                <span className="text-emerald-400/90">
-                  Served{item.servedByName ? ` by ${item.servedByName}` : ""}
-                  {item.servedAt &&
-                    ` · ${new Date(item.servedAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}`}
-                </span>
-              )}
-              {item.status === "UNAVAILABLE" && (
-                <span className="text-amber-500/80">Not served — out of stock</span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
   );
 }
