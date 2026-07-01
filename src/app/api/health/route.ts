@@ -33,11 +33,11 @@ export async function GET() {
   }
 
   const schemaPath = path.resolve(
-    process.cwd(),
+    /* turbopackIgnore: true */ process.cwd(),
     process.env.PRISMA_SCHEMA || "prisma/schema.prisma",
   );
   const migrationsPath = path.resolve(
-    process.cwd(),
+    /* turbopackIgnore: true */ process.cwd(),
     process.env.PRISMA_MIGRATIONS || "prisma/migrations",
   );
   checks.schema = fs.existsSync(schemaPath) ? path.basename(schemaPath) : "missing";

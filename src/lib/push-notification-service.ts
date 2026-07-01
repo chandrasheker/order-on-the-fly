@@ -2,6 +2,14 @@ import { prisma } from "@/lib/prisma";
 import { logWarn } from "@/lib/logger";
 import crypto from "node:crypto";
 
+type WebPushModule = {
+  setVapidDetails(subject: string, publicKey: string, privateKey: string): void;
+  sendNotification(
+    subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
+    payload: string,
+  ): Promise<unknown>;
+};
+
 function getVapidKeys() {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
@@ -44,9 +52,9 @@ export async function sendPushToRestaurant(
   const vapid = getVapidKeys();
   if (!vapid) return;
 
-  let webpush: typeof import("web-push");
+  let webpush: WebPushModule;
   try {
-    webpush = await import("web-push");
+    webpush = (await import("web-push")) as WebPushModule;
   } catch {
     logWarn("push", "web-push not installed; run npm install web-push");
     return;
