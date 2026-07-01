@@ -232,11 +232,25 @@ export function CookKitchenDashboard({
   const updateItem = async (orderId: string, itemId: string, action: string) => {
     setActingId(itemId);
     try {
-      await fetch(`/api/orders/${orderId}`, {
+      const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, itemId }),
       });
+      if (!res.ok) return;
+
+      if (action === "reject-item") {
+        setTickets((prev) =>
+          prev
+            .map((ticket) =>
+              ticket.id !== orderId
+                ? ticket
+                : { ...ticket, items: ticket.items.filter((item) => item.id !== itemId) },
+            )
+            .filter((ticket) => ticket.items.length > 0),
+        );
+      }
+
       await loadKitchen();
     } catch (error) {
       swallowPollingFetchError(error);

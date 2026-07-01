@@ -303,11 +303,20 @@ export async function PATCH(
       );
     }
 
+    const orderItem = order.items.find((i) => i.id === itemId);
+    if (!orderItem) {
+      return NextResponse.json({ error: "Item not found" }, { status: 404 });
+    }
+
     const flags = await getRestaurantFeatureFlags(session.restaurantId);
     let approvedByUserId: string | undefined;
     let approvedByName: string | undefined;
 
-    if (flags.audit_log && roleRequiresRejectApproval(session.role)) {
+    const isKitchenOos =
+      session.role === "COOK" &&
+      (orderItem.status === "PENDING" || orderItem.status === "PREPARING");
+
+    if (flags.audit_log && roleRequiresRejectApproval(session.role) && !isKitchenOos) {
       if (!managerUserId || !managerPassword) {
         return NextResponse.json(
           { error: "Manager approval required (managerUserId + managerPassword)", code: "MANAGER_APPROVAL_REQUIRED" },
@@ -326,15 +335,21 @@ export async function PATCH(
       approvedByName = approval.user.name;
     }
 
-    const orderItem = order.items.find((i) => i.id === itemId);
-
-    await prisma.orderItem.update({
-      where: { id: itemId },
-      data: {
-        status: "UNAVAILABLE",
-        isOverdue: false,
-      },
-    });
+    try {
+      await transitionOrderItemDirect({
+        orderId: id,
+        itemId,
+        toStatus: "UNAVAILABLE",
+        actorUserId: session.id,
+        actorName: session.name,
+        restaurantId: session.restaurantId,
+      });
+    } catch (err) {
+      if (err instanceof InvalidOrderTransitionError) {
+        return NextResponse.json({ error: err.message, code: "INVALID_TRANSITION" }, { status: 409 });
+      }
+      throw err;
+    }
 
     await recordAuditLog({
       restaurantId: session.restaurantId,
@@ -343,7 +358,7 @@ export async function PATCH(
       reason: reason ? String(reason) : undefined,
       payload: {
         orderId: id,
-        itemName: orderItem?.itemName,
+        itemName: orderItem.itemName,
         orderNumber: order.orderNumber,
       },
       actorUserId: session.id,
@@ -352,9 +367,6 @@ export async function PATCH(
       approvedByName,
       requiresApproval: Boolean(approvedByUserId),
     });
-
-    await clearAlertsForOrderItem(itemId);
-    await syncOrderStatus(id);
 
     logInfo("api:orders/[id]", "Item marked unavailable", { orderId: id, itemId });
     return NextResponse.json({ success: true });
