@@ -28,16 +28,29 @@ export async function hasOpenTableWork(tableId: string) {
 export async function closeTableOrdering(tableId: string) {
   await purgeStaleTableSessions(tableId);
   await prisma.tableSession.deleteMany({ where: { tableId } });
-  await clearTableCartDraft({ tableId });
-  await clearTableTabFlags(tableId);
+
+  const settled = await isTabFullySettled(tableId);
+  if (settled) {
+    await clearTableCartDraft({ tableId });
+    await clearTableTabFlags(tableId);
+    await prisma.table.update({
+      where: { id: tableId },
+      data: {
+        orderingEnabled: false,
+        orderingOpenedAt: null,
+        seatedAt: null,
+        guestCount: null,
+        assignedServerId: null,
+      },
+    });
+    return;
+  }
+
   await prisma.table.update({
     where: { id: tableId },
     data: {
       orderingEnabled: false,
       orderingOpenedAt: null,
-      seatedAt: null,
-      guestCount: null,
-      assignedServerId: null,
     },
   });
 }

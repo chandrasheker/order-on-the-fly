@@ -128,18 +128,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const orders = await prisma.order.findMany({
-      where: {
-        tableId: table.id,
-        date: todayDateString(),
-        status: { notIn: ["CANCELLED"] },
-      },
+    const { getTableTabOrders } = await import("@/lib/table-tab-service");
+    const orders = await getTableTabOrders(table.id);
+    const ordersWithMenu = await prisma.order.findMany({
+      where: { id: { in: orders.map((order) => order.id) } },
       include: { items: { include: { menuItem: true } } },
       orderBy: { createdAt: "desc" },
     });
     const tabSummary = await getTableTabPaymentSummary(table.id);
     return NextResponse.json({
-      orders,
+      orders: ordersWithMenu,
       paymentBlocked: await isTablePaymentBlocked(table.id),
       tabPaymentPending: tabSummary.paymentRequested,
       tabSummary: {

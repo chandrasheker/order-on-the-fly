@@ -185,8 +185,9 @@ export async function createOrderForTable(params: {
     }
   }
 
-  const { ensureTableTabId } = await import("@/lib/table-tab-service");
+  const { ensureTableTabId, syncOpenVisitTabIds } = await import("@/lib/table-tab-service");
   const tabId = await ensureTableTabId(table.id);
+  await syncOpenVisitTabIds(table.id);
 
   const resolvedChannel =
     orderChannel ??
@@ -406,10 +407,7 @@ export async function createOrderForTable(params: {
   });
 
   const { clearTableCartDraft } = await import("@/lib/table-cart-draft-service");
-  await clearTableCartDraft({
-    tableId: table.id,
-    source: placedByUserId ? "STAFF" : "CUSTOMER",
-  });
+  await clearTableCartDraft({ tableId: table.id });
 
   return { order, total };
 }

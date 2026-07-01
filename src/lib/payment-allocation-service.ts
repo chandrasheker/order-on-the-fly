@@ -399,3 +399,39 @@ export async function recordFullOrderPayment(params: {
     amount: summary.remaining,
   });
 }
+
+export async function recordTableTabFullPayment(params: {
+  tableId: string;
+  method?: PaymentMethod;
+  collectedByUserId?: string;
+  collectedByName?: string;
+}) {
+  const { getTableTabPaymentSummary } = await import("@/lib/table-tab-service");
+  const tabSummary = await getTableTabPaymentSummary(params.tableId);
+  if (tabSummary.unpaidOrderIds.length === 0) {
+    return { ok: false as const, error: "Nothing to pay for this table", status: 400 };
+  }
+
+  let lastResult:
+    | { ok: true; payment: unknown; summary: unknown; fullyPaid: boolean }
+    | { ok: false; error: string; status: number } | null = null;
+
+  for (const orderId of tabSummary.unpaidOrderIds) {
+    const result = await recordFullOrderPayment({
+      orderId,
+      method: params.method,
+      collectedByUserId: params.collectedByUserId,
+      collectedByName: params.collectedByName,
+    });
+    if (!result.ok) return result;
+    lastResult = result;
+  }
+
+  return {
+    ok: true as const,
+    payment: lastResult?.payment,
+    summary: lastResult?.summary,
+    fullyPaid: true,
+    paidOrderIds: tabSummary.unpaidOrderIds,
+  };
+}
