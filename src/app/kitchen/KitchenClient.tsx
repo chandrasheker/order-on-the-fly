@@ -26,7 +26,22 @@ type KitchenItem = {
   expectedReadyAt: string;
   isOverdue: boolean;
   categoryName: string;
+  categorySlug: string;
 };
+
+const KDS_CATEGORY_FILTER_KEY = "kds-category-filter";
+
+function loadSavedCategoryFilter(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(KDS_CATEGORY_FILTER_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.map(String)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
 
 type KitchenTicket = {
   id: string;
@@ -49,20 +64,43 @@ type Station = {
 export default function KitchenClient() {
   const router = useRouter();
   const [stations, setStations] = useState<Station[]>([]);
-  const [activeStation, setActiveStation] = useState("all");
+  const [selectedCategorySlugs, setSelectedCategorySlugs] = useState<Set<string>>(
+    () => loadSavedCategoryFilter(),
+  );
   const [tickets, setTickets] = useState<KitchenTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [role, setRole] = useState<string>("COOK");
 
   const loadKitchen = useCallback(async () => {
-    const dataRes = await fetch(`/api/kitchen/orders?station=${activeStation}`);
+    const dataRes = await fetch("/api/kitchen/orders?station=all");
     if (dataRes.ok) {
       const data = await dataRes.json();
       setStations(data.stations ?? []);
       setTickets(data.tickets ?? []);
     }
-  }, [activeStation]);
+  }, []);
+
+  const toggleCategoryFilter = (slug: string) => {
+    setSelectedCategorySlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      localStorage.setItem(KDS_CATEGORY_FILTER_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const clearCategoryFilter = () => {
+    setSelectedCategorySlugs(new Set());
+    localStorage.removeItem(KDS_CATEGORY_FILTER_KEY);
+  };
+
+  const matchesCategoryFilter = useCallback(
+    (categorySlug: string) =>
+      selectedCategorySlugs.size === 0 || selectedCategorySlugs.has(categorySlug),
+    [selectedCategorySlugs],
+  );
 
   const load = useCallback(async () => {
     const [meRes] = await Promise.all([fetch("/api/auth/me")]);
@@ -135,43 +173,51 @@ export default function KitchenClient() {
             <ChefHat className="w-6 h-6 text-orange-400" />
             <div>
               <h1 className="text-lg font-bold">Kitchen Display</h1>
-              <p className="text-xs text-zinc-500">Filtered by your menu categories · live tickets</p>
+              <p className="text-xs text-zinc-500">
+                {selectedCategorySlugs.size === 0
+                  ? "Showing all categories · tap to filter"
+                  : `${selectedCategorySlugs.size} categor${selectedCategorySlugs.size === 1 ? "y" : "ies"} selected`}
+              </p>
             </div>
           </div>
           <div className="header-trailing-actions flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
-                onClick={() => setActiveStation("all")}
+                onClick={clearCategoryFilter}
                 className={cn(
                   "px-3 py-1.5 rounded-lg text-sm border transition-colors",
-                  activeStation === "all"
+                  selectedCategorySlugs.size === 0
                     ? "bg-white/10 border-white/20 text-foreground"
                     : "border-white/5 text-zinc-400 hover:text-white",
                 )}
               >
                 All
               </button>
-              {stations.map((station) => (
-                <button
-                  key={station.id}
-                  type="button"
-                  onClick={() => setActiveStation(station.slug)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-sm border transition-colors",
-                    activeStation === station.slug
-                      ? "text-white border-white/20"
-                      : "border-white/5 text-zinc-400 hover:text-white",
-                  )}
-                  style={
-                    activeStation === station.slug
-                      ? { backgroundColor: `${station.color}33`, borderColor: `${station.color}66` }
-                      : undefined
-                  }
-                >
-                  {station.name}
-                </button>
-              ))}
+              {stations.map((station) => {
+                const isSelected = selectedCategorySlugs.has(station.slug);
+                return (
+                  <button
+                    key={station.id}
+                    type="button"
+                    onClick={() => toggleCategoryFilter(station.slug)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-sm border transition-colors",
+                      isSelected
+                        ? "text-white border-white/20"
+                        : "border-white/5 text-zinc-400 hover:text-white",
+                    )}
+                    style={
+                      isSelected
+                        ? { backgroundColor: `${station.color}33`, borderColor: `${station.color}66` }
+                        : undefined
+                    }
+                    aria-pressed={isSelected}
+                  >
+                    {station.name}
+                  </button>
+                );
+              })}
             </div>
             <Button variant="secondary" size="sm" onClick={load}>
               <RefreshCw className="w-4 h-4" />
@@ -195,7 +241,10 @@ export default function KitchenClient() {
           {columns.map((col) => {
             const colItems = tickets.flatMap((ticket) =>
               ticket.items
-                .filter((item) => item.status === col.key)
+                .filter(
+                  (item) =>
+                    item.status === col.key && matchesCategoryFilter(item.categorySlug),
+                )
                 .map((item) => ({ ticket, item })),
             );
             return (

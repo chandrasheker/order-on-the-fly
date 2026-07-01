@@ -405,6 +405,7 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
           ordering={placing}
           canOrder
           cart={cartControls}
+          tapToSelect
           orderButtonLabel={
             placing
               ? "Sending order..."

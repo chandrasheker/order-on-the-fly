@@ -59,6 +59,7 @@ function MenuItemCard({
   onAddWithModifiers,
   hasModifiers,
   onUpdateQty,
+  tapToSelect,
 }: {
   item: MenuItem;
   inCart: { quantity: number } | undefined;
@@ -66,9 +67,34 @@ function MenuItemCard({
   onAddWithModifiers?: () => void;
   hasModifiers?: boolean;
   onUpdateQty: (qty: number) => void;
+  tapToSelect?: boolean;
 }) {
+  const handleTapSelect = () => {
+    if (hasModifiers && onAddWithModifiers) onAddWithModifiers();
+    else onAdd();
+  };
+
   return (
-    <div className="flex gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 hover:border-orange-500/20 transition-all">
+    <div
+      className={cn(
+        "flex gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 hover:border-orange-500/20 transition-all",
+        tapToSelect && !inCart && "cursor-pointer active:bg-white/10 active:border-orange-500/30",
+        tapToSelect && inCart && "border-orange-500/40 bg-orange-500/5",
+      )}
+      onClick={tapToSelect && !inCart ? handleTapSelect : undefined}
+      onKeyDown={
+        tapToSelect && !inCart
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleTapSelect();
+              }
+            }
+          : undefined
+      }
+      role={tapToSelect && !inCart ? "button" : undefined}
+      tabIndex={tapToSelect && !inCart ? 0 : undefined}
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <h3 className="font-semibold text-white">{item.name}</h3>
@@ -93,7 +119,10 @@ function MenuItemCard({
           </Badge>
         </div>
       </div>
-      <div className="flex flex-col items-end justify-center flex-shrink-0">
+      <div
+        className="flex flex-col items-end justify-center flex-shrink-0"
+        onClick={tapToSelect ? (e) => e.stopPropagation() : undefined}
+      >
         {inCart ? (
           <div className="flex items-center gap-2">
             <button
@@ -112,6 +141,10 @@ function MenuItemCard({
               <Plus className="w-4 h-4" />
             </button>
           </div>
+        ) : tapToSelect ? (
+          <span className="text-xs text-zinc-500 px-2">
+            {hasModifiers ? "Tap to customize" : "Tap to add"}
+          </span>
         ) : (
           <button
             type="button"
@@ -134,6 +167,7 @@ export function MenuView({
   canOrder = true,
   cart,
   orderButtonLabel,
+  tapToSelect = false,
 }: {
   categories: Category[];
   onOrder: () => void;
@@ -141,6 +175,7 @@ export function MenuView({
   canOrder?: boolean;
   cart?: MenuCartControls;
   orderButtonLabel?: string;
+  tapToSelect?: boolean;
 }) {
   const [activeCategory, setActiveCategory] = useState(categories[0]?.slug || "");
   const [searchQuery, setSearchQuery] = useState("");
@@ -359,7 +394,9 @@ export function MenuView({
         <p className="text-center text-xs text-zinc-500 px-4">
           {isSearching
             ? `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`
-            : "Tap category tabs to jump · tap headers to expand or collapse"}
+            : tapToSelect
+              ? "Tap an item to add · use +/- to adjust quantity"
+              : "Tap category tabs to jump · tap headers to expand or collapse"}
         </p>
         {!isSearching && categories.length > 1 && (
           <div className="flex justify-center gap-2 px-4">
@@ -438,6 +475,7 @@ export function MenuView({
                           item={item}
                           inCart={inCartQty > 0 ? { quantity: inCartQty } : undefined}
                           hasModifiers={hasModifiers}
+                          tapToSelect={tapToSelect}
                           onAdd={() => {
                             if (!canOrder) return;
                             addItem({
