@@ -1,16 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import {
+  extensionForImageMime,
+  resolveImageMime,
+  validateUploadedImageFile,
+  type UploadedImageFile,
+} from "@/lib/image-upload";
 
 const BACKGROUNDS_DIR = path.join(process.cwd(), "data", "backgrounds");
-const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const MAX_BYTES = 8 * 1024 * 1024;
-
-const EXT_BY_MIME: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/webp": ".webp",
-  "image/gif": ".gif",
-};
 
 export function getBackgroundImagePublicUrl(slug: string, version?: number) {
   const base = `/api/branding/background/${encodeURIComponent(slug)}`;
@@ -25,24 +23,16 @@ export async function ensureBackgroundsDir() {
   await fs.mkdir(BACKGROUNDS_DIR, { recursive: true });
 }
 
-export function validateBackgroundImageFile(file: File) {
-  if (!ALLOWED_MIME.has(file.type)) {
-    return "Please upload a PNG, JPG, WEBP, or GIF image.";
-  }
-  if (file.size <= 0) {
-    return "The selected file is empty.";
-  }
-  if (file.size > MAX_BYTES) {
-    return "Image must be 8 MB or smaller.";
-  }
-  return null;
+export function validateBackgroundImageFile(file: UploadedImageFile) {
+  return validateUploadedImageFile(file, MAX_BYTES);
 }
 
-export async function saveBackgroundImageFile(restaurantId: string, file: File) {
+export async function saveBackgroundImageFile(restaurantId: string, file: UploadedImageFile) {
   const error = validateBackgroundImageFile(file);
   if (error) throw new Error(error);
 
-  const ext = EXT_BY_MIME[file.type] ?? ".jpg";
+  const mime = resolveImageMime(file);
+  const ext = extensionForImageMime(mime);
   await ensureBackgroundsDir();
   await removeBackgroundImageFile(restaurantId);
 
@@ -50,7 +40,7 @@ export async function saveBackgroundImageFile(restaurantId: string, file: File) 
   const buffer = Buffer.from(await file.arrayBuffer());
   await fs.writeFile(filePath, buffer);
 
-  return { filePath, contentType: file.type, ext };
+  return { filePath, contentType: mime, ext };
 }
 
 export async function findBackgroundImageFile(restaurantId: string) {

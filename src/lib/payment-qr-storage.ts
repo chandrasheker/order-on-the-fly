@@ -1,16 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import {
+  extensionForImageMime,
+  resolveImageMime,
+  validateUploadedImageFile,
+  type UploadedImageFile,
+} from "@/lib/image-upload";
 
 const PAYMENTS_DIR = path.join(process.cwd(), "data", "payments");
-const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const MAX_BYTES = 5 * 1024 * 1024;
-
-const EXT_BY_MIME: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/webp": ".webp",
-  "image/gif": ".gif",
-};
 
 export function getPaymentQrPublicUrl(slug: string, version?: number) {
   const base = `/api/payment/qr/${encodeURIComponent(slug)}`;
@@ -25,24 +23,16 @@ export async function ensurePaymentsDir() {
   await fs.mkdir(PAYMENTS_DIR, { recursive: true });
 }
 
-export function validatePaymentQrFile(file: File) {
-  if (!ALLOWED_MIME.has(file.type)) {
-    return "Please upload a PNG, JPG, WEBP, or GIF image.";
-  }
-  if (file.size <= 0) {
-    return "The selected file is empty.";
-  }
-  if (file.size > MAX_BYTES) {
-    return "Image must be 5 MB or smaller.";
-  }
-  return null;
+export function validatePaymentQrFile(file: UploadedImageFile) {
+  return validateUploadedImageFile(file, MAX_BYTES);
 }
 
-export async function savePaymentQrFile(restaurantId: string, file: File) {
+export async function savePaymentQrFile(restaurantId: string, file: UploadedImageFile) {
   const error = validatePaymentQrFile(file);
   if (error) throw new Error(error);
 
-  const ext = EXT_BY_MIME[file.type] ?? ".png";
+  const mime = resolveImageMime(file);
+  const ext = extensionForImageMime(mime);
   await ensurePaymentsDir();
   await removePaymentQrFile(restaurantId);
 
@@ -50,7 +40,7 @@ export async function savePaymentQrFile(restaurantId: string, file: File) {
   const buffer = Buffer.from(await file.arrayBuffer());
   await fs.writeFile(filePath, buffer);
 
-  return { filePath, contentType: file.type, ext };
+  return { filePath, contentType: mime, ext };
 }
 
 export async function findPaymentQrFile(restaurantId: string) {

@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
   turbopack: {},
   experimental: {
     webpackMemoryOptimizations: true,
+    // Allow admin image uploads (guest background up to 8 MB) through middleware/proxy buffering.
+    proxyClientMaxBodySize: "12mb",
     ...(lowMemory
       ? {
           webpackBuildWorker: false,

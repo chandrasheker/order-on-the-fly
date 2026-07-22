@@ -35,6 +35,7 @@ function isPublicApi(pathname: string, request: NextRequest) {
   if (pathname === "/api/tenant/signup" && request.method === "POST") return true;
   if (pathname.startsWith("/api/v1/")) return true;
   if (/^\/api\/payment\/qr\/[^/]+$/.test(pathname)) return true;
+  if (/^\/api\/branding\/background\/[^/]+$/.test(pathname) && request.method === "GET") return true;
   if (pathname === "/api/auth/login") return true;
   if (pathname === "/api/auth/me") return true;
   if (/^\/api\/menu\/[^/]+\/[^/]+$/.test(pathname)) return true;
@@ -206,5 +207,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.svg$).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.svg$|api/branding/background/upload|api/payment/settings/upload).*)",
+  ],
 };

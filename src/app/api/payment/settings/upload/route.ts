@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, canManageMenu } from "@/lib/auth";
+import { getUploadedImageFile } from "@/lib/image-upload";
 import {
   getPaymentQrPublicUrl,
   savePaymentQrFile,
@@ -8,24 +9,23 @@ import {
 } from "@/lib/payment-qr-storage";
 
 export async function POST(req: NextRequest) {
-  const session = await requireSession();
-  if (!session || !canManageMenu(session.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const formData = await req.formData();
-  const file = formData.get("file");
-
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Choose an image file to upload." }, { status: 400 });
-  }
-
-  const validationError = validatePaymentQrFile(file);
-  if (validationError) {
-    return NextResponse.json({ error: validationError }, { status: 400 });
-  }
-
   try {
+    const session = await requireSession();
+    if (!session || !canManageMenu(session.role)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const formData = await req.formData();
+    const file = getUploadedImageFile(formData);
+    if (!file) {
+      return NextResponse.json({ error: "Choose an image file to upload." }, { status: 400 });
+    }
+
+    const validationError = validatePaymentQrFile(file);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
+    }
+
     await savePaymentQrFile(session.restaurantId, file);
 
     const paymentQrUrl = getPaymentQrPublicUrl(session.restaurantSlug, Date.now());

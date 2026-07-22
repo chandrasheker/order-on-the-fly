@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { featureDisabledResponse } from "@/lib/feature-guard";
+import { getUploadedImageFile } from "@/lib/image-upload";
 import {
   getBackgroundImagePublicUrl,
   saveBackgroundImageFile,
@@ -9,27 +10,26 @@ import {
 } from "@/lib/background-image-storage";
 
 export async function POST(req: NextRequest) {
-  const session = await requireSession();
-  if (!session || !canManageMenu(session.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const disabled = await featureDisabledResponse(session.restaurantId, "custom_background");
-  if (disabled) return disabled;
-
-  const formData = await req.formData();
-  const file = formData.get("file");
-
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Choose an image file to upload." }, { status: 400 });
-  }
-
-  const validationError = validateBackgroundImageFile(file);
-  if (validationError) {
-    return NextResponse.json({ error: validationError }, { status: 400 });
-  }
-
   try {
+    const session = await requireSession();
+    if (!session || !canManageMenu(session.role)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const disabled = await featureDisabledResponse(session.restaurantId, "custom_background");
+    if (disabled) return disabled;
+
+    const formData = await req.formData();
+    const file = getUploadedImageFile(formData);
+    if (!file) {
+      return NextResponse.json({ error: "Choose an image file to upload." }, { status: 400 });
+    }
+
+    const validationError = validateBackgroundImageFile(file);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
+    }
+
     await saveBackgroundImageFile(session.restaurantId, file);
 
     const backgroundImageUrl = getBackgroundImagePublicUrl(session.restaurantSlug, Date.now());

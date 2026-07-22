@@ -64,6 +64,7 @@ services:
       - "3000:3000"
     volumes:
       - payment_uploads:/app/data/payments
+      - background_uploads:/app/data/backgrounds
     command: ["npx", "next", "start", "-H", "0.0.0.0", "-p", "3000"]
 
   redis:
@@ -81,3 +82,4 @@ services:
 volumes:
   postgres_data:
   payment_uploads:
+  background_uploads:
