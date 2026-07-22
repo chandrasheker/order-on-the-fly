@@ -24,6 +24,19 @@ interface TableSetting {
   orderingEnabled: boolean;
 }
 
+async function readApiErrorMessage(res: Response, fallback: string) {
+  const text = await res.text();
+  try {
+    const json = JSON.parse(text) as { error?: string };
+    return json.error || fallback;
+  } catch {
+    if (res.status === 413) {
+      return "Image is too large for the server. Try a smaller file (under 8 MB).";
+    }
+    return text.trim().slice(0, 200) || fallback;
+  }
+}
+
 export default function QRPage() {
   const router = useRouter();
   const [qrCodes, setQrCodes] = useState<QRData[]>([]);
@@ -166,9 +179,12 @@ export default function QRPage() {
         method: "POST",
         body: formData,
       });
-      const json = await res.json();
+      const json = res.ok ? await res.json() : null;
       if (!res.ok) {
-        setPaymentQrMessage({ type: "err", text: json.error || "Upload failed." });
+        setPaymentQrMessage({
+          type: "err",
+          text: await readApiErrorMessage(res, "Upload failed."),
+        });
         return;
       }
       setPaymentQrUrl(json.settings.paymentQrUrl ?? "");
@@ -219,9 +235,12 @@ export default function QRPage() {
         method: "POST",
         body: formData,
       });
-      const json = await res.json();
+      const json = res.ok ? await res.json() : null;
       if (!res.ok) {
-        setBackgroundMessage({ type: "err", text: json.error || "Upload failed." });
+        setBackgroundMessage({
+          type: "err",
+          text: await readApiErrorMessage(res, "Upload failed."),
+        });
         return;
       }
       setBackgroundImageUrl(json.settings.backgroundImageUrl ?? "");

@@ -38,7 +38,7 @@ ENV PRISMA_MIGRATIONS=prisma/migrations-postgres
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates openssl \
   && rm -rf /var/lib/apt/lists/* \
-  && mkdir -p /app/data/payments \
+  && mkdir -p /app/data/payments /app/data/backgrounds \
   && chown -R node:node /app
 
 COPY --from=builder --chown=node:node /app ./
