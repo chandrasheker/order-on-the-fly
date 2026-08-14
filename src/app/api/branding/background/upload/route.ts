@@ -7,6 +7,7 @@ import {
   getBackgroundImagePublicUrl,
   saveBackgroundImageFile,
   validateBackgroundImageFile,
+  findBackgroundImageFile,
 } from "@/lib/background-image-storage";
 
 export async function POST(req: NextRequest) {
@@ -32,7 +33,9 @@ export async function POST(req: NextRequest) {
 
     await saveBackgroundImageFile(session.restaurantId, file);
 
-    const backgroundImageUrl = getBackgroundImagePublicUrl(session.restaurantSlug, Date.now());
+    const stored = await findBackgroundImageFile(session.restaurantId);
+    const version = stored?.mtimeMs ?? Date.now();
+    const backgroundImageUrl = getBackgroundImagePublicUrl(session.restaurantSlug, version);
     const updated = await prisma.restaurant.update({
       where: { id: session.restaurantId },
       data: { backgroundImageUrl },

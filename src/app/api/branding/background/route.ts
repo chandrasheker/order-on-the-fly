@@ -4,9 +4,8 @@ import { requireSession, canManageMenu } from "@/lib/auth";
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import {
-  backgroundImageExists,
-  getBackgroundImagePublicUrl,
   removeBackgroundImageFile,
+  resolveBackgroundImagePublicUrl,
 } from "@/lib/background-image-storage";
 
 export async function GET() {
@@ -24,13 +23,26 @@ export async function GET() {
   ]);
 
   const enabled = flags.custom_background;
-  const hasUploaded = enabled ? await backgroundImageExists(session.restaurantId) : false;
-  const backgroundImageUrl =
-    enabled && hasUploaded && restaurant?.slug
-      ? getBackgroundImagePublicUrl(restaurant.slug)
-      : enabled
-        ? restaurant?.backgroundImageUrl ?? ""
-        : "";
+  let backgroundImageUrl =
+    enabled && restaurant
+      ? (await resolveBackgroundImagePublicUrl({
+          id: session.restaurantId,
+          slug: restaurant.slug,
+          backgroundImageUrl: restaurant.backgroundImageUrl,
+        })) ?? ""
+      : "";
+
+  if (
+    enabled &&
+    restaurant &&
+    backgroundImageUrl &&
+    backgroundImageUrl !== (restaurant.backgroundImageUrl ?? "")
+  ) {
+    await prisma.restaurant.update({
+      where: { id: session.restaurantId },
+      data: { backgroundImageUrl },
+    });
+  }
 
   return NextResponse.json({
     settings: {

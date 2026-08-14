@@ -559,6 +559,7 @@ export default function QRPage() {
               {backgroundImageUrl.trim() ? (
                 <div className="relative overflow-hidden rounded-xl border border-[color:var(--surface-border)] max-w-md">
                   <img
+                    key={backgroundImageUrl}
                     src={backgroundImageUrl}
                     alt="Guest page background preview"
                     className="w-full h-40 object-cover"
