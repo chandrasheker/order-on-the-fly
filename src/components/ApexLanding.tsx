@@ -9,6 +9,7 @@ export function ApexLanding({
 }) {
   const exampleHost = baseDomain ? `{slug}.${baseDomain}` : "{slug}.{TENANT_BASE_DOMAIN}";
   const exampleUrl = baseDomain ? `https://fp-north.${baseDomain}` : "https://fp-north.example.com";
+  const platformLogin = baseDomain ? `https://${baseDomain}/platform/login` : "/platform/login";
 
   return (
     <div className="min-h-screen bg-app-shell flex items-center justify-center p-4">
@@ -39,7 +40,7 @@ export function ApexLanding({
 
         <div className="flex flex-col sm:flex-row gap-3">
           <Link
-            href="/platform/login"
+            href={platformLogin}
             className="flex-1 text-center rounded-xl bg-gradient-to-br from-orange-500 to-rose-500 px-4 py-2.5 text-sm font-medium text-white"
           >
             Platform admin

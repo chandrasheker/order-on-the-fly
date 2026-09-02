@@ -14,6 +14,9 @@ import {
   blocksRestaurantOperationsOnHost,
   allowsApexPublicLanding,
   isConfiguredApexHost,
+  platformRoutesAllowedOnHost,
+  decidePlatformRouting,
+  isPlatformPath,
 } from "@/platform/host";
 
 const originalEnv = { ...process.env };
@@ -206,6 +209,84 @@ describe("host classification", () => {
     assert.equal(blocksRestaurantOperationsOnHost(duck, "production"), false);
     assert.equal(allowsLegacyRestaurantScoping(evil, "production"), false);
     assert.equal(allowsLegacyRestaurantScoping(rawIp, "production"), false);
+  });
+});
+
+describe("platform host restriction", () => {
+  const prod = { baseDomain: "dvadtech.in" as const, nodeEnv: "production" as const };
+  const routeOpts = { nodeEnv: "production" as const, baseDomain: "dvadtech.in" };
+
+  it("treats /platform and /api/platform as platform paths", () => {
+    assert.equal(isPlatformPath("/platform"), true);
+    assert.equal(isPlatformPath("/platform/login"), true);
+    assert.equal(isPlatformPath("/platform/tenants"), true);
+    assert.equal(isPlatformPath("/api/platform/tenants"), true);
+    assert.equal(isPlatformPath("/api/platform/auth/login"), true);
+    assert.equal(isPlatformPath("/"), false);
+    assert.equal(isPlatformPath("/api/health"), false);
+    assert.equal(isPlatformPath("/tenant/signup"), false);
+    assert.equal(isPlatformPath("/api/jobs/process"), false);
+  });
+
+  it("production apex / redirects to /platform and allows platform routes", () => {
+    process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
+    const apex = classifyHostname("dvadtech.in", prod);
+    assert.equal(platformRoutesAllowedOnHost(apex, "production", routeOpts), true);
+    assert.deepEqual(decidePlatformRouting("/", apex, { ...routeOpts, method: "GET" }), {
+      kind: "redirect",
+      location: "/platform",
+    });
+    assert.equal(decidePlatformRouting("/platform", apex, routeOpts).kind, "allow");
+    assert.equal(decidePlatformRouting("/platform/login", apex, routeOpts).kind, "allow");
+    assert.equal(decidePlatformRouting("/api/platform/tenants", apex, routeOpts).kind, "allow");
+    assert.equal(decidePlatformRouting("/api/platform/auth/login", apex, routeOpts).kind, "allow");
+  });
+
+  it("restaurant hosts deny /platform and /api/platform even if a platform cookie exists", () => {
+    process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
+    const restaurant = classifyHostname("fp-north.dvadtech.in", prod);
+    assert.equal(restaurant.kind, "restaurant");
+    assert.equal(platformRoutesAllowedOnHost(restaurant, "production", routeOpts), false);
+    assert.equal(decidePlatformRouting("/", restaurant, routeOpts).kind, "pass");
+    for (const path of [
+      "/platform",
+      "/platform/login",
+      "/platform/tenants",
+      "/api/platform/tenants",
+      "/api/platform/auth/login",
+    ]) {
+      assert.equal(decidePlatformRouting(path, restaurant, routeOpts).kind, "deny");
+    }
+  });
+
+  it("does not expose platform on www or platform.*", () => {
+    process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
+    const www = classifyHostname("www.dvadtech.in", prod);
+    const platformHost = classifyHostname("platform.dvadtech.in", prod);
+    assert.equal(decidePlatformRouting("/platform", www, routeOpts).kind, "deny");
+    assert.equal(decidePlatformRouting("/api/platform/tenants", platformHost, routeOpts).kind, "deny");
+    assert.equal(decidePlatformRouting("/", www, routeOpts).kind, "pass");
+  });
+
+  it("unknown production hosts stay fail-closed for platform paths", () => {
+    const unknown = classifyHostname("unknown.dvadtech.in", prod);
+    const rawIp = classifyHostname("10.0.0.225", prod);
+    assert.equal(decidePlatformRouting("/platform", unknown, routeOpts).kind, "deny");
+    assert.equal(decidePlatformRouting("/api/platform/tenants", rawIp, routeOpts).kind, "deny");
+  });
+
+  it("bare localhost keeps platform development; restaurant localhost does not", () => {
+    const local = classifyHostname("localhost:3000", { nodeEnv: "development" });
+    const restaurantLocal = classifyHostname("fp-north.localhost:3000", { nodeEnv: "development" });
+    const opts = { nodeEnv: "development" as const };
+    assert.equal(platformRoutesAllowedOnHost(local, "development"), true);
+    assert.equal(decidePlatformRouting("/platform", local, opts).kind, "allow");
+    assert.equal(decidePlatformRouting("/api/platform/tenants", local, opts).kind, "allow");
+    assert.equal(decidePlatformRouting("/", local, opts).kind, "pass");
+    assert.equal(platformRoutesAllowedOnHost(restaurantLocal, "development"), false);
+    assert.equal(decidePlatformRouting("/platform", restaurantLocal, opts).kind, "deny");
+    assert.equal(decidePlatformRouting("/platform/login", restaurantLocal, opts).kind, "deny");
+    assert.equal(decidePlatformRouting("/", restaurantLocal, opts).kind, "pass");
   });
 });
 

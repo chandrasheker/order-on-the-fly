@@ -6,6 +6,7 @@ import {
   sessionMatchesHostSlug,
   blocksRestaurantOperationsOnHost,
   allowsApexPublicLanding,
+  decidePlatformRouting,
   HOST_KIND_HEADER,
   HOST_NAME_HEADER,
   HOST_SLUG_HEADER,
@@ -97,11 +98,17 @@ function withSecurityHeaders(response: NextResponse) {
   return response;
 }
 
-function isPrivilegedCrossTenantPath(pathname: string) {
+function opaqueNotFound(pathname: string) {
+  if (pathname.startsWith("/api/")) {
+    return withSecurityHeaders(NextResponse.json({ error: "Not found" }, { status: 404 }));
+  }
+  return withSecurityHeaders(new NextResponse("Not found", { status: 404 }));
+}
+
+/** Health, jobs, print, webhooks, tenant signup — not platform admin. */
+function isInfrastructurePrivilegedPath(pathname: string) {
   return (
     pathname === "/api/health" ||
-    pathname.startsWith("/platform") ||
-    pathname.startsWith("/api/platform/") ||
     pathname.startsWith("/api/webhooks/") ||
     pathname.startsWith("/api/print/") ||
     pathname.startsWith("/api/jobs/") ||
@@ -124,18 +131,24 @@ function nextWithHost(request: NextRequest) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const classified = classifyRequestHost(request.headers);
-  const privileged = isPrivilegedCrossTenantPath(pathname);
+  const privileged = isInfrastructurePrivilegedPath(pathname);
   const hostKey = classified.kind === "restaurant" ? classified.slug : classified.hostname || "unknown";
 
+  const platformDecision = decidePlatformRouting(pathname, classified, { method: request.method });
+  if (platformDecision.kind === "deny") {
+    return opaqueNotFound(pathname);
+  }
+  if (platformDecision.kind === "redirect") {
+    return withSecurityHeaders(NextResponse.redirect(new URL(platformDecision.location, request.url)));
+  }
+
   if (
+    platformDecision.kind !== "allow" &&
     blocksRestaurantOperationsOnHost(classified) &&
     !privileged &&
     !allowsApexPublicLanding(pathname, classified)
   ) {
-    if (pathname.startsWith("/api/")) {
-      return withSecurityHeaders(NextResponse.json({ error: "Not found" }, { status: 404 }));
-    }
-    return withSecurityHeaders(new NextResponse("Not found", { status: 404 }));
+    return opaqueNotFound(pathname);
   }
 
   if (pathname === "/api/auth/login" && request.method === "POST") {

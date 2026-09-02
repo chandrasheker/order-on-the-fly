@@ -188,6 +188,63 @@ export function allowsApexPublicLanding(
   return pathname === "/" && isConfiguredApexHost(host, options);
 }
 
+export function isPlatformPath(pathname: string): boolean {
+  return (
+    pathname === "/platform" ||
+    pathname.startsWith("/platform/") ||
+    pathname === "/api/platform" ||
+    pathname.startsWith("/api/platform/")
+  );
+}
+
+/**
+ * Platform admin is cross-tenant in data scope, but host-restricted.
+ * Production: exact TENANT_BASE_DOMAIN only (not restaurant hosts, www, or platform.*).
+ * Development: reserved localhost / LAN only — not `{slug}.localhost`.
+ */
+export function platformRoutesAllowedOnHost(
+  host?: ClassifiedHost,
+  nodeEnv?: string,
+  options?: { baseDomain?: string },
+): boolean {
+  if (!host || host.kind !== "reserved") return false;
+  if (!isProductionEnv(nodeEnv)) return host.legacyRestaurantScoping;
+  const base = (options?.baseDomain ?? getTenantBaseDomain()).toLowerCase();
+  return Boolean(base) && host.hostname === base;
+}
+
+export type PlatformRoutingDecision =
+  | { kind: "deny" }
+  | { kind: "allow" }
+  | { kind: "redirect"; location: "/platform" }
+  | { kind: "pass" };
+
+/**
+ * Middleware decision for platform UI/API and production apex `/`.
+ * Credentials are intentionally ignored — host check happens first.
+ */
+export function decidePlatformRouting(
+  pathname: string,
+  host: ClassifiedHost,
+  options?: { nodeEnv?: string; method?: string; baseDomain?: string },
+): PlatformRoutingDecision {
+  const nodeEnv = options?.nodeEnv;
+  const allowed = platformRoutesAllowedOnHost(host, nodeEnv, options);
+  if (isPlatformPath(pathname)) {
+    return allowed ? { kind: "allow" } : { kind: "deny" };
+  }
+  const method = (options?.method ?? "GET").toUpperCase();
+  if (
+    pathname === "/" &&
+    (method === "GET" || method === "HEAD") &&
+    isProductionEnv(nodeEnv) &&
+    allowed
+  ) {
+    return { kind: "redirect", location: "/platform" };
+  }
+  return { kind: "pass" };
+}
+
 /**
  * Reserved hosts may use path/session restaurant scoping in development
  * (bare localhost / LAN). Production reserved hosts stay platform-only unless
@@ -317,7 +374,8 @@ export function classifyRequestHost(
 
 /**
  * Production reserved/invalid hosts must not run restaurant guest/staff operations.
- * Privileged platform/health/webhook/job paths are exempt at the middleware layer.
+ * Infrastructure privileged paths (health/webhooks/jobs/print/signup) are exempt
+ * at the middleware layer. Platform UI/API is host-restricted separately.
  */
 export function blocksRestaurantOperationsOnHost(
   host: ClassifiedHost,

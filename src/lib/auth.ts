@@ -1,9 +1,9 @@
 import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import bcrypt from "bcryptjs";
 import type { Role } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { sessionAllowedFromHeaders } from "@/platform/host";
+import { classifyRequestHost, platformRoutesAllowedOnHost, sessionAllowedFromHeaders } from "@/platform/host";
 import { getJwtSecretBytes } from "@/lib/jwt-secret";
 
 function jwtSecret() {
@@ -171,6 +171,15 @@ export async function requireSession(roles?: Role[]) {
 }
 
 export async function requirePlatformAdmin() {
+  let headerList: Headers;
+  try {
+    headerList = await headers();
+  } catch {
+    return null;
+  }
+  if (!platformRoutesAllowedOnHost(classifyRequestHost(headerList))) {
+    return null;
+  }
   return getPlatformAdminSession();
 }
 

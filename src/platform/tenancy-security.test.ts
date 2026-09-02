@@ -7,6 +7,8 @@ import {
   blocksRestaurantOperationsOnHost,
   allowsLegacyRestaurantScoping,
   allowsApexPublicLanding,
+  decidePlatformRouting,
+  platformRoutesAllowedOnHost,
 } from "@/platform/host";
 import {
   resolveTenantFromClassifiedHost,
@@ -404,6 +406,30 @@ describe("9-10 production fail-closed configuration and hosts", () => {
     assert.equal(blocksRestaurantOperationsOnHost(rawIp, "production"), true);
     assert.equal(allowsLegacyRestaurantScoping(unknown, "production"), false);
     assert.equal(blocksRestaurantOperationsOnHost(unknown, "production"), true);
+  });
+});
+
+describe("platform admin is host-restricted not restaurant-privileged", () => {
+  it("copied platform credentials cannot open /platform on a restaurant host", () => {
+    process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
+    const restaurant = classifyHostname("fp-north.dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const apex = classifyHostname("dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const opts = { nodeEnv: "production" as const, baseDomain: "dvadtech.in" };
+
+    assert.equal(platformRoutesAllowedOnHost(restaurant, "production", opts), false);
+    assert.equal(decidePlatformRouting("/platform", restaurant, opts).kind, "deny");
+    assert.equal(decidePlatformRouting("/api/platform/tenants", restaurant, opts).kind, "deny");
+    assert.equal(decidePlatformRouting("/", restaurant, opts).kind, "pass");
+
+    assert.equal(platformRoutesAllowedOnHost(apex, "production", opts), true);
+    assert.equal(decidePlatformRouting("/", apex, { ...opts, method: "GET" }).kind, "redirect");
+    assert.equal(decidePlatformRouting("/platform", apex, opts).kind, "allow");
   });
 });
 
