@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { encryptSecret } from "@/lib/credential-crypto";
@@ -6,6 +5,9 @@ import { dispatchRealtimeNotifications } from "@/lib/outbound-notification-servi
 import { getAppBaseUrl } from "@/lib/server-app-url";
 import { todayDateString, formatCurrency } from "@/lib/utils";
 import { getOrderPaymentSummary, recordOrderPayment } from "@/lib/payment-allocation-service";
+import { getPaymentProvider } from "@/lib/payment-providers";
+import { FINANCIAL_PAID_EPSILON, PAYMENT_STATUS } from "@/lib/order-financials";
+import { logInfo, logWarn } from "@/lib/logger";
 import type { PaymentGatewayProvider } from "@/generated/prisma/client";
 
 export async function getPaymentGatewaySettings(restaurantId: string) {
@@ -61,11 +63,6 @@ export async function updatePaymentGatewaySettings(
   });
 }
 
-function verifyRazorpaySignature(body: string, signature: string, secret: string) {
-  const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
-  return expected === signature;
-}
-
 export async function processPaymentWebhook(params: {
   slug: string;
   provider: string;
@@ -79,21 +76,32 @@ export async function processPaymentWebhook(params: {
     return { ok: false as const, status: 403, error: "Payment webhooks disabled" };
   }
 
+  const expectedProvider = restaurant.paymentGatewayProvider?.toLowerCase();
+  if (expectedProvider && expectedProvider !== params.provider.toLowerCase()) {
+    logWarn("payments:webhook", "Provider mismatch", {
+      restaurantId: restaurant.id,
+      expectedProvider,
+      provider: params.provider,
+    });
+    return { ok: false as const, status: 401, error: "Invalid provider" };
+  }
+
   const webhookSecret = restaurant.paymentWebhookSecret;
   if (!webhookSecret) {
     return { ok: false as const, status: 400, error: "Webhook secret not configured" };
   }
 
-  if (params.provider === "razorpay") {
-    const sig = params.headers.get("x-razorpay-signature");
-    if (!sig || !verifyRazorpaySignature(params.rawBody, sig, webhookSecret)) {
-      return { ok: false as const, status: 401, error: "Invalid signature" };
-    }
-  } else if (params.provider === "phonepe" || params.provider === "paytm") {
-    const token = params.headers.get("authorization") ?? params.headers.get("x-webhook-secret");
-    if (token !== `Bearer ${webhookSecret}` && token !== webhookSecret) {
-      return { ok: false as const, status: 401, error: "Invalid webhook secret" };
-    }
+  const adapter = getPaymentProvider(params.provider);
+  if (!adapter) {
+    return { ok: false as const, status: 400, error: "Unsupported provider" };
+  }
+  const verified = adapter.verifyWebhook(params.rawBody, params.headers, webhookSecret);
+  if (!verified.ok) {
+    logWarn("payments:webhook", "Signature rejected", {
+      restaurantId: restaurant.id,
+      provider: params.provider,
+    });
+    return { ok: false as const, status: 401, error: verified.error ?? "Invalid signature" };
   }
 
   let payload: Record<string, unknown>;
@@ -129,7 +137,15 @@ export async function processPaymentWebhook(params: {
       },
     }));
 
-  const result = await applyAutoPayment(restaurant.id, parsed);
+  logInfo("payments:webhook", "Webhook accepted", {
+    restaurantId: restaurant.id,
+    provider: params.provider,
+    externalId: parsed.externalId,
+    amount: parsed.amount,
+    orderId: parsed.orderId,
+  });
+
+  const result = await applyAutoPayment(restaurant.id, parsed, params.provider);
   await prisma.paymentWebhookEvent.update({
     where: { id: event.id },
     data: {
@@ -197,11 +213,27 @@ async function applyAutoPayment(
     tableId?: string;
     orderId?: string;
     reference?: string;
+    externalId?: string;
   },
+  provider: string,
 ) {
   const today = todayDateString();
   let orderId = parsed.orderId;
   let tableId = parsed.tableId;
+
+  if (parsed.externalId) {
+    const duplicate = await prisma.payment.findFirst({
+      where: {
+        restaurantId,
+        provider,
+        providerPaymentId: parsed.externalId,
+        status: PAYMENT_STATUS.CAPTURED,
+      },
+    });
+    if (duplicate) {
+      return { ok: true as const, message: "Already captured", orderId: duplicate.orderId, tableId: duplicate.tableId };
+    }
+  }
 
   if (!orderId && parsed.reference) {
     const match = parsed.reference.match(/^T(\w+)-O(\w+)$/);
@@ -223,12 +255,26 @@ async function applyAutoPayment(
     if (!summary || summary.remaining <= 0) {
       return { ok: false as const, message: "Nothing to pay" };
     }
+    if (parsed.amount > summary.remaining + FINANCIAL_PAID_EPSILON) {
+      logWarn("payments:webhook", "Amount exceeds remaining", {
+        restaurantId,
+        orderId: order.id,
+        amount: parsed.amount,
+        remaining: summary.remaining,
+      });
+      return { ok: false as const, message: "Amount does not match bill remaining" };
+    }
     const result = await recordOrderPayment({
       orderId: order.id,
-      amount: Math.min(parsed.amount, summary.remaining),
+      amount: parsed.amount,
       method: "UPI",
       note: "Auto-confirmed via payment webhook",
       collectedByName: "Payment Gateway",
+      provider,
+      providerPaymentId: parsed.externalId,
+      idempotencyKey: parsed.externalId ? `webhook:${provider}:${parsed.externalId}` : undefined,
+      capture: true,
+      status: PAYMENT_STATUS.CAPTURED,
     });
     if (!result.ok) {
       return { ok: false as const, message: result.error };
@@ -266,6 +312,11 @@ async function applyAutoPayment(
         method: "UPI",
         note: "Auto-confirmed via payment webhook",
         collectedByName: "Payment Gateway",
+        provider,
+        providerPaymentId: parsed.externalId,
+        idempotencyKey: parsed.externalId ? `webhook:${provider}:${parsed.externalId}:${order.id}` : undefined,
+        capture: true,
+        status: PAYMENT_STATUS.CAPTURED,
       });
       if (!result.ok) continue;
       remaining -= pay;

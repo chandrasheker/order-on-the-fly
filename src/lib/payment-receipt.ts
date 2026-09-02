@@ -4,12 +4,21 @@ import {
   RECEIPT_ORDER_INCLUDE,
   RECEIPT_RESTAURANT_SELECT,
 } from "@/lib/receipt-service";
+import { receiptFromBillRow } from "@/lib/bill-service";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 
 export async function buildReceiptForPaidOrder(orderId: string, restaurantId: string) {
   const thermalEnabled = await isFeatureEnabled(restaurantId, "thermal_receipts");
   if (!thermalEnabled) {
     return null;
+  }
+
+  const bill = await prisma.bill.findFirst({
+    where: { orderId, restaurantId, status: { not: "VOIDED" } },
+  });
+  if (bill) {
+    const fromBill = receiptFromBillRow(bill);
+    if (fromBill) return fromBill;
   }
 
   const restaurant = await prisma.restaurant.findUnique({

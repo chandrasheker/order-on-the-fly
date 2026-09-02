@@ -39,7 +39,14 @@ enum TableSwitchRequestStatus {
 enum PaymentMethod {
   CASH
   UPI
+  MANUAL_UPI
   CARD
+}
+
+enum BillStatus {
+  DRAFT
+  FINALIZED
+  VOIDED
 }
 
 enum TableKind {
@@ -86,6 +93,11 @@ enum AuditActionType {
   COMP
   DISCOUNT
   STOCK_ADJUST
+  BILL_FINALIZED
+  BILL_VOIDED
+  PAYMENT_CAPTURED
+  PAYMENT_REFUNDED
+  PRINT_REPRINT
 }
 
 enum PromotionType {
@@ -185,6 +197,8 @@ model Restaurant {
   serverSlots           Int            @default(4)
   staffConfigured       Boolean        @default(false)
   paymentQrUrl          String?
+  upiVpa                String?
+  upiMerchantName       String?
   receiptAddress        String?
   receiptPhone          String?
   receiptGstin          String?
@@ -240,6 +254,7 @@ model Restaurant {
   paymentReconciliations PaymentReconciliation[]
   staffSessions          StaffSession[]
   hostSlugs              HostSlug[]
+  bills                 Bill[]
 
   @@unique([tenantId, nameNormalized])
 }
@@ -491,6 +506,7 @@ model Order {
   updatedAt      DateTime    @updatedAt
   date           String
   payments       Payment[]
+  bills          Bill[]
 
   @@index([restaurantId, date])
   @@index([tableId])
@@ -547,17 +563,68 @@ model Payment {
   table             Table               @relation(fields: [tableId], references: [id], onDelete: Cascade)
   orderId           String?
   order             Order?              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  billId            String?
+  bill              Bill?               @relation(fields: [billId], references: [id], onDelete: SetNull)
   amount            Float
   method            PaymentMethod       @default(UPI)
+  status            String              @default("CAPTURED")
+  verificationStatus String?
+  cashTendered      Float?
+  cashChange        Float?
+  idempotencyKey    String?
+  provider          String?
+  providerPaymentId String?
+  refundOfPaymentId String?
   note              String?
   collectedByUserId String?
   collectedByName   String?
   createdAt         DateTime            @default(now())
+  capturedAt        DateTime?
   allocations       PaymentAllocation[]
 
+  @@unique([restaurantId, idempotencyKey])
+  @@unique([restaurantId, provider, providerPaymentId])
   @@index([restaurantId, createdAt])
   @@index([orderId])
   @@index([tableId])
+  @@index([billId])
+  @@index([status])
+}
+
+/** Immutable customer bill snapshot. Created when an order is first billed. */
+model Bill {
+  id              String     @id @default(cuid())
+  tenantId        String?
+  tenant          Tenant?    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  restaurantId    String
+  restaurant      Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  branchId        String?
+  orderId         String
+  order           Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  billNumber      String
+  status          BillStatus @default(FINALIZED)
+  snapshot        String
+  itemSubtotal    Float
+  orderDiscount   Float      @default(0)
+  gstAmount       Float      @default(0)
+  cgstAmount      Float      @default(0)
+  sgstAmount      Float      @default(0)
+  grandTotal      Float
+  finalizedAt     DateTime?
+  finalizedByUserId String?
+  finalizedByName String?
+  voidedAt        DateTime?
+  voidedByUserId  String?
+  voidedByName    String?
+  voidReason      String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  payments        Payment[]
+
+  @@unique([orderId])
+  @@unique([restaurantId, billNumber])
+  @@index([restaurantId, createdAt])
+  @@index([tenantId, createdAt])
 }
 
 model PaymentAllocation {
@@ -928,6 +995,7 @@ model Tenant {
   paymentReconciliations PaymentReconciliation[]
   admins             TenantAdmin[]
   hostSlugs          HostSlug[]
+  bills              Bill[]
 }
 
 /** Global DNS-label lease for tenant hubs and restaurants. */
@@ -1076,9 +1144,12 @@ model PrintJob {
   lastError    String?
   sentAt       DateTime?
   ackedAt      DateTime?
+  idempotencyKey String?
+  reprintOfPrintJobId String?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
+  @@unique([restaurantId, idempotencyKey])
   @@index([restaurantId, status])
   @@index([status, createdAt])
 }
@@ -1093,6 +1164,13 @@ model PaymentReconciliation {
   expectedTotal  Float                @default(0)
   receivedTotal  Float                @default(0)
   variance       Float                @default(0)
+  cashExpected   Float                @default(0)
+  cashCounted    Float?
+  cashVariance   Float?
+  manualUpiTotal Float                @default(0)
+  automaticUpiTotal Float             @default(0)
+  refundsTotal   Float                @default(0)
+  outstandingTotal Float              @default(0)
   status         ReconciliationStatus @default(OPEN)
   details        String?
   createdAt      DateTime             @default(now())

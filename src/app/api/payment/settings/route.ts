@@ -11,7 +11,13 @@ export async function GET() {
 
   const restaurant = await prisma.restaurant.findUnique({
     where: { id: session.restaurantId },
-    select: { slug: true },
+    select: {
+      slug: true,
+      upiVpa: true,
+      upiMerchantName: true,
+      paymentGatewayProvider: true,
+      paymentGatewayKeyId: true,
+    },
   });
 
   const hasPaymentQr = await paymentQrExists(session.restaurantId);
@@ -19,7 +25,12 @@ export async function GET() {
     hasPaymentQr && restaurant?.slug ? getPaymentQrPublicUrl(restaurant.slug) : "";
 
   return NextResponse.json({
-    settings: { paymentQrUrl },
+    settings: {
+      paymentQrUrl,
+      upiVpa: restaurant?.upiVpa ?? "",
+      upiMerchantName: restaurant?.upiMerchantName ?? "",
+      automaticUpiEnabled: Boolean(restaurant?.paymentGatewayProvider && restaurant?.paymentGatewayKeyId),
+    },
   });
 }
 
@@ -37,7 +48,40 @@ export async function PATCH(req: NextRequest) {
       where: { id: session.restaurantId },
       data: { paymentQrUrl: null },
     });
-    return NextResponse.json({ settings: { paymentQrUrl: "" } });
+  }
+
+  const data: { upiVpa?: string | null; upiMerchantName?: string | null } = {};
+  if (typeof body.upiVpa === "string") {
+    const vpa = body.upiVpa.trim();
+    if (vpa && !/^[\w.\-]{2,256}@[a-zA-Z]{2,64}$/.test(vpa)) {
+      return NextResponse.json({ error: "Enter a valid UPI ID like restaurant@upi" }, { status: 400 });
+    }
+    data.upiVpa = vpa || null;
+  }
+  if (typeof body.upiMerchantName === "string") {
+    data.upiMerchantName = body.upiMerchantName.trim() || null;
+  }
+
+  if (Object.keys(data).length > 0) {
+    await prisma.restaurant.update({
+      where: { id: session.restaurantId },
+      data,
+    });
+  }
+
+  if (body.paymentQrUrl === null || body.paymentQrUrl === "" || Object.keys(data).length > 0) {
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: session.restaurantId },
+      select: { slug: true, upiVpa: true, upiMerchantName: true },
+    });
+    const hasPaymentQr = await paymentQrExists(session.restaurantId);
+    return NextResponse.json({
+      settings: {
+        paymentQrUrl: hasPaymentQr && restaurant?.slug ? getPaymentQrPublicUrl(restaurant.slug) : "",
+        upiVpa: restaurant?.upiVpa ?? "",
+        upiMerchantName: restaurant?.upiMerchantName ?? "",
+      },
+    });
   }
 
   return NextResponse.json({ error: "Use file upload to set payment QR." }, { status: 400 });

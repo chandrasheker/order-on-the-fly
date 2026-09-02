@@ -51,12 +51,20 @@ export function OrderTracker({
   orders,
   tableToken,
   paymentQrUrl,
+  upiVpa,
+  upiMerchantName,
+  automaticUpiEnabled,
+  tabRemaining,
   onRefresh,
   onPaymentRequested,
 }: {
   orders: Order[];
   tableToken: string;
   paymentQrUrl?: string | null;
+  upiVpa?: string | null;
+  upiMerchantName?: string | null;
+  automaticUpiEnabled?: boolean;
+  tabRemaining?: number | null;
   onRefresh: () => void;
   onPaymentRequested?: () => void;
 }) {
@@ -117,7 +125,10 @@ export function OrderTracker({
       const res = await fetch(`/api/orders/${payModalOrder.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "request-payment", tableToken }),
+        body: JSON.stringify({
+          action: upiVpa ? "initiate-manual-upi" : "request-payment",
+          tableToken,
+        }),
       });
       if (res.ok) {
         setPayModalOrder(null);
@@ -339,10 +350,11 @@ export function OrderTracker({
       })}
 
       {paymentOrders.length > 0 && (() => {
-        const consolidatedTotal = paymentOrders.reduce(
+        const itemTotal = paymentOrders.reduce(
           (sum, order) => sum + customerOrderBillTotal(order.items),
           0,
         );
+        const consolidatedTotal = tabRemaining != null ? tabRemaining : itemTotal;
         const paymentPending = paymentOrders.some((o) => Boolean(o.paymentRequestedAt));
         const anchorOrder = paymentOrders[0]!;
 
@@ -464,6 +476,10 @@ export function OrderTracker({
           )}
           consolidated={paymentOrders.length > 1}
           paymentQrUrl={paymentQrUrl}
+          upiVpa={upiVpa}
+          upiMerchantName={upiMerchantName}
+          automaticUpiEnabled={automaticUpiEnabled}
+          paymentReference={payModalOrder.id}
           confirming={Boolean(payingId)}
           onClose={() => setPayModalOrder(null)}
           onConfirm={confirmPaymentRequest}

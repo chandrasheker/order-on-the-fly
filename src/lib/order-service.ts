@@ -35,8 +35,18 @@ export async function autoCompleteZeroBillOrder(orderId: string) {
   });
   if (!order || order.status !== "SERVED" || order.paidAt) return;
 
-  const billTotal = sumOrderRevenue(order.items);
-  if (billTotal === 0) {
+  const { financialsForOrder } = await import("@/lib/order-financials");
+  const restaurant = await prisma.restaurant.findUnique({
+    where: { id: order.restaurantId },
+    select: { receiptGstEnabled: true, receiptGstRate: true },
+  });
+  const financials = financialsForOrder({
+    items: order.items,
+    discountAmount: order.discountAmount,
+    gstEnabled: restaurant?.receiptGstEnabled,
+    gstRate: restaurant?.receiptGstRate,
+  });
+  if (financials.amountDue <= 0) {
     await prisma.order.update({
       where: { id: orderId },
       data: { paidAt: new Date() },

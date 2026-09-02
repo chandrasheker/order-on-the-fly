@@ -48,6 +48,9 @@ export default function QRPage() {
   const [loading, setLoading] = useState(true);
   const [savingDefault, setSavingDefault] = useState(false);
   const [paymentQrUrl, setPaymentQrUrl] = useState("");
+  const [upiVpa, setUpiVpa] = useState("");
+  const [upiMerchantName, setUpiMerchantName] = useState("");
+  const [savingUpi, setSavingUpi] = useState(false);
   const [uploadingPaymentQr, setUploadingPaymentQr] = useState(false);
   const [removingPaymentQr, setRemovingPaymentQr] = useState(false);
   const [paymentQrMessage, setPaymentQrMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -89,6 +92,8 @@ export default function QRPage() {
         }
         if (paymentData?.settings) {
           setPaymentQrUrl(paymentData.settings.paymentQrUrl ?? "");
+          setUpiVpa(paymentData.settings.upiVpa ?? "");
+          setUpiMerchantName(paymentData.settings.upiMerchantName ?? "");
         }
         if (receiptData?.settings) {
           setReceiptLogoUrl(receiptData.settings.logoUrl ?? "");
@@ -449,13 +454,56 @@ export default function QRPage() {
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-3">
             <CircleDollarSign className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-lg font-bold">PhonePe payment QR</h2>
+            <h2 className="text-lg font-bold">UPI and payment QR</h2>
           </div>
           <p className="text-sm text-zinc-400 mb-4">
-            Choose your PhonePe static QR image from this computer. Customers will scan it when
-            they tap Pay. Leave empty to use offline collection — staff gets alerted and must mark
-            paid manually.
+            Add your UPI ID so customers can pay from their phone app. Upload a QR for another
+            phone or desktop. Staff must still verify manual UPI. Automatic confirmation only
+            happens if a payment gateway webhook is configured.
           </p>
+          <div className="space-y-3 mb-4">
+            <div>
+              <label className="text-xs text-zinc-500 block mb-1">UPI ID</label>
+              <Input
+                placeholder="abcrestaurant@upi"
+                value={upiVpa}
+                onChange={(e) => setUpiVpa(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-zinc-500 block mb-1">Merchant name</label>
+              <Input
+                placeholder="Restaurant display name"
+                value={upiMerchantName}
+                onChange={(e) => setUpiMerchantName(e.target.value)}
+              />
+            </div>
+            <Button
+              size="sm"
+              disabled={savingUpi}
+              onClick={() => {
+                setSavingUpi(true);
+                void fetch("/api/payment/settings", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ upiVpa, upiMerchantName }),
+                })
+                  .then(async (res) => {
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                      setPaymentQrMessage({ type: "err", text: json.error || "Could not save UPI" });
+                      return;
+                    }
+                    setUpiVpa(json.settings?.upiVpa ?? upiVpa);
+                    setUpiMerchantName(json.settings?.upiMerchantName ?? upiMerchantName);
+                    setPaymentQrMessage({ type: "ok", text: "UPI settings saved." });
+                  })
+                  .finally(() => setSavingUpi(false));
+              }}
+            >
+              {savingUpi ? "Saving..." : "Save UPI ID"}
+            </Button>
+          </div>
 
           {paymentQrMessage && (
             <p

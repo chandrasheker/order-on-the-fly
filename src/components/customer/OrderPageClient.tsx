@@ -36,6 +36,9 @@ interface RestaurantData {
   rewardBeverageLabel: string;
   backgroundImageUrl?: string | null;
   paymentQrUrl?: string | null;
+  upiVpa?: string | null;
+  upiMerchantName?: string | null;
+  automaticUpiEnabled?: boolean;
 }
 
 interface MenuFeatures {
@@ -81,6 +84,7 @@ export function OrderPageClient({ slug, token }: Props) {
   const [showNameInput, setShowNameInput] = useState(true);
   const [orderError, setOrderError] = useState("");
   const [tabPaymentPending, setTabPaymentPending] = useState(false);
+  const [tabRemaining, setTabRemaining] = useState<number | null>(null);
   const [showThankYou, setShowThankYou] = useState(false);
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -151,6 +155,9 @@ export function OrderPageClient({ slug, token }: Props) {
         setOrders(json.orders ?? []);
         if (json.tabPaymentPending !== undefined || json.paymentBlocked !== undefined) {
           setTabPaymentPending(Boolean(json.tabPaymentPending ?? json.paymentBlocked));
+        }
+        if (typeof json.tabSummary?.remaining === "number") {
+          setTabRemaining(json.tabSummary.remaining);
         }
       } else if (res.status === 403) {
         setOrders([]);
@@ -486,6 +493,10 @@ export function OrderPageClient({ slug, token }: Props) {
             orders={orders}
             tableToken={token}
             paymentQrUrl={data.restaurant.paymentQrUrl}
+            upiVpa={data.restaurant.upiVpa}
+            upiMerchantName={data.restaurant.upiMerchantName}
+            automaticUpiEnabled={data.restaurant.automaticUpiEnabled}
+            tabRemaining={tabRemaining}
             onRefresh={fetchOrders}
             onPaymentRequested={() => setTabPaymentPending(true)}
           />

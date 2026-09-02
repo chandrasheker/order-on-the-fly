@@ -36,6 +36,10 @@ export async function GET(
         rewardBeverageLabel: true,
         backgroundImageUrl: true,
         paymentQrUrl: true,
+        upiVpa: true,
+        upiMerchantName: true,
+        paymentGatewayProvider: true,
+        paymentGatewayKeyId: true,
       },
     });
 
@@ -145,6 +149,9 @@ export async function GET(
         rewardBeverageLabel: restaurant.rewardBeverageLabel,
         backgroundImageUrl,
         paymentQrUrl,
+        upiVpa: restaurant.upiVpa ?? null,
+        upiMerchantName: restaurant.upiMerchantName ?? restaurant.name,
+        automaticUpiEnabled: Boolean(restaurant.paymentGatewayProvider && restaurant.paymentGatewayKeyId),
       },
       table: { id: table.id, number: table.number, qrToken: table.qrToken },
       paymentBlocked,

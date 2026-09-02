@@ -6,6 +6,7 @@ import {
   RECEIPT_ORDER_INCLUDE,
   RECEIPT_RESTAURANT_SELECT,
 } from "@/lib/receipt-service";
+import { receiptFromBillRow } from "@/lib/bill-service";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 
@@ -33,6 +34,14 @@ export async function GET(
 
   if (!order.paidAt) {
     return NextResponse.json({ error: "Order is not paid yet" }, { status: 400 });
+  }
+
+  const bill = await prisma.bill.findFirst({
+    where: { orderId: id, restaurantId: session.restaurantId, status: { not: "VOIDED" } },
+  });
+  if (bill) {
+    const fromBill = receiptFromBillRow(bill);
+    if (fromBill) return NextResponse.json({ receipt: fromBill });
   }
 
   const restaurant = await prisma.restaurant.findUnique({

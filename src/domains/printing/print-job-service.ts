@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { logInfo, logWarn } from "@/lib/logger";
+import { recordAuditLog } from "@/lib/audit-service";
+import { printJobOwnedByRestaurant } from "@/lib/payment-scope";
 import type { PrintJobStatus } from "@/generated/prisma/client";
 
 export async function enqueuePrintJob(params: {
@@ -9,24 +11,84 @@ export async function enqueuePrintJob(params: {
   orderId?: string;
   kind?: string;
   payload: Record<string, unknown>;
+  idempotencyKey?: string | null;
+  reprintOfPrintJobId?: string | null;
 }) {
-  const job = await prisma.printJob.create({
-    data: {
-      restaurantId: params.restaurantId,
-      tenantId: params.tenantId ?? null,
-      branchId: params.branchId ?? null,
-      orderId: params.orderId ?? null,
-      kind: params.kind ?? "kitchen_chit",
-      payload: JSON.stringify(params.payload),
-      status: "PENDING",
-    },
-  });
+  return enqueueIdempotentPrintJob(params);
+}
 
-  if (process.env.PRINTER_AGENT_URL) {
-    void dispatchPrintJob(job.id).catch(() => undefined);
+export async function enqueueIdempotentPrintJob(params: {
+  restaurantId: string;
+  tenantId?: string | null;
+  branchId?: string | null;
+  orderId?: string;
+  kind?: string;
+  payload: Record<string, unknown>;
+  idempotencyKey?: string | null;
+  reprintOfPrintJobId?: string | null;
+}) {
+  const idempotencyKey = params.idempotencyKey?.trim() || null;
+
+  if (idempotencyKey) {
+    const existing = await prisma.printJob.findUnique({
+      where: {
+        restaurantId_idempotencyKey: {
+          restaurantId: params.restaurantId,
+          idempotencyKey,
+        },
+      },
+    });
+    if (existing) return existing;
   }
 
-  return job;
+  try {
+    const job = await prisma.printJob.create({
+      data: {
+        restaurantId: params.restaurantId,
+        tenantId: params.tenantId ?? null,
+        branchId: params.branchId ?? null,
+        orderId: params.orderId ?? null,
+        kind: params.kind ?? "kitchen_chit",
+        payload: JSON.stringify(params.payload),
+        status: "PENDING",
+        idempotencyKey,
+        reprintOfPrintJobId: params.reprintOfPrintJobId ?? null,
+      },
+    });
+
+    logInfo("printing", "Print job queued", {
+      restaurantId: job.restaurantId,
+      tenantId: job.tenantId,
+      orderId: job.orderId,
+      printJobId: job.id,
+      kind: job.kind,
+    });
+
+    if (process.env.PRINTER_AGENT_URL) {
+      void dispatchPrintJob(job.id).catch(() => undefined);
+    }
+
+    return job;
+  } catch (error) {
+    if (
+      idempotencyKey &&
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      const existing = await prisma.printJob.findUnique({
+        where: {
+          restaurantId_idempotencyKey: {
+            restaurantId: params.restaurantId,
+            idempotencyKey,
+          },
+        },
+      });
+      if (existing) return existing;
+    }
+    throw error;
+  }
 }
 
 export async function dispatchPrintJob(jobId: string) {
@@ -115,4 +177,50 @@ export async function listPrintJobs(restaurantId: string, limit = 50) {
     orderBy: { createdAt: "desc" },
     take: limit,
   });
+}
+
+export async function retryPrintJobForRestaurant(jobId: string, restaurantId: string) {
+  const job = printJobOwnedByRestaurant(
+    restaurantId,
+    await prisma.printJob.findFirst({ where: { id: jobId, restaurantId } }),
+  );
+  if (!job) return null;
+  if (job.status === "ACKED") return job;
+  return dispatchPrintJob(job.id);
+}
+
+export async function reprintPrintJobForRestaurant(params: {
+  jobId: string;
+  restaurantId: string;
+  actorUserId?: string;
+  actorName?: string;
+}) {
+  const original = printJobOwnedByRestaurant(
+    params.restaurantId,
+    await prisma.printJob.findFirst({ where: { id: params.jobId, restaurantId: params.restaurantId } }),
+  );
+  if (!original) return null;
+
+  const reprint = await enqueueIdempotentPrintJob({
+    restaurantId: original.restaurantId,
+    tenantId: original.tenantId,
+    branchId: original.branchId,
+    orderId: original.orderId ?? undefined,
+    kind: original.kind === "customer_bill" ? "customer_bill" : original.kind,
+    payload: JSON.parse(original.payload) as Record<string, unknown>,
+    reprintOfPrintJobId: original.id,
+    idempotencyKey: `reprint:${original.id}:${Date.now()}`,
+  });
+
+  await recordAuditLog({
+    restaurantId: original.restaurantId,
+    actionType: "PRINT_REPRINT",
+    entityId: reprint.id,
+    payload: { reprintOfPrintJobId: original.id, kind: original.kind, orderId: original.orderId },
+    actorUserId: params.actorUserId,
+    actorName: params.actorName,
+    branchId: original.branchId,
+  });
+
+  return reprint;
 }

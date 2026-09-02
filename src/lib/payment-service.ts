@@ -106,6 +106,7 @@ export async function requestTableTabPayment(tableId: string, tableToken: string
 
   if (!existing) {
     const hasQr = await paymentQrExists(table.restaurantId);
+    const hasManualUpi = Boolean(table.restaurant.upiVpa || hasQr);
     const orderLabel =
       unpaidServed.length === 1
         ? `Order #${unpaidServed[0]!.orderNumber}`
@@ -113,8 +114,8 @@ export async function requestTableTabPayment(tableId: string, tableToken: string
     await prisma.alert.create({
       data: {
         type: "PAYMENT",
-        message: hasQr
-          ? `Table ${table.number} completed PhonePe payment (${orderLabel}) — ${formatCurrency(tabSummary.remaining)} (verify & mark paid)`
+        message: hasManualUpi
+          ? `Table ${table.number} says they paid by UPI (${orderLabel}) — ${formatCurrency(tabSummary.remaining)} (verify before marking paid)`
           : `Table ${table.number} needs to pay (${orderLabel}) — ${formatCurrency(tabSummary.remaining)} (collect cash/UPI offline)`,
         tableNumber: table.number,
         restaurantId: table.restaurantId,

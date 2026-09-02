@@ -35,7 +35,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { action, itemId, tableToken, amount, method, itemIds, note, tipAmount, managerUserId, managerPassword, reason, payTab } =
+  const { action, itemId, tableToken, amount, method, itemIds, note, tipAmount, managerUserId, managerPassword, reason, payTab, cashTendered } =
     await req.json();
   logApiRequest("orders/[id]", "PATCH", { orderId: id, action, itemId });
 
@@ -100,6 +100,41 @@ export async function PATCH(
     });
 
     return NextResponse.json({ success: true });
+  }
+
+  if (action === "initiate-manual-upi") {
+    if (!tableToken || order.table.qrToken !== tableToken) {
+      return opaqueNotFoundJson();
+    }
+    const dining = await assertCustomerDiningAccess(req, String(tableToken));
+    if (!dining.ok) {
+      return NextResponse.json({ error: dining.error, code: dining.code }, { status: dining.status });
+    }
+    const { PAYMENT_STATUS, MANUAL_UPI_VERIFICATION } = await import("@/lib/order-financials");
+    const summary = await (await import("@/lib/payment-allocation-service")).getOrderPaymentSummary(id);
+    if (!summary || summary.remaining <= 0.01) {
+      return NextResponse.json({ error: "Nothing to pay" }, { status: 400 });
+    }
+    const result = await recordOrderPayment({
+      orderId: id,
+      amount: summary.remaining,
+      method: "MANUAL_UPI",
+      status: PAYMENT_STATUS.PENDING,
+      verificationStatus: MANUAL_UPI_VERIFICATION.PENDING_VERIFICATION,
+      capture: false,
+      note: "Customer opened UPI — awaiting staff verification",
+      idempotencyKey: `manual-upi-pending:${id}`,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    await requestOrderPayment(id, tableToken);
+    return NextResponse.json({
+      success: true,
+      pending: true,
+      message: "Payment recorded as pending. Staff will verify before the bill is marked paid.",
+      summary: result.summary,
+    });
   }
 
   if (action === "request-payment" || action === "pay") {
@@ -195,6 +230,7 @@ export async function PATCH(
       method: method ?? "UPI",
       collectedByUserId: session.id,
       collectedByName: session.name,
+      cashTendered: typeof cashTendered === "number" ? cashTendered : undefined,
     });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
@@ -258,6 +294,7 @@ export async function PATCH(
       itemIds: scopedItemIds,
       collectedByUserId: session.id,
       collectedByName: session.name,
+      cashTendered: typeof cashTendered === "number" ? cashTendered : undefined,
     });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });

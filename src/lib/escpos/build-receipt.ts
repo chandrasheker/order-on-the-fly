@@ -37,6 +37,7 @@ export async function buildEscPosReceipt(receipt: ReceiptPayload) {
   encoder
     .line("--------------------------------")
     .align("left")
+    .line(receipt.order.billNumber ? `Bill ${receipt.order.billNumber}` : `Order #${receipt.order.orderNumber}`)
     .line(`Order #${receipt.order.orderNumber}`)
     .line(`Table: ${receipt.order.tableNumber}`)
     .line(`Date: ${formatReceiptDate(receipt.order.paidAt)}`);
@@ -66,6 +67,9 @@ export async function buildEscPosReceipt(receipt: ReceiptPayload) {
 
   encoder.line("--------------------------------");
   encoder.line(padLine("Subtotal", formatReceiptMoney(receipt.subtotal), LINE_WIDTH));
+  if ((receipt.discountAmount ?? 0) > 0) {
+    encoder.line(padLine("Discount", `-${formatReceiptMoney(receipt.discountAmount ?? 0)}`, LINE_WIDTH));
+  }
 
   if (receipt.restaurant.gstEnabled && receipt.gstAmount > 0) {
     const halfRate = receipt.restaurant.gstRate / 2;
