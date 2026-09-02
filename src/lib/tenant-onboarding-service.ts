@@ -8,7 +8,7 @@ import {
   summarizeActiveSessions,
 } from "@/lib/staff-session-service";
 import { restaurantSlugValidationError } from "@/lib/restaurant-slug";
-import { invalidateHostTenantCache, invalidateHostTenantCacheForSlugs } from "@/platform/host-tenant";
+import { invalidateHostTenantCacheForSlugs } from "@/platform/host-tenant";
 import {
   assertMultiRestaurantNaming,
   assertRestaurantName,

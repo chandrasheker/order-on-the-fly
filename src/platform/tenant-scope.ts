@@ -39,7 +39,8 @@ export function hostRestaurantId(resolution: HostTenantResolution): string | nul
 }
 
 export function restaurantOpsAllowedOnResolution(resolution: HostTenantResolution): boolean {
-  if (!resolution.ok || resolution.kind !== "restaurant") return false;
+  if (!resolution.ok) return false;
+  if (resolution.kind === "tenant") return false;
   if (blocksRestaurantOperationsOnHost(resolution.host)) return false;
   return true;
 }

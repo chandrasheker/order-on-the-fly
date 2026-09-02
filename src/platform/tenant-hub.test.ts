@@ -16,7 +16,6 @@ import {
   requireTenantContext,
   resolveTenantFromClassifiedHost,
 } from "@/platform/host-tenant";
-import { assertPathSlugForResolution } from "@/platform/tenant-scope";
 import { MULTI_RESTAURANT_SAME_NAME_ERROR } from "@/lib/hostname-rules";
 
 const dbPath = path.join(os.tmpdir(), `tabletap-hub-${process.pid}-${Date.now()}.db`);
@@ -27,6 +26,7 @@ let signupTenantWithRestaurants: typeof import("@/lib/tenant-onboarding-service"
 let addRestaurantToTenant: typeof import("@/lib/tenant-onboarding-service").addRestaurantToTenant;
 let renameRestaurant: typeof import("@/lib/tenant-onboarding-service").renameRestaurant;
 let getTenantOverview: typeof import("@/lib/tenant-onboarding-service").getTenantOverview;
+let assertPathSlugForResolution: typeof import("@/platform/tenant-scope").assertPathSlugForResolution;
 
 const suffix = `${Date.now()}`;
 
@@ -55,6 +55,7 @@ before(async () => {
     renameRestaurant,
     getTenantOverview,
   } = await import("@/lib/tenant-onboarding-service"));
+  ({ assertPathSlugForResolution } = await import("@/platform/tenant-scope"));
 });
 
 after(async () => {
