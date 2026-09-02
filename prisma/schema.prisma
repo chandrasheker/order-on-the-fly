@@ -204,6 +204,7 @@ model Restaurant {
   smsAlertsEnabled      Boolean        @default(true)
   tenantId              String?
   tenant                Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  nameNormalized        String         @default("")
   isEnabled             Boolean        @default(true)
   createdAt             DateTime       @default(now())
   branches              Branch[]
@@ -238,6 +239,9 @@ model Restaurant {
   printJobs             PrintJob[]
   paymentReconciliations PaymentReconciliation[]
   staffSessions          StaffSession[]
+  hostSlugs              HostSlug[]
+
+  @@unique([tenantId, nameNormalized])
 }
 
 model User {
@@ -899,6 +903,7 @@ model PaymentWebhookEvent {
 model Tenant {
   id                 String             @id @default(cuid())
   name               String
+  nameNormalized     String             @unique @default("")
   slug               String             @unique
   plan               TenantPlan         @default(STARTER)
   subscriptionStatus SubscriptionStatus @default(TRIAL)
@@ -921,6 +926,37 @@ model Tenant {
   platformEvents     PlatformEvent[]
   printJobs          PrintJob[]
   paymentReconciliations PaymentReconciliation[]
+  admins             TenantAdmin[]
+  hostSlugs          HostSlug[]
+}
+
+/** Global DNS-label lease for tenant hubs and restaurants. */
+model HostSlug {
+  slug         String     @id
+  kind         String
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([tenantId, kind])
+  @@index([restaurantId])
+}
+
+/** Tenant-host admin. Separate from restaurant OWNER and platform admin. */
+model TenantAdmin {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+
+  @@unique([tenantId, email])
+  @@index([email])
 }
 
 model TenantSubscription {

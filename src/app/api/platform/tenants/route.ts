@@ -4,14 +4,22 @@ import {
   listTenantsWithRestaurants,
   addRestaurantToTenant,
   addBranchToRestaurant,
+  signupTenantWithRestaurants,
+  renameTenant,
+  renameRestaurant,
 } from "@/lib/tenant-onboarding-service";
+import { tenantHubIsActive } from "@/lib/hostname-rules";
 import {
   setTenantEnabled,
   setRestaurantEnabled,
   deleteTenantEverywhere,
   deleteRestaurantEverywhere,
 } from "@/lib/tenant-lifecycle";
-import { getRestaurantPublicBaseUrl, publicRestaurantPayload } from "@/lib/server-app-url";
+import {
+  getRestaurantPublicBaseUrl,
+  getTenantHubPublicBaseUrl,
+  publicRestaurantPayload,
+} from "@/lib/server-app-url";
 import { getTenantBaseDomain } from "@/platform/host";
 
 export async function GET() {
@@ -21,13 +29,22 @@ export async function GET() {
   const tenants = await listTenantsWithRestaurants();
   return NextResponse.json({
     tenantBaseDomain: getTenantBaseDomain(),
-    tenants: tenants.map((tenant) => ({
-      ...tenant,
-      restaurants: tenant.restaurants.map((restaurant) => ({
-        ...restaurant,
-        url: getRestaurantPublicBaseUrl(restaurant.slug),
-      })),
-    })),
+    tenants: tenants.map((tenant) => {
+      const hubActive = tenantHubIsActive({
+        tenantSlug: tenant.slug,
+        tenantName: tenant.name,
+        restaurants: tenant.restaurants,
+      });
+      return {
+        ...tenant,
+        hubActive,
+        url: hubActive ? getTenantHubPublicBaseUrl(tenant.slug) : null,
+        restaurants: tenant.restaurants.map((restaurant) => ({
+          ...restaurant,
+          url: getRestaurantPublicBaseUrl(restaurant.slug),
+        })),
+      };
+    }),
   });
 }
 
@@ -39,6 +56,42 @@ export async function POST(req: NextRequest) {
   const action = String(body.action ?? "add_restaurant");
 
   try {
+    if (action === "create_tenant") {
+      const restaurants = Array.isArray(body.restaurants) ? body.restaurants : [];
+      const result = await signupTenantWithRestaurants({
+        tenantName: String(body.tenantName ?? ""),
+        tenantSlug: body.tenantSlug ? String(body.tenantSlug) : undefined,
+        billingEmail: String(body.billingEmail ?? "").toLowerCase(),
+        plan: body.plan,
+        restaurants: restaurants.map((restaurant: Record<string, unknown>) => ({
+          name: String(restaurant.name ?? ""),
+          slug: restaurant.slug ? String(restaurant.slug) : undefined,
+          tableCount: restaurant.tableCount ? Number(restaurant.tableCount) : undefined,
+          ownerEmail: String(restaurant.ownerEmail ?? "").toLowerCase(),
+          ownerName: String(restaurant.ownerName ?? "Owner"),
+          ownerPassword: String(restaurant.ownerPassword ?? ""),
+        })),
+      });
+      const hubActive = tenantHubIsActive({
+        tenantSlug: result.tenant.slug,
+        tenantName: result.tenant.name,
+        restaurants: result.restaurants.map((row) => row.restaurant),
+      });
+      return NextResponse.json(
+        {
+          ok: true,
+          tenant: {
+            id: result.tenant.id,
+            name: result.tenant.name,
+            slug: result.tenant.slug,
+            url: hubActive ? getTenantHubPublicBaseUrl(result.tenant.slug) : null,
+          },
+          restaurants: result.restaurants.map((row) => publicRestaurantPayload(row.restaurant)),
+        },
+        { status: 201 },
+      );
+    }
+
     if (action === "add_restaurant") {
       const tenantId = String(body.tenantId ?? "");
       const result = await addRestaurantToTenant(tenantId, {
@@ -98,6 +151,16 @@ export async function PATCH(req: NextRequest) {
       const tenantId = String(body.tenantId ?? "");
       const result = await deleteTenantEverywhere(tenantId);
       return NextResponse.json({ ok: true, deleted: result });
+    }
+
+    if (action === "rename_tenant") {
+      const result = await renameTenant(String(body.tenantId ?? ""), String(body.name ?? ""));
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "rename_restaurant") {
+      const result = await renameRestaurant(String(body.restaurantId ?? ""), String(body.name ?? ""));
+      return NextResponse.json({ ok: true, ...result });
     }
 
     if (action === "delete_restaurant") {

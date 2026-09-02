@@ -4,18 +4,18 @@ import { invalidateHostTenantCache, invalidateHostTenantCacheForSlugs } from "@/
 import { endStaffSessionsForRestaurant, endStaffSessionsForTenant } from "@/lib/staff-session-service";
 
 export async function setTenantEnabled(tenantId: string, isEnabled: boolean) {
+  const tenantRow = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true, slug: true },
+  });
+  if (!tenantRow) {
+    throw new Error("Tenant not found");
+  }
+
   const restaurants = await prisma.restaurant.findMany({
     where: { tenantId },
     select: { id: true, slug: true },
   });
-
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId },
-    select: { id: true },
-  });
-  if (!tenant) {
-    throw new Error("Tenant not found");
-  }
 
   await prisma.$transaction(async (tx) => {
     await tx.tenant.update({
@@ -34,7 +34,10 @@ export async function setTenantEnabled(tenantId: string, isEnabled: boolean) {
   });
 
   await endStaffSessionsForTenant(tenantId);
-  invalidateHostTenantCacheForSlugs(restaurants.map((restaurant) => restaurant.slug));
+  invalidateHostTenantCacheForSlugs([
+    tenantRow.slug,
+    ...restaurants.map((restaurant) => restaurant.slug),
+  ]);
   for (const restaurant of restaurants) {
     invalidateFeatureCache(restaurant.id);
   }
@@ -93,6 +96,7 @@ export async function deleteTenantEverywhere(tenantId: string) {
     where: { id: tenantId },
     select: {
       id: true,
+      slug: true,
       restaurants: { select: { id: true, slug: true } },
     },
   });
@@ -111,6 +115,7 @@ export async function deleteTenantEverywhere(tenantId: string) {
   await prisma.loginAuditLog.deleteMany({ where: { tenantId } });
   await prisma.backgroundJob.deleteMany({ where: { tenantId } });
   await prisma.tenant.delete({ where: { id: tenantId } });
+  invalidateHostTenantCache(tenant.slug);
 
   return { id: tenantId, restaurantCount: tenant.restaurants.length };
 }

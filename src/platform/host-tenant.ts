@@ -26,8 +26,15 @@ export type HostTenantFailureReason =
   | "TENANT_DISABLED"
   | "INVALID_HIERARCHY";
 
+export type TenantHubContext = {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+};
+
 export type HostTenantResolution =
   | { ok: true; kind: "restaurant"; host: Extract<ClassifiedHost, { kind: "restaurant" }>; context: TenantContext }
+  | { ok: true; kind: "tenant"; host: Extract<ClassifiedHost, { kind: "restaurant" }>; tenant: TenantHubContext }
   | { ok: true; kind: "reserved"; host: Extract<ClassifiedHost, { kind: "reserved" }> }
   | {
       ok: false;
@@ -58,8 +65,16 @@ export type RestaurantHostRow = {
   tenant: { id: string; isEnabled: boolean } | null;
 };
 
+export type TenantHubRow = {
+  id: string;
+  name: string;
+  slug: string;
+  isEnabled: boolean;
+};
+
 export type HostTenantLookup = {
   findRestaurantBySlug: (slug: string) => Promise<RestaurantHostRow | null>;
+  findTenantHubBySlug?: (slug: string) => Promise<TenantHubRow | null>;
   resolveContext?: (restaurant: RestaurantHostRow) => Promise<TenantContext>;
 };
 
@@ -76,6 +91,18 @@ const defaultLookup: HostTenantLookup = {
         isEnabled: true,
         tenant: { select: { id: true, isEnabled: true } },
       },
+    });
+  },
+  async findTenantHubBySlug(slug) {
+    const { prisma } = await import("@/lib/prisma");
+    const lease = await prisma.hostSlug.findUnique({
+      where: { slug },
+      select: { kind: true, tenantId: true },
+    });
+    if (!lease || lease.kind !== "tenant_hub") return null;
+    return prisma.tenant.findUnique({
+      where: { id: lease.tenantId },
+      select: { id: true, name: true, slug: true, isEnabled: true },
     });
   },
 };
@@ -122,6 +149,22 @@ export async function resolveTenantFromClassifiedHost(
 
   const restaurant = await lookup.findRestaurantBySlug(host.slug);
   if (!restaurant) {
+    const hub = lookup.findTenantHubBySlug ? await lookup.findTenantHubBySlug(host.slug) : null;
+    if (hub) {
+      if (!hub.isEnabled) {
+        const resolution = fail(host, "TENANT_DISABLED", "disabled");
+        slugCache.set(cacheKey, { resolution, expiresAt: Date.now() + CACHE_MS });
+        return resolution;
+      }
+      const resolution: HostTenantResolution = {
+        ok: true,
+        kind: "tenant",
+        host,
+        tenant: { tenantId: hub.id, tenantName: hub.name, tenantSlug: hub.slug },
+      };
+      slugCache.set(cacheKey, { resolution, expiresAt: Date.now() + CACHE_MS });
+      return resolution;
+    }
     const resolution = fail(host, "UNKNOWN_SUBDOMAIN", "unknown");
     slugCache.set(cacheKey, { resolution, expiresAt: Date.now() + CACHE_MS });
     return resolution;
@@ -209,7 +252,7 @@ export async function requireTenantContext(
   if (resolution.ok && resolution.kind === "restaurant") {
     return resolution.context;
   }
-  if (resolution.ok && resolution.kind === "reserved") {
+  if (resolution.ok) {
     throw new HostTenantError("INVALID_HOST", "Not found");
   }
   throw new HostTenantError(resolution.reason);

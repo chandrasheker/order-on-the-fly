@@ -39,7 +39,7 @@ export function hostRestaurantId(resolution: HostTenantResolution): string | nul
 }
 
 export function restaurantOpsAllowedOnResolution(resolution: HostTenantResolution): boolean {
-  if (!resolution.ok) return false;
+  if (!resolution.ok || resolution.kind !== "restaurant") return false;
   if (blocksRestaurantOperationsOnHost(resolution.host)) return false;
   return true;
 }
@@ -109,6 +109,7 @@ export function assertPathSlugForResolution(
 ): boolean {
   if (!resolution.ok) return false;
   if (resolution.kind === "reserved") return true;
+  if (resolution.kind !== "restaurant") return false;
   return pathSlugMatchesHost(slug, resolution.host);
 }
 

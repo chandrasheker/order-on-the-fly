@@ -14,6 +14,14 @@ export function getAppBaseUrl(): string {
   return raw.replace(/\/+$/, "");
 }
 
+export function getHostPublicBaseUrl(slug: string): string {
+  return getRestaurantPublicBaseUrl(slug);
+}
+
+export function getTenantHubPublicBaseUrl(slug: string): string {
+  return getRestaurantPublicBaseUrl(slug);
+}
+
 export function getRestaurantPublicBaseUrl(slug: string): string {
   const baseDomain = getTenantBaseDomain();
   if (!baseDomain) return getAppBaseUrl();

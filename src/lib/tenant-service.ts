@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { TenantPlan, SubscriptionStatus } from "@/generated/prisma/client";
+import { canonicalizeName } from "@/lib/hostname-rules";
 
 export async function ensureTenantForRestaurant(restaurantId: string) {
   const restaurant = await prisma.restaurant.findUnique({
@@ -14,6 +15,7 @@ export async function ensureTenantForRestaurant(restaurantId: string) {
   const tenant = await prisma.tenant.create({
     data: {
       name: restaurant.name,
+      nameNormalized: canonicalizeName(restaurant.name),
       slug: restaurant.slug,
       plan: "STARTER",
       subscriptionStatus: "TRIAL",

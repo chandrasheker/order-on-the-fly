@@ -7,7 +7,7 @@ import { ConfirmDangerDialog } from "@/components/platform/ConfirmDangerDialog";
 import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
-import { slugify } from "@/lib/utils";
+import { MULTI_RESTAURANT_SAME_NAME_ERROR, previewHostnames } from "@/lib/hostname-rules";
 
 type ActiveSessions = {
   total: number;
@@ -35,6 +35,9 @@ function restaurantHostPreview(slug: string, baseDomain: string) {
 interface PlatformTenantOverviewProps {
   tenantId: string;
   tenantName: string;
+  tenantSlug?: string;
+  tenantUrl?: string | null;
+  tenantHubActive?: boolean;
   tenantEnabled: boolean;
   tenantBaseDomain?: string;
   restaurants: TenantRestaurant[];
@@ -57,6 +60,9 @@ function roleSummary(byRole: ActiveSessions["byRole"]) {
 export function PlatformTenantOverview({
   tenantId,
   tenantName,
+  tenantSlug = "",
+  tenantUrl = null,
+  tenantHubActive = false,
   tenantEnabled,
   tenantBaseDomain = "",
   restaurants,
@@ -72,7 +78,6 @@ export function PlatformTenantOverview({
   } | null>(null);
   const [addRestaurant, setAddRestaurant] = useState({
     name: "",
-    slug: "",
     ownerEmail: "",
     ownerName: "Owner",
   });
@@ -81,6 +86,10 @@ export function PlatformTenantOverview({
   const [togglingRestaurantId, setTogglingRestaurantId] = useState<string | null>(null);
   const [deletingRestaurantId, setDeletingRestaurantId] = useState<string | null>(null);
   const [confirmRestaurant, setConfirmRestaurant] = useState<TenantRestaurant | null>(null);
+  const [tenantNameDraft, setTenantNameDraft] = useState(tenantName);
+  const [renamingTenant, setRenamingTenant] = useState(false);
+  const [restaurantNameDrafts, setRestaurantNameDrafts] = useState<Record<string, string>>({});
+  const [renamingRestaurantId, setRenamingRestaurantId] = useState<string | null>(null);
 
   const mergedRestaurants = (overview?.restaurants ?? restaurants).map((r) => {
     const base = restaurants.find((b) => b.id === r.id) ?? r;
@@ -145,7 +154,7 @@ export function PlatformTenantOverview({
       }
       setMessage(`Added ${json.restaurant.name}`);
       setCreatedRestaurantUrl(String(json.restaurant?.url ?? ""));
-      setAddRestaurant({ name: "", slug: "", ownerEmail: "", ownerName: "Owner" });
+      setAddRestaurant({ name: "", ownerEmail: "", ownerName: "Owner" });
       onRestaurantsChange();
       void loadOverview();
     } catch (error) {
@@ -210,6 +219,54 @@ export function PlatformTenantOverview({
     }
   };
 
+  const renameTenantName = async () => {
+    setRenamingTenant(true);
+    setMessage("");
+    try {
+      const res = await fetch("/api/platform/tenants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rename_tenant", tenantId, name: tenantNameDraft }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(json.error || "Could not rename tenant.");
+        return;
+      }
+      onRestaurantsChange();
+    } catch (error) {
+      swallowPollingFetchError(error);
+      setMessage("Network error — try again.");
+    } finally {
+      setRenamingTenant(false);
+    }
+  };
+
+  const renameRestaurantName = async (restaurantId: string) => {
+    const name = restaurantNameDrafts[restaurantId];
+    if (!name?.trim()) return;
+    setRenamingRestaurantId(restaurantId);
+    setMessage("");
+    try {
+      const res = await fetch("/api/platform/tenants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rename_restaurant", restaurantId, name }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(json.error || "Could not rename restaurant.");
+        return;
+      }
+      onRestaurantsChange();
+    } catch (error) {
+      swallowPollingFetchError(error);
+      setMessage("Network error — try again.");
+    } finally {
+      setRenamingRestaurantId(null);
+    }
+  };
+
   const stats = overview?.stats;
 
   return (
@@ -222,6 +279,58 @@ export function PlatformTenantOverview({
               ? "Tenant is live — enabled restaurants operate normally. Disabling this tenant immediately disables every restaurant under it."
               : "Tenant is disabled — every restaurant under it is disabled and staff access is blocked. Re-enabling the tenant does not automatically re-enable restaurants."}
           </p>
+          {tenantHubActive && tenantUrl && (
+            <p className="text-xs text-orange-300 mt-2 break-all">Tenant dashboard: {tenantUrl}</p>
+          )}
+          <div className="flex flex-wrap gap-2 mt-3">
+            <Input
+              value={tenantNameDraft}
+              onChange={(e) => setTenantNameDraft(e.target.value)}
+              className="max-w-xs"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={renamingTenant || tenantNameDraft.trim() === tenantName}
+              onClick={() => void renameTenantName()}
+            >
+              {renamingTenant ? "Saving…" : "Save tenant name"}
+            </Button>
+          </div>
+          {tenantNameDraft.trim() && tenantNameDraft.trim() !== tenantName && (
+            <div className="text-xs mt-2 space-y-1">
+              {(() => {
+                try {
+                  const preview = previewHostnames({
+                    tenantName: tenantNameDraft,
+                    restaurantNames: restaurants.map((restaurant) => restaurant.name),
+                    baseDomain: tenantBaseDomain,
+                  });
+                  return (
+                    <>
+                      {preview.tenantUrl && (
+                        <p className="text-orange-300">
+                          Tenant dashboard will become {preview.tenantUrl}
+                        </p>
+                      )}
+                      {preview.restaurants.map((restaurant) => (
+                        <p key={restaurant.slug} className="text-zinc-400">
+                          {restaurant.name} Restaurant URL will become {restaurant.url}
+                        </p>
+                      ))}
+                    </>
+                  );
+                } catch (err) {
+                  return (
+                    <p className="text-red-400">
+                      {err instanceof Error ? err.message : "Invalid tenant name"}
+                    </p>
+                  );
+                }
+              })()}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -246,7 +355,8 @@ export function PlatformTenantOverview({
       <p className="text-sm text-zinc-400">
         Restaurants belonging to <span className="text-zinc-200">{tenantName}</span>. Disable a
         restaurant to stop orders and staff logins for that location only. Delete permanently
-        wipes that restaurant and all of its records.
+        wipes that restaurant and all of its records. A tenant with one restaurant may share the
+        tenant name; adding another restaurant requires a different tenant name first.
       </p>
 
       {stats && (
@@ -326,6 +436,7 @@ export function PlatformTenantOverview({
                             )}
                           </div>
                           <p className="text-xs text-zinc-500">
+                            Restaurant URL:{" "}
                             {r.url || restaurantHostPreview(r.slug, tenantBaseDomain) || `/${r.slug}`}
                           </p>
                         </div>
@@ -361,7 +472,54 @@ export function PlatformTenantOverview({
                     </div>
                     {open && (
                       <div className="px-4 pb-4 pt-0 border-t border-white/5 space-y-3">
-                        <p className="text-xs text-zinc-500 pt-3">
+                        <div className="flex flex-wrap gap-2 pt-3">
+                          <Input
+                            value={restaurantNameDrafts[r.id] ?? r.name}
+                            onChange={(e) =>
+                              setRestaurantNameDrafts((current) => ({
+                                ...current,
+                                [r.id]: e.target.value,
+                              }))
+                            }
+                            className="max-w-xs"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            disabled={
+                              renamingRestaurantId === r.id ||
+                              (restaurantNameDrafts[r.id] ?? r.name).trim() === r.name
+                            }
+                            onClick={() => void renameRestaurantName(r.id)}
+                          >
+                            {renamingRestaurantId === r.id ? "Saving…" : "Save name"}
+                          </Button>
+                        </div>
+                        {(restaurantNameDrafts[r.id] ?? r.name).trim() &&
+                          (restaurantNameDrafts[r.id] ?? r.name).trim() !== r.name && (
+                            <p className="text-xs text-orange-300">
+                              {(() => {
+                                try {
+                                  const preview = previewHostnames({
+                                    tenantName,
+                                    restaurantNames: restaurants.map((row) =>
+                                      row.id === r.id ? restaurantNameDrafts[r.id] ?? r.name : row.name,
+                                    ),
+                                    tenantSlug,
+                                    baseDomain: tenantBaseDomain,
+                                  });
+                                  const next = preview.restaurants.find(
+                                    (row) => row.name === (restaurantNameDrafts[r.id] ?? r.name).trim(),
+                                  );
+                                  return `Restaurant URL will become ${next?.url || next?.slug}`;
+                                } catch (err) {
+                                  return err instanceof Error ? err.message : "Invalid restaurant name";
+                                }
+                              })()}
+                            </p>
+                          )}
+                        <p className="text-xs text-zinc-500">
                           {r._count.tables} tables · {r._count.users} staff · {r._count.orders}{" "}
                           orders
                         </p>
@@ -434,18 +592,6 @@ export function PlatformTenantOverview({
             value={addRestaurant.name}
             onChange={(e) => setAddRestaurant({ ...addRestaurant, name: e.target.value })}
           />
-          <div className="space-y-1">
-            <Input
-              placeholder="Restaurant subdomain"
-              value={addRestaurant.slug}
-              onChange={(e) => setAddRestaurant({ ...addRestaurant, slug: e.target.value })}
-            />
-            {restaurantHostPreview(addRestaurant.slug || slugify(addRestaurant.name), tenantBaseDomain) && (
-              <p className="text-xs text-orange-300">
-                {restaurantHostPreview(addRestaurant.slug || slugify(addRestaurant.name), tenantBaseDomain)}
-              </p>
-            )}
-          </div>
           <Input
             placeholder="Owner email"
             value={addRestaurant.ownerEmail}
@@ -457,7 +603,44 @@ export function PlatformTenantOverview({
             onChange={(e) => setAddRestaurant({ ...addRestaurant, ownerName: e.target.value })}
           />
         </div>
-        <Button onClick={() => void submitRestaurant()}>Add restaurant</Button>
+        {addRestaurant.name.trim() && (
+          <p className="text-xs text-zinc-400">
+            {(() => {
+              try {
+                const preview = previewHostnames({
+                  tenantName,
+                  restaurantNames: [...restaurants.map((r) => r.name), addRestaurant.name],
+                  tenantSlug,
+                  baseDomain: tenantBaseDomain,
+                });
+                const created = preview.restaurants[preview.restaurants.length - 1];
+                return `Restaurant URL: ${created?.url || created?.slug}`;
+              } catch (err) {
+                return err instanceof Error ? err.message : MULTI_RESTAURANT_SAME_NAME_ERROR;
+              }
+            })()}
+          </p>
+        )}
+        <Button
+          onClick={() => void submitRestaurant()}
+          disabled={
+            !addRestaurant.name.trim() ||
+            (() => {
+              try {
+                previewHostnames({
+                  tenantName,
+                  restaurantNames: [...restaurants.map((r) => r.name), addRestaurant.name],
+                  tenantSlug,
+                });
+                return false;
+              } catch {
+                return true;
+              }
+            })()
+          }
+        >
+          Add restaurant
+        </Button>
         {message && (
           <p className={`text-sm ${message.startsWith("Added") ? "text-emerald-400" : "text-red-400"}`}>
             {message}

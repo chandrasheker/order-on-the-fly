@@ -22,7 +22,7 @@ async function getStaffSession(request: NextRequest) {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, jwtSecret());
-    if (payload.type === "platform_admin") return null;
+    if (payload.type === "platform_admin" || payload.type === "tenant_admin") return null;
     return payload;
   } catch {
     return null;
@@ -66,6 +66,8 @@ function isPublicApi(pathname: string, request: NextRequest) {
     return true;
   }
   if (pathname === "/api/platform/auth/login" && request.method === "POST") return true;
+  if (pathname === "/api/tenant-admin/auth/login" && request.method === "POST") return true;
+  if (pathname === "/api/tenant-admin/auth/me" && request.method === "GET") return true;
   if (/^\/api\/webhooks\/orders\/[^/]+$/.test(pathname) && request.method === "POST") return true;
   if (/^\/api\/webhooks\/(swiggy|zomato)\/[^/]+$/.test(pathname) && request.method === "POST") return true;
   if (/^\/api\/webhooks\/payment\/[^/]+$/.test(pathname) && request.method === "POST") return true;
@@ -199,6 +201,23 @@ export async function middleware(request: NextRequest) {
     }
     if (!platformAdmin) {
       return NextResponse.redirect(new URL("/platform/login", request.url));
+    }
+    return nextWithHost(request);
+  }
+
+  if (pathname === "/tenant/login" || pathname === "/tenant" || pathname.startsWith("/tenant/")) {
+    if (pathname === "/tenant/signup") {
+      return nextWithHost(request);
+    }
+    return nextWithHost(request);
+  }
+
+  if (pathname.startsWith("/api/tenant-admin/")) {
+    if (pathname === "/api/tenant-admin/auth/login" && request.method === "POST") {
+      return nextWithHost(request);
+    }
+    if (pathname === "/api/tenant-admin/auth/me" && request.method === "GET") {
+      return nextWithHost(request);
     }
     return nextWithHost(request);
   }

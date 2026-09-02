@@ -78,15 +78,15 @@ afterEach(async () => {
 describe("tenant and restaurant lifecycle", () => {
   it("disabling a tenant disables every restaurant under it", async () => {
     const tenant = await prisma.tenant.create({
-      data: { name: `${prefix} Tenant`, slug: `${prefix}-tenant` },
+      data: { name: `${prefix} Tenant`, nameNormalized: `${prefix} tenant`, slug: `${prefix}-tenant` },
     });
     createdTenantIds.push(tenant.id);
 
     const south = await prisma.restaurant.create({
-      data: { name: "South", slug: `${prefix}-south`, tenantId: tenant.id, isEnabled: true },
+      data: { name: "South", nameNormalized: "south", slug: `${prefix}-south`, tenantId: tenant.id, isEnabled: true },
     });
     const east = await prisma.restaurant.create({
-      data: { name: "East", slug: `${prefix}-east`, tenantId: tenant.id, isEnabled: true },
+      data: { name: "East", nameNormalized: "east", slug: `${prefix}-east`, tenantId: tenant.id, isEnabled: true },
     });
 
     const result = await setTenantEnabled(tenant.id, false);
@@ -116,6 +116,7 @@ describe("tenant and restaurant lifecycle", () => {
     const tenant = await prisma.tenant.create({
       data: {
         name: `${prefix} Wipe`,
+        nameNormalized: `${prefix} wipe`,
         slug: `${prefix}-wipe`,
         subscriptions: { create: { plan: "STARTER", status: "TRIAL" } },
       },
@@ -123,10 +124,10 @@ describe("tenant and restaurant lifecycle", () => {
     createdTenantIds.push(tenant.id);
 
     const keep = await prisma.restaurant.create({
-      data: { name: "Keep", slug: `${prefix}-keep`, tenantId: tenant.id },
+      data: { name: "Keep", nameNormalized: "keep", slug: `${prefix}-keep`, tenantId: tenant.id },
     });
     const gone = await prisma.restaurant.create({
-      data: { name: "Gone", slug: `${prefix}-gone`, tenantId: tenant.id },
+      data: { name: "Gone", nameNormalized: "gone", slug: `${prefix}-gone`, tenantId: tenant.id },
     });
 
     await prisma.loginAuditLog.create({

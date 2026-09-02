@@ -22,10 +22,13 @@ type TenantDetail = {
   subscriptionStatus: string;
   billingEmail: string | null;
   isEnabled: boolean;
+  hubActive?: boolean;
+  url?: string | null;
   restaurants: Array<{
     id: string;
     name: string;
     slug: string;
+    url?: string;
     isEnabled?: boolean;
     branches: Array<{ id: string; name: string; slug: string; floors: Array<{ name: string }> }>;
     _count: { users: number; orders: number; tables: number };
@@ -227,6 +230,9 @@ export function PlatformTenantWorkspace() {
           <PlatformTenantOverview
             tenantId={tenant.id}
             tenantName={tenant.name}
+            tenantSlug={tenant.slug}
+            tenantUrl={tenant.url ?? null}
+            tenantHubActive={Boolean(tenant.hubActive)}
             tenantEnabled={tenant.isEnabled}
             tenantBaseDomain={tenantBaseDomain}
             restaurants={tenant.restaurants}
