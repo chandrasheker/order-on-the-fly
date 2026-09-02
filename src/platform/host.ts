@@ -134,15 +134,49 @@ export function isApexRestaurantModeEnabled(): boolean {
   return process.env.TENANT_APEX_RESTAURANT === "1";
 }
 
-/** Configured apex or www.{apex} — not platform.* and not an arbitrary reserved host. */
+/** Hostname from APP_URL / NEXT_PUBLIC_APP_URL. Empty if unusable. */
+export function hostnameFromAbsoluteUrl(raw?: string | null): string {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  try {
+    const url = new URL(value.includes("://") ? value : `https://${value}`);
+    return normalizeHostname(url.host);
+  } catch {
+    return "";
+  }
+}
+
+function isDevOnlyHostname(hostname: string): boolean {
+  return !hostname || isIpHostname(hostname) || hostname === "localhost" || hostname.endsWith(".localhost");
+}
+
+/**
+ * Hosts that may show the apex landing (and TENANT_APEX_RESTAURANT login):
+ * TENANT_BASE_DOMAIN, www.{base}, and the APP_URL hostname (the URL people type).
+ */
+export function getPublicApexHostnames(options?: { baseDomain?: string }): Set<string> {
+  const hosts = new Set<string>();
+  const base = (options?.baseDomain ?? getTenantBaseDomain()).toLowerCase();
+  if (base) {
+    hosts.add(base);
+    hosts.add(`www.${base}`);
+  }
+  for (const raw of [process.env.APP_URL, process.env.NEXT_PUBLIC_APP_URL]) {
+    const host = hostnameFromAbsoluteUrl(raw);
+    if (isDevOnlyHostname(host)) continue;
+    hosts.add(host);
+    if (!host.startsWith("www.")) hosts.add(`www.${host}`);
+  }
+  return hosts;
+}
+
+/** Configured apex, www.{apex}, or the public APP_URL host — not platform.* */
 export function isConfiguredApexHost(
   host?: ClassifiedHost,
   options?: { baseDomain?: string },
 ): boolean {
   if (!host || host.kind !== "reserved") return false;
-  const base = (options?.baseDomain ?? getTenantBaseDomain()).toLowerCase();
-  if (!base) return false;
-  return host.hostname === base || host.hostname === `www.${base}`;
+  return getPublicApexHostnames(options).has(host.hostname);
 }
 
 /** GET `/` on the configured apex may render a directory page even when restaurant ops are blocked. */
@@ -170,12 +204,16 @@ export function allowsLegacyRestaurantScoping(
 
 function extraReservedHosts(): Set<string> {
   const raw = process.env.TENANT_RESERVED_HOSTS ?? "";
-  return new Set(
+  const hosts = new Set(
     raw
       .split(",")
       .map((h) => normalizeHostname(h))
       .filter(Boolean),
   );
+  for (const host of getPublicApexHostnames()) {
+    hosts.add(host);
+  }
+  return hosts;
 }
 
 /**

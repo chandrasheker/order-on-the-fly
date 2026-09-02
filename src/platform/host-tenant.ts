@@ -14,6 +14,7 @@ import {
   classifyRequestHost,
   classifyHostname,
   getTrustedHostname,
+  getTenantBaseDomain,
   type ClassifiedHost,
 } from "@/platform/host";
 
@@ -218,6 +219,20 @@ export function restaurantIdFromResolution(resolution: HostTenantResolution): st
 
 export function hostnameFromRequest(headersOrRequest: HeaderSource): string {
   return getTrustedHostname(asHeaderReader(headersOrRequest));
+}
+
+/** Operator-facing host summary for `/api/health`. Does not leak restaurant ids or names. */
+export function hostHealthSummary(resolution: HostTenantResolution) {
+  const host = resolution.host;
+  return {
+    kind: host.kind,
+    hostname: "hostname" in host ? host.hostname : "",
+    slug: host.kind === "restaurant" ? host.slug : null,
+    tenantBaseDomain: getTenantBaseDomain() || null,
+    apexRestaurantMode: process.env.TENANT_APEX_RESTAURANT === "1",
+    ok: resolution.ok,
+    reason: resolution.ok ? null : resolution.reason,
+  };
 }
 
 export { classifyHostname, classifyRequestHost };

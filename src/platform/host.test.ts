@@ -24,6 +24,10 @@ afterEach(() => {
   process.env.TENANT_RESERVED_HOSTS = originalEnv.TENANT_RESERVED_HOSTS;
   if (originalEnv.TENANT_APEX_RESTAURANT === undefined) delete process.env.TENANT_APEX_RESTAURANT;
   else process.env.TENANT_APEX_RESTAURANT = originalEnv.TENANT_APEX_RESTAURANT;
+  if (originalEnv.APP_URL === undefined) delete process.env.APP_URL;
+  else process.env.APP_URL = originalEnv.APP_URL;
+  if (originalEnv.NEXT_PUBLIC_APP_URL === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+  else process.env.NEXT_PUBLIC_APP_URL = originalEnv.NEXT_PUBLIC_APP_URL;
 });
 
 describe("hostname normalization", () => {
@@ -172,6 +176,36 @@ describe("host classification", () => {
     assert.equal(blocksRestaurantOperationsOnHost(rawIp, "production"), true);
     assert.equal(allowsLegacyRestaurantScoping(unknown, "production"), false);
     assert.equal(blocksRestaurantOperationsOnHost(unknown, "production"), true);
+  });
+
+  it("APP_URL hostname is a public apex so the browser host is not a raw 404", () => {
+    delete process.env.TENANT_APEX_RESTAURANT;
+    process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
+    process.env.APP_URL = "https://dvadtech.duckdns.org";
+    const duck = classifyHostname("dvadtech.duckdns.org", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const evil = classifyHostname("evil.example.net", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const rawIp = classifyHostname("10.0.0.225", { baseDomain: "dvadtech.in", nodeEnv: "production" });
+
+    assert.equal(duck.kind, "reserved");
+    assert.equal(isConfiguredApexHost(duck, { baseDomain: "dvadtech.in" }), true);
+    assert.equal(allowsApexPublicLanding("/", duck, { baseDomain: "dvadtech.in" }), true);
+    assert.equal(blocksRestaurantOperationsOnHost(duck, "production"), true);
+    assert.equal(allowsLegacyRestaurantScoping(duck, "production"), false);
+    assert.equal(evil.kind, "invalid");
+    assert.equal(allowsApexPublicLanding("/", evil, { baseDomain: "dvadtech.in" }), false);
+    assert.equal(rawIp.kind, "invalid");
+
+    process.env.TENANT_APEX_RESTAURANT = "1";
+    assert.equal(allowsLegacyRestaurantScoping(duck, "production"), true);
+    assert.equal(blocksRestaurantOperationsOnHost(duck, "production"), false);
+    assert.equal(allowsLegacyRestaurantScoping(evil, "production"), false);
+    assert.equal(allowsLegacyRestaurantScoping(rawIp, "production"), false);
   });
 });
 

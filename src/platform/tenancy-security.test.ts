@@ -11,6 +11,7 @@ import {
 import {
   resolveTenantFromClassifiedHost,
   clearHostTenantCache,
+  hostHealthSummary,
   type HostTenantLookup,
   type RestaurantHostRow,
 } from "@/platform/host-tenant";
@@ -121,6 +122,8 @@ afterEach(() => {
   mutatedTenants = 0;
   delete process.env.TENANT_APEX_RESTAURANT;
   delete process.env.TENANT_BASE_DOMAIN;
+  delete process.env.APP_URL;
+  delete process.env.NEXT_PUBLIC_APP_URL;
 });
 
 describe("1-3 order item mutations are nested-resource scoped", () => {
@@ -228,6 +231,10 @@ describe("5-8 guest identifiers and host resolution", () => {
     const result = await resolveTenantFromClassifiedHost(prodHost("unknown.dvadtech.in"), lookup);
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.reason, "UNKNOWN_SUBDOMAIN");
+    const summary = hostHealthSummary(result);
+    assert.equal(summary.ok, false);
+    assert.equal(summary.slug, "unknown");
+    assert.equal(summary.reason, "UNKNOWN_SUBDOMAIN");
   });
 
   it("disabled restaurant host is 404", async () => {

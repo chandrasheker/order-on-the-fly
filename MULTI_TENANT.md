@@ -135,9 +135,9 @@ The hostname is an **authoritative security boundary**. A request on `abc.dvadte
 
 Do **not** trust `X-Forwarded-Host` unless the proxy overwrites it and the Node port is not public (`TRUST_FORWARDED_HOST=1`).
 
-Unknown / disabled / malformed restaurant hosts fail closed (`404 Not found`). There is no default restaurant fallback. Production raw IPs and hosts that are not `{slug}.{TENANT_BASE_DOMAIN}` are not a restaurant path/session bypass.
+Unknown / disabled / malformed restaurant hosts fail closed (`404 Not found`). There is no default restaurant fallback. `abc.dvadtech.in` only works if a restaurant with slug `abc` exists and has a tenant — that host is a docs example, not a seeded restaurant. `GET /api/health` reports the current Host classification (`UNKNOWN_SUBDOMAIN`, `INVALID_HIERARCHY`, …). `npm run hosts:list` prints every slug that can resolve. Production raw IPs and hosts that are not `{slug}.{TENANT_BASE_DOMAIN}` are not a restaurant path/session bypass.
 
-The configured apex (`TENANT_BASE_DOMAIN` and `www.{domain}`) serves a directory page at `/` so the marketing host is not a raw 404. Staff login and restaurant APIs stay off that apex unless `TENANT_APEX_RESTAURANT=1`. The Nginx sample includes a default catch-all that rejects unknown hosts instead of forwarding them to the app.
+The configured apex (`TENANT_BASE_DOMAIN`, `www.{domain}`, and the hostname from `APP_URL` / `NEXT_PUBLIC_APP_URL`) serves a directory page at `/` so the URL people type is not a raw 404. Staff login and restaurant APIs stay off those apex hosts unless `TENANT_APEX_RESTAURANT=1`. Raw IPs and unknown hosts still 404. Nginx must preserve `Host` (`proxy_set_header Host $host`) — if it rewrites Host to localhost, the browser will 404 even when `curl -H 'Host: dvadtech.in' http://127.0.0.1:3000/` works. The Nginx sample includes a default catch-all that rejects unknown hosts instead of forwarding them to the app.
 
 ### Local development
 
@@ -153,7 +153,7 @@ Production validation is not relaxed for localhost. `{slug}.localhost` is as str
 
 | Variable | Controls |
 |----------|----------|
-| `NEXT_PUBLIC_APP_URL` / `app.url` in config | Fallback base URL when `TENANT_BASE_DOMAIN` is unset |
+| `NEXT_PUBLIC_APP_URL` / `APP_URL` / `app.url` in config | Public browser hostname (also treated as an apex) and QR fallback |
 | `TENANT_BASE_DOMAIN` | Apex used for `{slug}.{domain}` (e.g. `dvadtech.in`) |
 | `TENANT_APEX_RESTAURANT` | `1` to allow path/session restaurant scoping on that apex only |
 | `TENANT_PUBLIC_PROTOCOL` / `TENANT_PUBLIC_PORT` | QR URL scheme/port (local: `http` + `3000`) |
