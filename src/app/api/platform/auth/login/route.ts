@@ -5,10 +5,15 @@ import {
   PLATFORM_ADMIN_COOKIE,
   verifyPassword,
 } from "@/lib/auth";
+import { classifyRequestHost, platformRoutesAllowedOnHost } from "@/platform/host";
 import { logApiError, logApiRequest, logInfo, logWarn } from "@/lib/logger";
 import { recordLoginAudit, requestClientMeta } from "@/lib/login-audit-service";
 
 export async function POST(req: NextRequest) {
+  if (!platformRoutesAllowedOnHost(classifyRequestHost(req.headers))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   logApiRequest("platform/auth/login", "POST");
   const client = requestClientMeta(req);
 

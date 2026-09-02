@@ -1,17 +1,28 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import {
+  classifyRequestHost,
+  sessionMatchesHostSlug,
+  blocksRestaurantOperationsOnHost,
+  allowsApexPublicLanding,
+  decidePlatformRouting,
+  HOST_KIND_HEADER,
+  HOST_NAME_HEADER,
+  HOST_SLUG_HEADER,
+} from "@/platform/host";
+import { getJwtSecretBytes } from "@/lib/jwt-secret";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "tabletap-super-secret-key-change-in-production"
-);
+function jwtSecret() {
+  return getJwtSecretBytes();
+}
 
 async function getStaffSession(request: NextRequest) {
   const token = request.cookies.get("tabletap_session")?.value;
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    if (payload.type === "platform_admin") return null;
+    const { payload } = await jwtVerify(token, jwtSecret());
+    if (payload.type === "platform_admin" || payload.type === "tenant_admin") return null;
     return payload;
   } catch {
     return null;
@@ -22,7 +33,7 @@ async function getPlatformAdminSession(request: NextRequest) {
   const token = request.cookies.get("tabletap_admin_session")?.value;
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, jwtSecret());
     if (payload.type !== "platform_admin") return null;
     return payload;
   } catch {
@@ -55,6 +66,8 @@ function isPublicApi(pathname: string, request: NextRequest) {
     return true;
   }
   if (pathname === "/api/platform/auth/login" && request.method === "POST") return true;
+  if (pathname === "/api/tenant-admin/auth/login" && request.method === "POST") return true;
+  if (pathname === "/api/tenant-admin/auth/me" && request.method === "GET") return true;
   if (/^\/api\/webhooks\/orders\/[^/]+$/.test(pathname) && request.method === "POST") return true;
   if (/^\/api\/webhooks\/(swiggy|zomato)\/[^/]+$/.test(pathname) && request.method === "POST") return true;
   if (/^\/api\/webhooks\/payment\/[^/]+$/.test(pathname) && request.method === "POST") return true;
@@ -87,12 +100,62 @@ function withSecurityHeaders(response: NextResponse) {
   return response;
 }
 
+function opaqueNotFound(pathname: string) {
+  if (pathname.startsWith("/api/")) {
+    return withSecurityHeaders(NextResponse.json({ error: "Not found" }, { status: 404 }));
+  }
+  return withSecurityHeaders(new NextResponse("Not found", { status: 404 }));
+}
+
+/** Health, jobs, print, webhooks, tenant signup — not platform admin. */
+function isInfrastructurePrivilegedPath(pathname: string) {
+  return (
+    pathname === "/api/health" ||
+    pathname.startsWith("/api/webhooks/") ||
+    pathname.startsWith("/api/print/") ||
+    pathname.startsWith("/api/jobs/") ||
+    pathname === "/api/tenant/signup" ||
+    pathname === "/tenant/signup"
+  );
+}
+
+function nextWithHost(request: NextRequest) {
+  const host = classifyRequestHost(request.headers);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(HOST_KIND_HEADER, host.kind);
+  requestHeaders.set(HOST_NAME_HEADER, "hostname" in host ? host.hostname : "");
+  if (host.kind === "restaurant") {
+    requestHeaders.set(HOST_SLUG_HEADER, host.slug);
+  }
+  return withSecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }));
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const classified = classifyRequestHost(request.headers);
+  const privileged = isInfrastructurePrivilegedPath(pathname);
+  const hostKey = classified.kind === "restaurant" ? classified.slug : classified.hostname || "unknown";
+
+  const platformDecision = decidePlatformRouting(pathname, classified, { method: request.method });
+  if (platformDecision.kind === "deny") {
+    return opaqueNotFound(pathname);
+  }
+  if (platformDecision.kind === "redirect") {
+    return withSecurityHeaders(NextResponse.redirect(new URL(platformDecision.location, request.url)));
+  }
+
+  if (
+    platformDecision.kind !== "allow" &&
+    blocksRestaurantOperationsOnHost(classified) &&
+    !privileged &&
+    !allowsApexPublicLanding(pathname, classified)
+  ) {
+    return opaqueNotFound(pathname);
+  }
 
   if (pathname === "/api/auth/login" && request.method === "POST") {
     const ip = request.headers.get("x-forwarded-for") ?? "local";
-    if (!checkRateLimitMemory(`login:${ip}`, 20, 60_000)) {
+    if (!checkRateLimitMemory(`login:${hostKey}:${ip}`, 20, 60_000)) {
       return withSecurityHeaders(
         NextResponse.json({ error: "Too many login attempts" }, { status: 429 }),
       );
@@ -101,14 +164,29 @@ export async function middleware(request: NextRequest) {
 
   if (pathname === "/api/orders" && request.method === "POST") {
     const ip = request.headers.get("x-forwarded-for") ?? "local";
-    if (!checkRateLimitMemory(`order:${ip}`, 60, 60_000)) {
+    if (!checkRateLimitMemory(`order:${hostKey}:${ip}`, 60, 60_000)) {
       return withSecurityHeaders(
         NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 }),
       );
     }
   }
 
-  const session = await getStaffSession(request);
+  let session = await getStaffSession(request);
+  if (
+    session &&
+    classified.kind === "restaurant" &&
+    !privileged &&
+    !sessionMatchesHostSlug(
+      typeof session.restaurantSlug === "string" ? session.restaurantSlug : "",
+      classified,
+    )
+  ) {
+    if (pathname.startsWith("/api/") && !isPublicApi(pathname, request)) {
+      return withSecurityHeaders(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
+    }
+    session = null;
+  }
+
   const platformAdmin = await getPlatformAdminSession(request);
 
   if (pathname.startsWith("/platform")) {
@@ -116,33 +194,49 @@ export async function middleware(request: NextRequest) {
       if (platformAdmin) {
         return NextResponse.redirect(new URL("/platform", request.url));
       }
-      return NextResponse.next();
+      return nextWithHost(request);
     }
-    // Legacy list route — tenant picker lives at /platform
     if (pathname === "/platform/tenants") {
       return NextResponse.redirect(new URL("/platform", request.url));
     }
     if (!platformAdmin) {
       return NextResponse.redirect(new URL("/platform/login", request.url));
     }
-    return NextResponse.next();
+    return nextWithHost(request);
+  }
+
+  if (pathname === "/tenant/login" || pathname === "/tenant" || pathname.startsWith("/tenant/")) {
+    if (pathname === "/tenant/signup") {
+      return nextWithHost(request);
+    }
+    return nextWithHost(request);
+  }
+
+  if (pathname.startsWith("/api/tenant-admin/")) {
+    if (pathname === "/api/tenant-admin/auth/login" && request.method === "POST") {
+      return nextWithHost(request);
+    }
+    if (pathname === "/api/tenant-admin/auth/me" && request.method === "GET") {
+      return nextWithHost(request);
+    }
+    return nextWithHost(request);
   }
 
   if (pathname.startsWith("/api/platform/")) {
     if (pathname === "/api/platform/auth/login" && request.method === "POST") {
-      return NextResponse.next();
+      return nextWithHost(request);
     }
     if (!platformAdmin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.next();
+    return nextWithHost(request);
   }
 
   if (pathname === "/staff/login") {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  if (pathname === "/" && session) {
+  if (pathname === "/" && session && !blocksRestaurantOperationsOnHost(classified)) {
     return NextResponse.redirect(new URL("/staff/dashboard", request.url));
   }
 
@@ -154,18 +248,18 @@ export async function middleware(request: NextRequest) {
     if (role !== "OWNER" && role !== "MANAGER" && role !== "COOK") {
       return NextResponse.redirect(new URL("/staff/dashboard", request.url));
     }
-    return NextResponse.next();
+    return nextWithHost(request);
   }
 
   if (pathname.startsWith("/staff/floor")) {
     if (!session) {
       return NextResponse.redirect(new URL("/", request.url));
     }
-    return NextResponse.next();
+    return nextWithHost(request);
   }
 
   if (pathname.startsWith("/order/")) {
-    return NextResponse.next();
+    return nextWithHost(request);
   }
 
   if (pathname.startsWith("/admin/")) {
@@ -184,26 +278,26 @@ export async function middleware(request: NextRequest) {
     if (!reportsOnly && !integrationsOnly && role !== "OWNER" && role !== "MANAGER") {
       return NextResponse.redirect(new URL("/staff/dashboard", request.url));
     }
-    return NextResponse.next();
+    return nextWithHost(request);
   }
 
   if (pathname.startsWith("/staff/")) {
     if (!session) {
       return NextResponse.redirect(new URL("/", request.url));
     }
-    return NextResponse.next();
+    return nextWithHost(request);
   }
 
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname, request)) {
-      return NextResponse.next();
+      return nextWithHost(request);
     }
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }
 
-  return withSecurityHeaders(NextResponse.next());
+  return nextWithHost(request);
 }
 
 export const config = {

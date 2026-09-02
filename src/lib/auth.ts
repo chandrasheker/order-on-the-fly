@@ -1,12 +1,14 @@
 import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import bcrypt from "bcryptjs";
 import type { Role } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { classifyRequestHost, platformRoutesAllowedOnHost, sessionAllowedFromHeaders } from "@/platform/host";
+import { getJwtSecretBytes } from "@/lib/jwt-secret";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "tabletap-super-secret-key-change-in-production"
-);
+function jwtSecret() {
+  return getJwtSecretBytes();
+}
 
 export interface SessionUser {
   id: string;
@@ -26,8 +28,17 @@ export interface PlatformAdminSession {
   name: string;
 }
 
+export interface TenantAdminSession {
+  type: "tenant_admin";
+  id: string;
+  email: string;
+  name: string;
+  tenantId: string;
+}
+
 export const STAFF_SESSION_COOKIE = "tabletap_session";
 export const PLATFORM_ADMIN_COOKIE = "tabletap_admin_session";
+export const TENANT_ADMIN_COOKIE = "tabletap_tenant_session";
 
 export function staffSessionCookieOptions() {
   return {
@@ -52,7 +63,15 @@ export async function createToken(user: SessionUser) {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(JWT_SECRET);
+    .sign(jwtSecret());
+}
+
+export async function createTenantAdminToken(admin: Omit<TenantAdminSession, "type">) {
+  return new SignJWT({ ...admin, type: "tenant_admin" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("7d")
+    .sign(jwtSecret());
 }
 
 export async function createPlatformAdminToken(admin: Omit<PlatformAdminSession, "type">) {
@@ -60,13 +79,13 @@ export async function createPlatformAdminToken(admin: Omit<PlatformAdminSession,
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(JWT_SECRET);
+    .sign(jwtSecret());
 }
 
 export async function verifyToken(token: string): Promise<SessionUser | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    if (payload.type === "platform_admin") return null;
+    const { payload } = await jwtVerify(token, jwtSecret());
+    if (payload.type === "platform_admin" || payload.type === "tenant_admin") return null;
     return payload as unknown as SessionUser;
   } catch {
     return null;
@@ -77,12 +96,19 @@ export async function verifyPlatformAdminToken(
   token: string
 ): Promise<PlatformAdminSession | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, jwtSecret());
     if (payload.type !== "platform_admin") return null;
     return payload as unknown as PlatformAdminSession;
   } catch {
     return null;
   }
+}
+
+async function sessionAllowedOnRequestHost(session: SessionUser): Promise<boolean> {
+  return sessionAllowedFromHeaders(session.restaurantSlug, async () => {
+    const { headers } = await import("next/headers");
+    return headers();
+  });
 }
 
 export async function getSession(): Promise<SessionUser | null> {
@@ -140,6 +166,10 @@ export async function getSession(): Promise<SessionUser | null> {
     }
   }
 
+  if (!(await sessionAllowedOnRequestHost(sessionUser))) {
+    return null;
+  }
+
   return sessionUser;
 }
 
@@ -157,7 +187,57 @@ export async function requireSession(roles?: Role[]) {
   return session;
 }
 
+export async function verifyTenantAdminToken(token: string): Promise<TenantAdminSession | null> {
+  try {
+    const { payload } = await jwtVerify(token, jwtSecret());
+    if (payload.type !== "tenant_admin") return null;
+    return payload as unknown as TenantAdminSession;
+  } catch {
+    return null;
+  }
+}
+
+export async function getTenantAdminSession(): Promise<TenantAdminSession | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(TENANT_ADMIN_COOKIE)?.value;
+  if (!token) return null;
+  const payload = await verifyTenantAdminToken(token);
+  if (!payload) return null;
+
+  const admin = await prisma.tenantAdmin.findUnique({
+    where: { id: payload.id },
+    select: { id: true, email: true, name: true, tenantId: true, tenant: { select: { isEnabled: true } } },
+  });
+  if (!admin || !admin.tenant.isEnabled) return null;
+  if (admin.tenantId !== payload.tenantId) return null;
+  return {
+    type: "tenant_admin",
+    id: admin.id,
+    email: admin.email,
+    name: admin.name,
+    tenantId: admin.tenantId,
+  };
+}
+
+export async function requireTenantAdmin() {
+  const { resolveTenantFromHeaders } = await import("@/platform/host-tenant");
+  const resolution = await resolveTenantFromHeaders();
+  if (!resolution.ok || resolution.kind !== "tenant") return null;
+  const session = await getTenantAdminSession();
+  if (!session || session.tenantId !== resolution.tenant.tenantId) return null;
+  return { session, tenant: resolution.tenant };
+}
+
 export async function requirePlatformAdmin() {
+  let headerList: Headers;
+  try {
+    headerList = await headers();
+  } catch {
+    return null;
+  }
+  if (!platformRoutesAllowedOnHost(classifyRequestHost(headerList))) {
+    return null;
+  }
   return getPlatformAdminSession();
 }
 

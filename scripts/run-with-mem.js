@@ -68,6 +68,10 @@ if (args.length === 0) {
 
 applyMemoryEnv(args);
 
+if (commandLine(args).includes("next start")) {
+  require("./ensure-production-jwt").ensureProductionJwt();
+}
+
 if (shouldUseLowMemoryProfile()) {
   console.log(
     `[run-with-mem] low-memory profile (${totalMemMb} MB RAM, heap <= ${heapLimitMb(args)} MB): ${args.join(" ")}`,

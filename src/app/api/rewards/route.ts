@@ -9,6 +9,7 @@ import {
 } from "@/lib/reward-service";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { format } from "date-fns";
+import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 
 export async function GET(req: NextRequest) {
   const session = await requireSession();
@@ -49,13 +50,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const table = await prisma.table.findUnique({
-      where: { qrToken: tableToken },
-      include: { restaurant: true },
-    });
-
-    if (!table) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+    if (!resolution.ok || !table) {
+      return opaqueNotFoundJson();
     }
 
     const restaurant = table.restaurant;
@@ -87,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     if (orderId) {
       const order = await prisma.order.findFirst({
-        where: { id: orderId, tableId: table.id },
+        where: { id: orderId, tableId: table.id, restaurantId: restaurant.id },
       });
       if (!order?.rewardSpun) {
         return NextResponse.json(

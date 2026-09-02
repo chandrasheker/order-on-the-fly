@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processPaymentWebhook } from "@/lib/payment-webhook-service";
 import { logApiError, logApiRequest } from "@/lib/logger";
+import { rejectIfSlugEscapesHost } from "@/platform/tenant-scope";
 
 export async function POST(
   req: NextRequest,
@@ -11,6 +12,9 @@ export async function POST(
   logApiRequest("webhooks/payment/[slug]", "POST", { slug, provider });
 
   try {
+    const blocked = await rejectIfSlugEscapesHost(req, slug);
+    if (blocked) return blocked;
+
     const rawBody = await req.text();
     const result = await processPaymentWebhook({
       slug,

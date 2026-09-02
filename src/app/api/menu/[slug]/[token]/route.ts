@@ -7,15 +7,23 @@ import { getCustomerBackgroundImageUrl } from "@/lib/branding-service";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { listActivePromotions, listComboMeals } from "@/lib/promotion-service";
 import { getKitchenCapacityState } from "@/lib/kitchen-capacity-service";
+import { resolveTenantFromHost } from "@/platform/host-tenant";
+import { assertPathSlugForResolution, opaqueNotFoundJson } from "@/platform/tenant-scope";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string; token: string }> }
 ) {
   const { slug, token } = await params;
   logApiRequest("menu/[slug]/[token]", "GET", { slug, tableToken: "[present]" });
 
   try {
+    const host = await resolveTenantFromHost(req);
+    if (!host.ok) return opaqueNotFoundJson();
+    if (!assertPathSlugForResolution(slug, host)) {
+      return opaqueNotFoundJson();
+    }
+
     const restaurant = await prisma.restaurant.findUnique({
       where: { slug },
       select: {

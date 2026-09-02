@@ -36,6 +36,22 @@ export function isServiceTable(kind: TableKind) {
   return kind !== "DINE_IN";
 }
 
+/** Guest-facing dine-in tables. Service counters use 901+. */
+export const SERVICE_TABLE_NUMBER_FLOOR = 900;
+
+export function isDineInTable(table: { kind?: string | null; number: number }) {
+  if (table.number >= SERVICE_TABLE_NUMBER_FLOOR) return false;
+  return (table.kind ?? "DINE_IN") === "DINE_IN";
+}
+
+export function dineInTablesWhere(restaurantId: string) {
+  return {
+    restaurantId,
+    kind: "DINE_IN" as const,
+    number: { lt: SERVICE_TABLE_NUMBER_FLOOR },
+  };
+}
+
 export function formatOrderLocation(input: {
   orderChannel?: OrderChannel | null;
   tableNumber: number;

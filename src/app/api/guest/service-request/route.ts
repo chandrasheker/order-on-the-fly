@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { createGuestServiceRequest } from "@/lib/guest-service-request-service";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import type { GuestServiceType } from "@/generated/prisma/client";
+import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 
 const VALID_TYPES: GuestServiceType[] = [
   "CALL_WAITER",
@@ -25,12 +25,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid request type" }, { status: 400 });
     }
 
-    const table = await prisma.table.findUnique({
-      where: { qrToken: tableToken },
-      include: { restaurant: true },
-    });
-    if (!table || !table.isActive) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+    if (!resolution.ok || !table || !table.isActive) {
+      return opaqueNotFoundJson();
     }
 
     const enabled = await isFeatureEnabled(table.restaurantId, "call_waiter");

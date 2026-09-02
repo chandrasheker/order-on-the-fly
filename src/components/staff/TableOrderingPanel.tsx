@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
+import { isDineInTable } from "@/lib/order-channel";
 import { DoorOpen, DoorClosed, ChevronDown, ChevronUp } from "lucide-react";
 
 type TableRow = {
   id: string;
   number: number;
+  kind?: string;
   orderingEnabled: boolean;
   activeSessions: number;
 };
@@ -24,7 +26,9 @@ export function TableOrderingPanel() {
       const res = await fetch("/api/tables/manage");
       if (res.ok) {
         const json = await res.json();
-        setTables(json.tables ?? []);
+        setTables(
+          (json.tables ?? []).filter((table: TableRow) => isDineInTable(table)),
+        );
       }
     } catch {
       /* ignore transient network errors during dev reload or polling */

@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getTableOrderUrl } from "@/lib/server-app-url";
+import { dineInTablesWhere } from "@/lib/order-channel";
 
 export async function GET() {
   const session = await requireSession(["OWNER", "MANAGER"]);
@@ -11,7 +12,7 @@ export async function GET() {
   }
 
   const tables = await prisma.table.findMany({
-    where: { restaurantId: session.restaurantId },
+    where: dineInTablesWhere(session.restaurantId),
     orderBy: { number: "asc" },
   });
 
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
     const table = await prisma.table.create({
       data: {
         number: tableNum,
+        kind: "DINE_IN",
         qrToken: `${restaurant?.slug ?? "table"}-table-${tableNum}`,
         maxSessions: restaurant?.defaultMaxSessions ?? 2,
         restaurantId: session.restaurantId,

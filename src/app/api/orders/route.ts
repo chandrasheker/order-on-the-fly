@@ -7,6 +7,8 @@ import { isTablePaymentBlocked } from "@/lib/payment-service";
 import { getTableTabPaymentSummary } from "@/lib/table-tab-service";
 import { todayDateString } from "@/lib/utils";
 import { requireSession } from "@/lib/auth";
+import { loadTableByQrForRequest, opaqueNotFoundJson, trustedRestaurantId, hostRestaurantId } from "@/platform/tenant-scope";
+import { resolveTenantFromHost } from "@/platform/host-tenant";
 
 export async function POST(req: NextRequest) {
   logApiRequest("orders", "POST");
@@ -21,13 +23,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Table session required" }, { status: 403 });
     }
 
-    const table = await prisma.table.findUnique({
-      where: { qrToken: tableToken },
-      include: { restaurant: true },
-    });
-
-    if (!table || !table.isActive) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+    if (!resolution.ok || !table || !table.isActive) {
+      return opaqueNotFoundJson();
     }
 
     const { validateTableSession } = await import("@/lib/table-session-service");
@@ -105,8 +103,8 @@ export async function GET(req: NextRequest) {
   });
 
   if (tableToken) {
-    const table = await prisma.table.findUnique({ where: { qrToken: tableToken } });
-    if (!table) return NextResponse.json({ orders: [] });
+    const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+    if (!resolution.ok || !table) return opaqueNotFoundJson();
 
     const sessionKey = req.nextUrl.searchParams.get("sessionKey");
     if (sessionKey) {
@@ -155,13 +153,16 @@ export async function GET(req: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (restaurantId !== session.restaurantId) {
+    const host = await resolveTenantFromHost(req);
+    if (!host.ok) return opaqueNotFoundJson();
+    const scopedRestaurantId = trustedRestaurantId(hostRestaurantId(host), restaurantId);
+    if (!scopedRestaurantId || scopedRestaurantId !== session.restaurantId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const orders = await prisma.order.findMany({
       where: {
-        restaurantId,
+        restaurantId: scopedRestaurantId,
         date: todayDateString(),
         status: { notIn: ["SERVED", "CANCELLED"] },
       },

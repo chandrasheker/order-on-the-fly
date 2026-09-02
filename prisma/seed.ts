@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { createPrismaClient } from "../src/lib/create-prisma-client";
 import bcrypt from "bcryptjs";
 import { FEATURE_CATALOG } from "../src/lib/feature-catalog";
+import { canonicalizeName } from "../src/lib/hostname-rules";
 import { ensureServiceTables } from "../src/lib/service-tables";
 import type { TenantPlan } from "../src/generated/prisma/client";
 
@@ -64,6 +65,7 @@ async function seedRestaurant(
   const restaurant = await prisma.restaurant.create({
     data: {
       name: entry.name,
+      nameNormalized: canonicalizeName(entry.name),
       slug: entry.slug,
       tenantId,
       logoUrl: entry.logoUrl,
@@ -208,6 +210,8 @@ async function main() {
   await prisma.branch.deleteMany();
   await prisma.user.deleteMany();
   await prisma.platformAdmin.deleteMany();
+  await prisma.tenantAdmin.deleteMany();
+  await prisma.hostSlug.deleteMany();
   await prisma.tenantSubscription.deleteMany();
   await prisma.restaurant.deleteMany();
   await prisma.tenant.deleteMany();
@@ -222,6 +226,7 @@ async function main() {
   const tenant = await prisma.tenant.create({
     data: {
       name: config.tenant.name,
+      nameNormalized: canonicalizeName(config.tenant.name),
       slug: config.tenant.slug,
       plan: (config.tenant.plan || "STARTER") as TenantPlan,
       subscriptionStatus: "TRIAL",
@@ -241,6 +246,30 @@ async function main() {
     const restaurant = await seedRestaurant(prisma, entry, tenant.id, demoPremiumFlags);
     seeded.push({ restaurant, entry });
     console.log(`  ✅ ${restaurant.name} (${restaurant.slug}) — owner ${entry.staff.find((s: StaffMember) => s.role === "OWNER")?.email}`);
+  }
+
+  const { syncTenantHostLeases } = await import("../src/lib/hostname-allocation");
+  await syncTenantHostLeases(prisma, {
+    tenantId: tenant.id,
+    tenantSlug: tenant.slug,
+    tenantName: tenant.name,
+    restaurants: seeded.map(({ restaurant }) => ({
+      id: restaurant.id,
+      name: restaurant.name,
+      slug: restaurant.slug,
+    })),
+  });
+
+  const firstOwner = config.restaurants[0]?.staff.find((member: StaffMember) => member.role === "OWNER");
+  if (firstOwner) {
+    await prisma.tenantAdmin.create({
+      data: {
+        tenantId: tenant.id,
+        email: firstOwner.email.toLowerCase(),
+        name: firstOwner.name,
+        passwordHash: await bcrypt.hash(firstOwner.password, 10),
+      },
+    });
   }
 
   const adminPasswordHash = await bcrypt.hash(config.platformAdmin.password, 10);

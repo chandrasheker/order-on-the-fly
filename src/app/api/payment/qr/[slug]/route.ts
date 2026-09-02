@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs/promises";
 import { prisma } from "@/lib/prisma";
 import { findPaymentQrFile } from "@/lib/payment-qr-storage";
+import { rejectIfSlugEscapesHost } from "@/platform/tenant-scope";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await params;
+  const blocked = await rejectIfSlugEscapesHost(req, slug);
+  if (blocked) return blocked;
 
   const restaurant = await prisma.restaurant.findUnique({
     where: { slug },

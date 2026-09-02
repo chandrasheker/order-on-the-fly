@@ -1,17 +1,37 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isRedisConfigured, getRedis } from "@/lib/redis";
 import { processPendingJobs } from "@/lib/job-queue";
+import { getTrustedHostname } from "@/platform/host";
+import { hostHealthSummary, resolveTenantFromHost } from "@/platform/host-tenant";
 import fs from "node:fs";
 import path from "node:path";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const checks: Record<string, unknown> = {
     status: "ok",
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version ?? "0.1.0",
     nodeEnv: process.env.NODE_ENV ?? "development",
   };
+
+  checks.receivedHost = {
+    host: request.headers.get("host"),
+    xForwardedHost: request.headers.get("x-forwarded-host"),
+    trusted: getTrustedHostname(request.headers),
+  };
+
+  try {
+    checks.host = hostHealthSummary(await resolveTenantFromHost(request.headers));
+  } catch (err) {
+    checks.host = {
+      ok: false,
+      reason: "RESOLVER_ERROR",
+      error: err instanceof Error ? err.message : String(err),
+    };
+    checks.status = "degraded";
+  }
 
   try {
     await prisma.$queryRaw`SELECT 1`;

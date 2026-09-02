@@ -8,6 +8,7 @@ import { OrderCreationError } from "@/lib/order-service";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import type { OrderChannel } from "@/generated/prisma/client";
+import { rejectIfSlugEscapesHost } from "@/platform/tenant-scope";
 
 const CHANNELS: OrderChannel[] = ["SWIGGY", "ZOMATO", "TAKEAWAY", "DELIVERY"];
 
@@ -19,6 +20,9 @@ export async function POST(
   logApiRequest("webhooks/orders/[slug]", "POST", { slug });
 
   try {
+    const blocked = await rejectIfSlugEscapesHost(req, slug);
+    if (blocked) return blocked;
+
     const restaurant = await prisma.restaurant.findUnique({
       where: { slug },
       select: { id: true, slug: true, aggregatorWebhookSecret: true },

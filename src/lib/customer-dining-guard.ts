@@ -1,23 +1,25 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import {
   createDiningToken,
   diningCookieOptions,
   DINING_COOKIE,
+  diningTokenConflictsWithScopedTable,
+  diningTokenMatchesScopedTable,
   readDiningTokenFromRequest,
 } from "@/lib/dining-access";
 import { joinTableSession, validateTableSession } from "@/lib/table-session-service";
 import { hasOpenTableWork } from "@/lib/table-ordering-service";
+import { loadTableByQrForRequest } from "@/platform/tenant-scope";
 
 export async function assertCustomerDiningAccess(
   req: import("next/server").NextRequest,
   tableToken: string,
   sessionKey?: string,
 ) {
-  const table = await prisma.table.findUnique({
-    where: { qrToken: tableToken },
-    select: { id: true, orderingEnabled: true, isActive: true, maxSessions: true },
-  });
+  const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+  if (!resolution.ok) {
+    return { ok: false as const, status: 404, error: "Table not found" };
+  }
 
   if (!table || !table.isActive) {
     return { ok: false as const, status: 404, error: "Table not found" };
@@ -35,14 +37,11 @@ export async function assertCustomerDiningAccess(
   }
 
   const dining = await readDiningTokenFromRequest(req);
-  const effectiveSessionKey = sessionKey ?? dining?.sessionKey;
-  if (
-    !dining ||
-    dining.tableToken !== tableToken ||
-    dining.tableId !== table.id ||
-    !effectiveSessionKey ||
-    (sessionKey && dining.sessionKey !== sessionKey)
-  ) {
+  if (diningTokenConflictsWithScopedTable(dining, table)) {
+    return { ok: false as const, status: 404, error: "Table not found" };
+  }
+  const effectiveSessionKey = sessionKey ?? dining?.sessionKey ?? "";
+  if (!diningTokenMatchesScopedTable(dining, table, effectiveSessionKey)) {
     return {
       ok: false as const,
       status: 403,
@@ -90,6 +89,11 @@ export async function issueDiningAccessResponse(
     tableId: table.id,
     tableToken: table.qrToken,
     sessionKey,
+    restaurantId: "restaurantId" in table ? String(table.restaurantId ?? "") || undefined : undefined,
+    restaurantSlug:
+      "restaurant" in table && table.restaurant && typeof table.restaurant === "object"
+        ? String((table.restaurant as { slug?: string }).slug ?? "") || undefined
+        : undefined,
   });
 
   const response = NextResponse.json({

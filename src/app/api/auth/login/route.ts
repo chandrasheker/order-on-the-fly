@@ -6,6 +6,8 @@ import { logApiError, logApiRequest, logInfo, logWarn } from "@/lib/logger";
 import { getRestaurantAccessState, accessBlockMessage } from "@/lib/access-control-service";
 import { recordLoginAudit, requestClientMeta } from "@/lib/login-audit-service";
 import { startStaffSession } from "@/lib/staff-session-service";
+import { jsonHostTenantNotFound, resolveTenantFromHost } from "@/platform/host-tenant";
+import { allowsLegacyRestaurantScoping } from "@/platform/host";
 
 export async function POST(req: NextRequest) {
   logApiRequest("auth/login", "POST");
@@ -18,6 +20,14 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password required" }, { status: 400 });
+    }
+
+    const hostTenant = await resolveTenantFromHost(req);
+    if (!hostTenant.ok) {
+      return NextResponse.json(jsonHostTenantNotFound(), { status: 404 });
+    }
+    if (hostTenant.kind === "reserved" && !allowsLegacyRestaurantScoping(hostTenant.host)) {
+      return NextResponse.json(jsonHostTenantNotFound(), { status: 404 });
     }
 
     const user = await prisma.user.findUnique({
@@ -49,6 +59,27 @@ export async function POST(req: NextRequest) {
         email,
         userExists: Boolean(user),
       });
+      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
+    }
+
+    const hostRestaurant = hostTenant.kind === "restaurant" ? hostTenant.context : null;
+    if (
+      hostRestaurant &&
+      (user.restaurantId !== hostRestaurant.restaurantId ||
+        user.restaurant.slug !== hostRestaurant.restaurantSlug)
+    ) {
+      await recordLoginAudit({
+        kind: "STAFF",
+        success: false,
+        email,
+        userId: user.id,
+        tenantId: user.tenantId,
+        restaurantId: user.restaurantId,
+        role: user.role,
+        failureReason: "HOST_RESTAURANT_MISMATCH",
+        ...client,
+      });
+      logWarn("auth/login", "Host restaurant mismatch", { email });
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
 

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { logApiError, logApiRequest } from "@/lib/logger";
 import { issueDiningAccessResponse } from "@/lib/customer-dining-guard";
 import { validateCurrentTableAccessCode } from "@/lib/table-access-code";
+import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 
 export async function POST(req: NextRequest) {
   logApiRequest("tables/check-in", "POST");
@@ -15,20 +15,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const table = await prisma.table.findUnique({
-      where: { qrToken: tableToken },
-      select: {
-        id: true,
-        qrToken: true,
-        number: true,
-        maxSessions: true,
-        isActive: true,
-        orderingEnabled: true,
-      },
-    });
-
-    if (!table || !table.isActive) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+    if (!resolution.ok || !table || !table.isActive) {
+      return opaqueNotFoundJson();
     }
 
     if (!validateCurrentTableAccessCode(table, String(accessCode))) {

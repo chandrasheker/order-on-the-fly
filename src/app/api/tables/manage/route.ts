@@ -19,7 +19,7 @@ export async function GET() {
   const tables = await prisma.table.findMany({
     where: { restaurantId: session.restaurantId },
     orderBy: { number: "asc" },
-    select: { id: true, number: true, maxSessions: true, isActive: true, orderingEnabled: true },
+    select: { id: true, number: true, kind: true, maxSessions: true, isActive: true, orderingEnabled: true },
   });
 
   const tablesWithCounts = await Promise.all(

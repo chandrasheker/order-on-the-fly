@@ -44,6 +44,6 @@ export async function checkRateLimit(
   };
 }
 
-export function rateLimitKey(prefix: string, id: string) {
-  return `${prefix}:${id}`;
+export function rateLimitKey(prefix: string, id: string, restaurantId?: string) {
+  return restaurantId ? `${prefix}:restaurant:${restaurantId}:${id}` : `${prefix}:${id}`;
 }

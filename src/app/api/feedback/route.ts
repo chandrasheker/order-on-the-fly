@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
+import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 
 export async function GET() {
   const session = await requireSession();
@@ -32,12 +33,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Valid rating required (1-5 stars)" }, { status: 400 });
     }
 
-    const table = await prisma.table.findUnique({
-      where: { qrToken: tableToken },
-    });
-
-    if (!table) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+    if (!resolution.ok || !table) {
+      return opaqueNotFoundJson();
     }
 
     const feedback = await prisma.feedback.create({
