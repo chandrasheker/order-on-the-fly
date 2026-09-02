@@ -5,6 +5,7 @@ import {
   classifyRequestHost,
   sessionMatchesHostSlug,
   blocksRestaurantOperationsOnHost,
+  allowsApexPublicLanding,
   HOST_KIND_HEADER,
   HOST_NAME_HEADER,
   HOST_SLUG_HEADER,
@@ -126,7 +127,11 @@ export async function middleware(request: NextRequest) {
   const privileged = isPrivilegedCrossTenantPath(pathname);
   const hostKey = classified.kind === "restaurant" ? classified.slug : classified.hostname || "unknown";
 
-  if (blocksRestaurantOperationsOnHost(classified) && !privileged) {
+  if (
+    blocksRestaurantOperationsOnHost(classified) &&
+    !privileged &&
+    !allowsApexPublicLanding(pathname, classified)
+  ) {
     if (pathname.startsWith("/api/")) {
       return withSecurityHeaders(NextResponse.json({ error: "Not found" }, { status: 404 }));
     }
@@ -199,7 +204,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  if (pathname === "/" && session) {
+  if (pathname === "/" && session && !blocksRestaurantOperationsOnHost(classified)) {
     return NextResponse.redirect(new URL("/staff/dashboard", request.url));
   }
 

@@ -10,6 +10,10 @@ import {
   normalizeHostname,
   selectOwnedResource,
   trustedRestaurantId,
+  allowsLegacyRestaurantScoping,
+  blocksRestaurantOperationsOnHost,
+  allowsApexPublicLanding,
+  isConfiguredApexHost,
 } from "@/platform/host";
 
 const originalEnv = { ...process.env };
@@ -18,6 +22,8 @@ afterEach(() => {
   process.env.TENANT_BASE_DOMAIN = originalEnv.TENANT_BASE_DOMAIN;
   process.env.TRUST_FORWARDED_HOST = originalEnv.TRUST_FORWARDED_HOST;
   process.env.TENANT_RESERVED_HOSTS = originalEnv.TENANT_RESERVED_HOSTS;
+  if (originalEnv.TENANT_APEX_RESTAURANT === undefined) delete process.env.TENANT_APEX_RESTAURANT;
+  else process.env.TENANT_APEX_RESTAURANT = originalEnv.TENANT_APEX_RESTAURANT;
 });
 
 describe("hostname normalization", () => {
@@ -115,6 +121,57 @@ describe("host classification", () => {
   it("production raw IP is invalid", () => {
     const host = classifyHostname("198.51.100.10", { baseDomain: "dvadtech.in", nodeEnv: "production" });
     assert.equal(host.kind, "invalid");
+  });
+
+  it("configured apex may show a public landing without enabling restaurant ops", () => {
+    delete process.env.TENANT_APEX_RESTAURANT;
+    const apex = classifyHostname("dvadtech.in", { baseDomain: "dvadtech.in", nodeEnv: "production" });
+    const www = classifyHostname("www.dvadtech.in", { baseDomain: "dvadtech.in", nodeEnv: "production" });
+    const platform = classifyHostname("platform.dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const unknown = classifyHostname("evil.example.net", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+
+    assert.equal(isConfiguredApexHost(apex, { baseDomain: "dvadtech.in" }), true);
+    assert.equal(isConfiguredApexHost(www, { baseDomain: "dvadtech.in" }), true);
+    assert.equal(isConfiguredApexHost(platform, { baseDomain: "dvadtech.in" }), false);
+    assert.equal(allowsApexPublicLanding("/", apex, { baseDomain: "dvadtech.in" }), true);
+    assert.equal(allowsApexPublicLanding("/staff/dashboard", apex, { baseDomain: "dvadtech.in" }), false);
+    assert.equal(allowsApexPublicLanding("/", platform, { baseDomain: "dvadtech.in" }), false);
+    assert.equal(allowsApexPublicLanding("/", unknown, { baseDomain: "dvadtech.in" }), false);
+    assert.equal(blocksRestaurantOperationsOnHost(apex, "production"), true);
+    assert.equal(allowsLegacyRestaurantScoping(apex, "production"), false);
+  });
+
+  it("TENANT_APEX_RESTAURANT=1 allows restaurant scoping only on the configured apex", () => {
+    process.env.TENANT_APEX_RESTAURANT = "1";
+    process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
+    const apex = classifyHostname("dvadtech.in", { baseDomain: "dvadtech.in", nodeEnv: "production" });
+    const www = classifyHostname("www.dvadtech.in", { baseDomain: "dvadtech.in", nodeEnv: "production" });
+    const platform = classifyHostname("platform.dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const rawIp = classifyHostname("10.0.0.225", { baseDomain: "dvadtech.in", nodeEnv: "production" });
+    const unknown = classifyHostname("dvadtech.duckdns.org", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+
+    assert.equal(allowsLegacyRestaurantScoping(apex, "production"), true);
+    assert.equal(allowsLegacyRestaurantScoping(www, "production"), true);
+    assert.equal(blocksRestaurantOperationsOnHost(apex, "production"), false);
+    assert.equal(sessionMatchesHostSlug("fp-north", apex, "production"), true);
+    assert.equal(allowsLegacyRestaurantScoping(platform, "production"), false);
+    assert.equal(blocksRestaurantOperationsOnHost(platform, "production"), true);
+    assert.equal(allowsLegacyRestaurantScoping(rawIp, "production"), false);
+    assert.equal(blocksRestaurantOperationsOnHost(rawIp, "production"), true);
+    assert.equal(allowsLegacyRestaurantScoping(unknown, "production"), false);
+    assert.equal(blocksRestaurantOperationsOnHost(unknown, "production"), true);
   });
 });
 

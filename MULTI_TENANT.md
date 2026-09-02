@@ -131,10 +131,13 @@ The hostname is an **authoritative security boundary**. A request on `abc.dvadte
 3. Reverse proxy: one Caddy/Nginx site, **preserve `Host`** — see `scripts/deploy/nginx-wildcard-subdomain.conf`
 4. Env: `TENANT_BASE_DOMAIN=dvadtech.in` (required — production startup fails closed without it)
 5. Env: a strong `JWT_SECRET` (production rejects missing, placeholder, and weak values)
+6. Optional: `TENANT_APEX_RESTAURANT=1` if this install must keep staff login and path/QR on the apex hostname (single public host, no restaurant DNS yet). Default is off.
 
 Do **not** trust `X-Forwarded-Host` unless the proxy overwrites it and the Node port is not public (`TRUST_FORWARDED_HOST=1`).
 
-Unknown / disabled / malformed restaurant hosts fail closed (`404 Not found`). There is no default restaurant fallback. Production apex, raw IPs, and other reserved hosts are not a restaurant path/session bypass. The Nginx sample includes a default catch-all that rejects unknown hosts instead of forwarding them to the app.
+Unknown / disabled / malformed restaurant hosts fail closed (`404 Not found`). There is no default restaurant fallback. Production raw IPs and hosts that are not `{slug}.{TENANT_BASE_DOMAIN}` are not a restaurant path/session bypass.
+
+The configured apex (`TENANT_BASE_DOMAIN` and `www.{domain}`) serves a directory page at `/` so the marketing host is not a raw 404. Staff login and restaurant APIs stay off that apex unless `TENANT_APEX_RESTAURANT=1`. The Nginx sample includes a default catch-all that rejects unknown hosts instead of forwarding them to the app.
 
 ### Local development
 
@@ -152,6 +155,7 @@ Production validation is not relaxed for localhost. `{slug}.localhost` is as str
 |----------|----------|
 | `NEXT_PUBLIC_APP_URL` / `app.url` in config | Fallback base URL when `TENANT_BASE_DOMAIN` is unset |
 | `TENANT_BASE_DOMAIN` | Apex used for `{slug}.{domain}` (e.g. `dvadtech.in`) |
+| `TENANT_APEX_RESTAURANT` | `1` to allow path/session restaurant scoping on that apex only |
 | `TENANT_PUBLIC_PROTOCOL` / `TENANT_PUBLIC_PORT` | QR URL scheme/port (local: `http` + `3000`) |
 | `TRUST_FORWARDED_HOST` | `1` to read a single `X-Forwarded-Host` (proxy-only) |
 | `RESTAURANT_CONFIG` | Which tenant/restaurants to seed |

@@ -6,6 +6,7 @@ import {
   sessionAllowedFromHeaders,
   blocksRestaurantOperationsOnHost,
   allowsLegacyRestaurantScoping,
+  allowsApexPublicLanding,
 } from "@/platform/host";
 import {
   resolveTenantFromClassifiedHost,
@@ -118,6 +119,8 @@ function abcResolution() {
 afterEach(() => {
   clearHostTenantCache();
   mutatedTenants = 0;
+  delete process.env.TENANT_APEX_RESTAURANT;
+  delete process.env.TENANT_BASE_DOMAIN;
 });
 
 describe("1-3 order item mutations are nested-resource scoped", () => {
@@ -374,6 +377,25 @@ describe("9-10 production fail-closed configuration and hosts", () => {
       nodeEnv: "production",
     });
     assert.equal(unknown.kind, "invalid");
+    assert.equal(blocksRestaurantOperationsOnHost(unknown, "production"), true);
+    assert.equal(allowsApexPublicLanding("/", unknown, { baseDomain: "dvadtech.in" }), false);
+    assert.equal(allowsApexPublicLanding("/", apex, { baseDomain: "dvadtech.in" }), true);
+  });
+
+  it("TENANT_APEX_RESTAURANT does not reopen unknown hosts or raw IPs", () => {
+    process.env.TENANT_APEX_RESTAURANT = "1";
+    process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
+    const apex = classifyHostname("dvadtech.in", { baseDomain: "dvadtech.in", nodeEnv: "production" });
+    const rawIp = classifyHostname("203.0.113.20", { baseDomain: "dvadtech.in", nodeEnv: "production" });
+    const unknown = classifyHostname("evil.example.net", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    assert.equal(allowsLegacyRestaurantScoping(apex, "production"), true);
+    assert.equal(blocksRestaurantOperationsOnHost(apex, "production"), false);
+    assert.equal(allowsLegacyRestaurantScoping(rawIp, "production"), false);
+    assert.equal(blocksRestaurantOperationsOnHost(rawIp, "production"), true);
+    assert.equal(allowsLegacyRestaurantScoping(unknown, "production"), false);
     assert.equal(blocksRestaurantOperationsOnHost(unknown, "production"), true);
   });
 });

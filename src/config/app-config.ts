@@ -22,6 +22,7 @@ const envSchema = z.object({
   PRISMA_MIGRATIONS: z.string().optional(),
   RESTAURANT_CONFIG: z.string().optional(),
   TENANT_BASE_DOMAIN: z.string().optional(),
+  TENANT_APEX_RESTAURANT: z.enum(["0", "1"]).optional(),
   TENANT_RESERVED_HOSTS: z.string().optional(),
   TENANT_PUBLIC_PROTOCOL: z.enum(["http", "https"]).optional(),
   TENANT_PUBLIC_PORT: z.string().optional(),

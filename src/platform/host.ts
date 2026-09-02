@@ -129,17 +129,43 @@ export function isValidTenantBaseDomain(domain: string): boolean {
   return true;
 }
 
+/** Explicit opt-in: serve restaurant login/QR on the configured apex (single-host deploys). */
+export function isApexRestaurantModeEnabled(): boolean {
+  return process.env.TENANT_APEX_RESTAURANT === "1";
+}
+
+/** Configured apex or www.{apex} — not platform.* and not an arbitrary reserved host. */
+export function isConfiguredApexHost(
+  host?: ClassifiedHost,
+  options?: { baseDomain?: string },
+): boolean {
+  if (!host || host.kind !== "reserved") return false;
+  const base = (options?.baseDomain ?? getTenantBaseDomain()).toLowerCase();
+  if (!base) return false;
+  return host.hostname === base || host.hostname === `www.${base}`;
+}
+
+/** GET `/` on the configured apex may render a directory page even when restaurant ops are blocked. */
+export function allowsApexPublicLanding(
+  pathname: string,
+  host?: ClassifiedHost,
+  options?: { baseDomain?: string },
+): boolean {
+  return pathname === "/" && isConfiguredApexHost(host, options);
+}
+
 /**
- * Reserved hosts may use path/session restaurant scoping only in development
- * (bare localhost / LAN). Production reserved hosts are platform/infrastructure
- * only — they must not select a restaurant via path or session.
+ * Reserved hosts may use path/session restaurant scoping in development
+ * (bare localhost / LAN). Production reserved hosts stay platform-only unless
+ * TENANT_APEX_RESTAURANT=1 is set for the configured apex / www.
  */
 export function allowsLegacyRestaurantScoping(
   host?: ClassifiedHost,
   nodeEnv?: string,
 ): boolean {
-  if (isProductionEnv(nodeEnv)) return false;
-  return Boolean(host && host.kind === "reserved" && host.legacyRestaurantScoping);
+  if (!host || host.kind !== "reserved") return false;
+  if (!isProductionEnv(nodeEnv)) return host.legacyRestaurantScoping;
+  return isApexRestaurantModeEnabled() && isConfiguredApexHost(host);
 }
 
 function extraReservedHosts(): Set<string> {
@@ -261,7 +287,7 @@ export function blocksRestaurantOperationsOnHost(
 ): boolean {
   if (host.kind === "invalid") return true;
   if (host.kind === "reserved") {
-    return isProductionEnv(nodeEnv) || !host.legacyRestaurantScoping;
+    return !allowsLegacyRestaurantScoping(host, nodeEnv);
   }
   return false;
 }
