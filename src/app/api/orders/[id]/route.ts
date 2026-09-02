@@ -23,6 +23,7 @@ import {
   verifyManagerApproval,
 } from "@/lib/audit-service";
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
+import { loadOrderByIdForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 
 export async function PATCH(
   req: NextRequest,
@@ -33,13 +34,9 @@ export async function PATCH(
     await req.json();
   logApiRequest("orders/[id]", "PATCH", { orderId: id, action, itemId });
 
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: { items: true, table: true },
-  });
-
-  if (!order) {
-    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  const { order, resolution } = await loadOrderByIdForRequest(req, id);
+  if (!resolution.ok || !order) {
+    return opaqueNotFoundJson();
   }
 
   if (action === "alarm") {

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { SiteFooter } from "@/components/SiteFooter";
 import { FixedThemeToggle } from "@/components/FixedThemeToggle";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { HostTenantGate } from "@/components/HostTenantGate";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -40,7 +41,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
           <FixedThemeToggle />
-          <div className="flex-1 flex flex-col min-h-0">{children}</div>
+          <div className="flex-1 flex flex-col min-h-0">
+            <HostTenantGate>{children}</HostTenantGate>
+          </div>
           <SiteFooter />
         </ThemeProvider>
       </body>

@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyApiKey, requireScope } from "@/lib/api-key-service";
 import { prisma } from "@/lib/prisma";
 import { todayDateString } from "@/lib/utils";
+import { hostRestaurantId, opaqueNotFoundJson, resolveRequestRestaurant } from "@/platform/tenant-scope";
+
+async function assertApiKeyMatchesHost(req: NextRequest, restaurantId: string) {
+  const resolution = await resolveRequestRestaurant(req);
+  if (!resolution.ok) return opaqueNotFoundJson();
+  const hostId = hostRestaurantId(resolution);
+  if (hostId && hostId !== restaurantId) return opaqueNotFoundJson();
+  return null;
+}
 
 async function authRequest(req: NextRequest) {
   const auth = req.headers.get("authorization");
@@ -16,6 +25,9 @@ export async function GET(req: NextRequest) {
   if (!requireScope(auth.scopes, "orders:read")) {
     return NextResponse.json({ error: "Insufficient scope" }, { status: 403 });
   }
+
+  const hostBlocked = await assertApiKeyMatchesHost(req, auth.restaurantId);
+  if (hostBlocked) return hostBlocked;
 
   const orders = await prisma.order.findMany({
     where: { restaurantId: auth.restaurantId, date: todayDateString() },

@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
   const existing = await prisma.backgroundJob.findFirst({
     where: {
       type: "offline_order_sync",
+      restaurantId: session.restaurantId,
       payload: { contains: `"clientId":"${clientId}"` },
       status: "COMPLETED",
     },

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import {
   joinTableSession,
   heartbeatTableSession,
   leaveTableSession,
 } from "@/lib/table-session-service";
+import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 import {
   createDiningToken,
   diningCookieOptions,
@@ -13,11 +13,10 @@ import {
 } from "@/lib/dining-access";
 import { logApiError, logApiRequest } from "@/lib/logger";
 
-async function resolveTable(tableToken: string) {
-  return prisma.table.findUnique({
-    where: { qrToken: tableToken },
-    select: { id: true, number: true, maxSessions: true, isActive: true },
-  });
+async function resolveTable(req: NextRequest, tableToken: string) {
+  const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+  if (!resolution.ok) return null;
+  return table;
 }
 
 export async function POST(req: NextRequest) {
@@ -28,9 +27,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing tableToken or sessionKey" }, { status: 400 });
     }
 
-    const table = await resolveTable(tableToken);
+    const table = await resolveTable(req, tableToken);
     if (!table || !table.isActive) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+      return opaqueNotFoundJson();
     }
 
     const result = await joinTableSession(table.id, sessionKey, table.maxSessions);
@@ -52,9 +51,9 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Missing tableToken or sessionKey" }, { status: 400 });
     }
 
-    const table = await resolveTable(tableToken);
+    const table = await resolveTable(req, tableToken);
     if (!table || !table.isActive) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+      return opaqueNotFoundJson();
     }
 
     const alive = await heartbeatTableSession(table.id, sessionKey);
@@ -70,6 +69,8 @@ export async function PATCH(req: NextRequest) {
           tableId: table.id,
           tableToken,
           sessionKey,
+          restaurantId: table.restaurantId,
+          restaurantSlug: table.restaurant.slug,
         });
         const response = NextResponse.json({ active: true });
         response.cookies.set(DINING_COOKIE, token, diningCookieOptions());
@@ -90,7 +91,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Missing tableToken or sessionKey" }, { status: 400 });
     }
 
-    const table = await resolveTable(tableToken);
+    const table = await resolveTable(req, tableToken);
     if (!table) {
       return NextResponse.json({ success: true });
     }

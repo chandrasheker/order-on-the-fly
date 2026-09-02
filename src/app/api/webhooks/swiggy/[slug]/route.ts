@@ -7,6 +7,7 @@ import {
 } from "@/lib/aggregator-connection-service";
 import { OrderCreationError } from "@/lib/order-service";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
+import { rejectIfSlugEscapesHost } from "@/platform/tenant-scope";
 
 async function handleWebhook(
   req: NextRequest,
@@ -14,6 +15,9 @@ async function handleWebhook(
   platform: "SWIGGY" | "ZOMATO"
 ) {
   logApiRequest(`webhooks/${platform.toLowerCase()}`, "POST", { slug });
+
+  const blocked = await rejectIfSlugEscapesHost(req, slug);
+  if (blocked) return blocked;
 
   const restaurant = await prisma.restaurant.findUnique({
     where: { slug },

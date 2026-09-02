@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { readDiningTokenFromRequest } from "@/lib/dining-access";
 import { todayDateString } from "@/lib/utils";
+import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 
 function serializeRequest(request: Awaited<ReturnType<typeof findLatestCustomerRequest>>) {
   if (!request) return null;
@@ -74,12 +75,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Enter a valid table number" }, { status: 400 });
   }
 
-  const sourceTable = await prisma.table.findUnique({
-    where: { qrToken: String(tableToken) },
-    include: { restaurant: true },
-  });
-  if (!sourceTable || !sourceTable.isActive) {
-    return NextResponse.json({ error: "Table not found" }, { status: 404 });
+  const { table: sourceTable, resolution } = await loadTableByQrForRequest(req, String(tableToken));
+  if (!resolution.ok || !sourceTable || !sourceTable.isActive) {
+    return opaqueNotFoundJson();
   }
 
   if (sourceTable.number === targetNumber) {

@@ -19,6 +19,11 @@ const envSchema = z.object({
   PRISMA_SCHEMA: z.string().optional(),
   PRISMA_MIGRATIONS: z.string().optional(),
   RESTAURANT_CONFIG: z.string().optional(),
+  TENANT_BASE_DOMAIN: z.string().optional(),
+  TENANT_RESERVED_HOSTS: z.string().optional(),
+  TENANT_PUBLIC_PROTOCOL: z.enum(["http", "https"]).optional(),
+  TENANT_PUBLIC_PORT: z.string().optional(),
+  TRUST_FORWARDED_HOST: z.enum(["0", "1"]).optional(),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {

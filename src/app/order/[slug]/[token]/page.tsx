@@ -4,6 +4,7 @@ import { isDatabaseNotReadyError } from "@/lib/db-errors";
 import { OrderPageClient } from "@/components/customer/OrderPageClient";
 import { DatabaseSetupRequired } from "@/components/DatabaseSetupRequired";
 import { StaleTableLink } from "@/components/customer/StaleTableLink";
+import { requirePageRestaurantSlug } from "@/lib/page-host-guard";
 
 async function resolveTable(slug: string, token: string) {
   const byToken = await prisma.table.findFirst({
@@ -42,6 +43,7 @@ export default async function OrderPage({
   params: Promise<{ slug: string; token: string }>;
 }) {
   const { slug, token } = await params;
+  await requirePageRestaurantSlug(slug);
 
   try {
     if (token === "demo") {

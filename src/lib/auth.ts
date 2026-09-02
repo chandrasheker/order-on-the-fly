@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import type { Role } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { classifyRequestHost, sessionMatchesHostSlug } from "@/platform/host";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "tabletap-super-secret-key-change-in-production"
@@ -85,6 +86,18 @@ export async function verifyPlatformAdminToken(
   }
 }
 
+async function sessionAllowedOnRequestHost(session: SessionUser): Promise<boolean> {
+  try {
+    const { headers } = await import("next/headers");
+    const host = classifyRequestHost(await headers());
+    if (host.kind === "invalid") return false;
+    return sessionMatchesHostSlug(session.restaurantSlug, host);
+  } catch {
+    // headers() is unavailable in a few non-request contexts; do not invent a tenant.
+    return true;
+  }
+}
+
 export async function getSession(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(STAFF_SESSION_COOKIE)?.value;
@@ -138,6 +151,10 @@ export async function getSession(): Promise<SessionUser | null> {
     } catch {
       // Cookie writes are not allowed in some server component contexts.
     }
+  }
+
+  if (!(await sessionAllowedOnRequestHost(sessionUser))) {
+    return null;
   }
 
   return sessionUser;

@@ -7,6 +7,7 @@ import {
   getActiveStaffSessionsByRestaurants,
   summarizeActiveSessions,
 } from "@/lib/staff-session-service";
+import { restaurantSlugValidationError } from "@/lib/restaurant-slug";
 
 export type SignupTenantInput = {
   tenantName: string;
@@ -24,6 +25,8 @@ export type SignupTenantInput = {
 export async function signupTenantWithRestaurant(input: SignupTenantInput) {
   const tenantSlug = input.tenantSlug || slugify(input.tenantName);
   const restaurantSlug = input.restaurantSlug || slugify(input.restaurantName);
+  const slugError = restaurantSlugValidationError(restaurantSlug);
+  if (slugError) throw new Error(slugError);
 
   const existingTenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
   if (existingTenant) throw new Error("Tenant slug already taken");
@@ -137,6 +140,8 @@ export async function addRestaurantToTenant(
   if (!tenant) throw new Error("Tenant not found");
 
   const slug = input.slug || slugify(input.name);
+  const slugError = restaurantSlugValidationError(slug);
+  if (slugError) throw new Error(slugError);
   const existing = await prisma.restaurant.findUnique({ where: { slug } });
   if (existing) throw new Error("Restaurant slug already taken");
 

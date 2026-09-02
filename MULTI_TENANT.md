@@ -108,25 +108,57 @@ Each restaurant has unique slugs and QR tokens (`{slug}-table-1`, etc.).
 
 ## Domain & URL control
 
-TableTap does **not** require separate domains per restaurant in v1. Routing is **path-based**:
+One Next.js deployment + one database. Restaurant **slug** is the subdomain:
+
+```
+abc.dvadtech.in  →  Restaurant.slug = abc
+xyz.dvadtech.in  →  Restaurant.slug = xyz
+```
+
+The hostname is an **authoritative security boundary**. A request on `abc.dvadtech.in` cannot read or operate on `xyz` data, even with a copied JWT or a valid XYZ QR/order id.
 
 | Actor | How restaurant is selected |
 |-------|---------------------------|
-| Guest | `restaurant.slug` in URL path |
-| Staff | `user.restaurantId` from login session |
-| Platform admin | Sees all tenants; filters in UI |
+| Guest / staff on `{slug}.{TENANT_BASE_DOMAIN}` | Hostname slug (path slug must match) |
+| Guest on reserved host (`localhost`, apex) | Path `/order/{slug}/...` (legacy / local) |
+| Staff on reserved host | Session `restaurantId` (local `npm run dev`) |
+| Platform admin | Cross-tenant; `/platform` on apex/`www`/`platform` |
+
+### Production
+
+1. DNS: `*.dvadtech.in` → the same app host
+2. TLS: wildcard (or SAN) certificate
+3. Reverse proxy: one Caddy/Nginx site, **preserve `Host`** — see `scripts/deploy/nginx-wildcard-subdomain.conf`
+4. Env: `TENANT_BASE_DOMAIN=dvadtech.in`
+
+Do **not** trust `X-Forwarded-Host` unless the proxy overwrites it and the Node port is not public (`TRUST_FORWARDED_HOST=1`).
+
+Unknown / disabled / malformed restaurant hosts fail closed (`404 Not found`). There is no default restaurant fallback.
+
+### Local development
+
+| Host | Behavior |
+|------|----------|
+| `abc.localhost:3000` | Strict restaurant host for slug `abc` (add `127.0.0.1 abc.localhost` to `/etc/hosts` if needed) |
+| `localhost:3000` | Reserved — existing path-based QR and session login still work |
+| `127.0.0.1:3000` | Reserved |
+
+Production validation is not relaxed for localhost. `{slug}.localhost` is as strict as `{slug}.dvadtech.in`.
 
 ### Environment
 
 | Variable | Controls |
 |----------|----------|
-| `NEXT_PUBLIC_APP_URL` / `app.url` in config | Base URL embedded in QR codes |
+| `NEXT_PUBLIC_APP_URL` / `app.url` in config | Fallback base URL when `TENANT_BASE_DOMAIN` is unset |
+| `TENANT_BASE_DOMAIN` | Apex used for `{slug}.{domain}` (e.g. `dvadtech.in`) |
+| `TENANT_PUBLIC_PROTOCOL` / `TENANT_PUBLIC_PORT` | QR URL scheme/port (local: `http` + `3000`) |
+| `TRUST_FORWARDED_HOST` | `1` to read a single `X-Forwarded-Host` (proxy-only) |
 | `RESTAURANT_CONFIG` | Which tenant/restaurants to seed |
 | `DATABASE_URL` | Shared database for all tenants |
 
-### Future: custom domains (not implemented)
+Existing slugs that are not valid DNS labels are **not** auto-renamed. Run `npm run slugs:check` and migrate those restaurants explicitly.
 
-You could map `pistahouse.com` → slug `pistahouse` via reverse proxy + middleware. Today, use one app URL with slug paths.
+QR codes use `https://{slug}.{TENANT_BASE_DOMAIN}/order/{slug}/{token}/check-in` when the base domain is set. Path `/order/{slug}/...` is unchanged.
 
 ## Billing
 

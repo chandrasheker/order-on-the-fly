@@ -24,6 +24,57 @@ const ROLE_PREFIX = {
   SERVER: "server",
 };
 
+const RESERVED_SUBDOMAINS = new Set([
+  "www",
+  "platform",
+  "admin",
+  "api",
+  "app",
+  "mail",
+  "ftp",
+  "ns1",
+  "ns2",
+  "static",
+  "assets",
+  "cdn",
+  "health",
+  "status",
+  "tenant",
+  "signup",
+  "localhost",
+]);
+const DNS_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+function assertRestaurantSubdomainSlug(slug) {
+  const normalized = String(slug || "").trim().toLowerCase();
+  if (RESERVED_SUBDOMAINS.has(normalized)) {
+    throw new Error(`Restaurant slug "${normalized}" is reserved and cannot be used as a subdomain`);
+  }
+  if (!DNS_SLUG_RE.test(normalized)) {
+    throw new Error(
+      `Restaurant slug "${normalized}" is not a valid DNS label (lowercase letters, digits, hyphens)`,
+    );
+  }
+}
+
+function restaurantPublicBaseUrl(appUrl, slug) {
+  const baseDomain = String(process.env.TENANT_BASE_DOMAIN || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, "");
+  if (!baseDomain) return String(appUrl || "").replace(/\/+$/, "");
+  let proto = process.env.TENANT_PUBLIC_PROTOCOL;
+  let port = process.env.TENANT_PUBLIC_PORT || "";
+  try {
+    const parsed = new URL(appUrl);
+    if (!proto) proto = parsed.protocol.replace(":", "") || "https";
+    if (!port && parsed.port && baseDomain === "localhost") port = parsed.port;
+  } catch {
+    if (!proto) proto = "https";
+  }
+  return `${proto}://${slug}.${baseDomain}${port ? `:${port}` : ""}`;
+}
+
 function slugify(value) {
   return String(value || "")
     .toLowerCase()
@@ -112,6 +163,7 @@ function normalizeRestaurantEntry(raw, { tenantSlug, app }) {
   const name = restaurant.name || "My Restaurant";
   const slug = restaurant.slug || slugify(name);
   if (!slug) throw new Error("Each restaurant needs slug or name");
+  assertRestaurantSubdomainSlug(slug);
 
   const staffInput = raw.staff || {};
   const domain = staffInput.domain || `${slug}.com`;
@@ -178,7 +230,7 @@ function normalizeRestaurantEntry(raw, { tenantSlug, app }) {
     staff,
     menu: normalizeMenu(raw.menu || []),
     branches,
-    guestUrl: `${app.url.replace(/\/$/, "")}/order/${slug}/${slug}-table-1/check-in`,
+    guestUrl: `${restaurantPublicBaseUrl(app.url, slug)}/order/${slug}/${slug}-table-1/check-in`,
   };
 }
 

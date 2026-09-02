@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { readDiningTokenFromRequest } from "@/lib/dining-access";
+import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 import {
   countActiveTableSessions,
   joinTableSession,
@@ -16,13 +16,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
   }
 
-  const table = await prisma.table.findUnique({
-    where: { qrToken: tableToken },
-    select: { id: true, number: true, orderingEnabled: true, isActive: true, maxSessions: true },
-  });
-
-  if (!table || !table.isActive) {
-    return NextResponse.json({ error: "Table not found" }, { status: 404 });
+  const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+  if (!resolution.ok || !table || !table.isActive) {
+    return opaqueNotFoundJson();
   }
 
   const dining = await readDiningTokenFromRequest(req);

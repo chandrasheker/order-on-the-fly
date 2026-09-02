@@ -8,6 +8,7 @@ import {
   validateCurrentTableAccessCode,
 } from "@/lib/table-access-code";
 import { TableCheckInClient } from "../TableCheckInClient";
+import { requirePageRestaurantSlug } from "@/lib/page-host-guard";
 
 async function resolveTable(slug: string, token: string) {
   const byToken = await prisma.table.findFirst({
@@ -35,6 +36,7 @@ export default async function CodedCheckInPage({
   params: Promise<{ slug: string; token: string; accessCode: string }>;
 }) {
   const { slug, token, accessCode } = await params;
+  await requirePageRestaurantSlug(slug);
 
   try {
     const table = await resolveTable(slug, token);

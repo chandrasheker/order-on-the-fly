@@ -15,6 +15,8 @@ export interface DiningTokenPayload {
   tableId: string;
   tableToken: string;
   sessionKey: string;
+  restaurantId?: string;
+  restaurantSlug?: string;
 }
 
 export async function createDiningToken(payload: Omit<DiningTokenPayload, "type">) {
@@ -41,6 +43,8 @@ export async function verifyDiningToken(token: string): Promise<DiningTokenPaylo
       tableId: payload.tableId,
       tableToken: payload.tableToken,
       sessionKey: payload.sessionKey,
+      restaurantId: typeof payload.restaurantId === "string" ? payload.restaurantId : undefined,
+      restaurantSlug: typeof payload.restaurantSlug === "string" ? payload.restaurantSlug : undefined,
     };
   } catch {
     return null;

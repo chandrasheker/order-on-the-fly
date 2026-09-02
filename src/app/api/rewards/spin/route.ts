@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRewardTier, sumBillableTotal } from "@/lib/utils";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
+import { loadOrderByIdForRequest, loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 
 const WIN_SEGMENT_INDEX = 0;
 
@@ -15,20 +16,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing orderId or tableToken" }, { status: 400 });
     }
 
-    const table = await prisma.table.findUnique({
-      where: { qrToken: tableToken },
-      include: { restaurant: true },
-    });
-    if (!table) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+    if (!resolution.ok || !table) {
+      return opaqueNotFoundJson();
     }
 
-    const orderWithItems = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: { items: true },
-    });
-    if (!orderWithItems) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    const { order: orderWithItems } = await loadOrderByIdForRequest(req, orderId);
+    if (!orderWithItems || orderWithItems.tableId !== table.id) {
+      return opaqueNotFoundJson();
     }
 
     const orderTotal = sumBillableTotal(orderWithItems.items);
@@ -69,20 +64,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing tableToken or orderId" }, { status: 400 });
     }
 
-    const table = await prisma.table.findUnique({
-      where: { qrToken: tableToken },
-      include: { restaurant: true },
-    });
-    if (!table) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
+    if (!resolution.ok || !table) {
+      return opaqueNotFoundJson();
     }
 
-    const order = await prisma.order.findFirst({
-      where: { id: orderId, tableId: table.id, restaurantId: table.restaurantId },
-      include: { items: true },
-    });
-    if (!order) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    const { order } = await loadOrderByIdForRequest(req, orderId);
+    if (!order || order.tableId !== table.id || order.restaurantId !== table.restaurantId) {
+      return opaqueNotFoundJson();
     }
 
     if (order.rewardSpun) {
