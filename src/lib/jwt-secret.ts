@@ -28,8 +28,23 @@ export function assertJwtSecretForEnv(
   return value || "tabletap-super-secret-key-change-in-production";
 }
 
-export function getJwtSecretValue(): string {
-  return assertJwtSecretForEnv(process.env.NODE_ENV, process.env.JWT_SECRET);
+/** `next build` page-data collection sets NODE_ENV=production; do not fail closed there. */
+export function isNextJsProductionBuild(
+  phase = process.env.NEXT_PHASE,
+  npmLifecycle = process.env.npm_lifecycle_event,
+): boolean {
+  if (phase === "phase-production-build" || phase === "phase-export") return true;
+  return npmLifecycle === "build";
+}
+
+export function getJwtSecretValue(
+  env: { NODE_ENV?: string; JWT_SECRET?: string; NEXT_PHASE?: string } = process.env,
+): string {
+  if (env.NODE_ENV === "production" && isNextJsProductionBuild(env.NEXT_PHASE)) {
+    const value = String(env.JWT_SECRET ?? "").trim();
+    return value || "tabletap-super-secret-key-change-in-production";
+  }
+  return assertJwtSecretForEnv(env.NODE_ENV, env.JWT_SECRET);
 }
 
 export function getJwtSecretBytes(): Uint8Array {

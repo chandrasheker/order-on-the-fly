@@ -6,7 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { sessionAllowedFromHeaders } from "@/platform/host";
 import { getJwtSecretBytes } from "@/lib/jwt-secret";
 
-const JWT_SECRET = getJwtSecretBytes();
+function jwtSecret() {
+  return getJwtSecretBytes();
+}
 
 export interface SessionUser {
   id: string;
@@ -52,7 +54,7 @@ export async function createToken(user: SessionUser) {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(JWT_SECRET);
+    .sign(jwtSecret());
 }
 
 export async function createPlatformAdminToken(admin: Omit<PlatformAdminSession, "type">) {
@@ -60,12 +62,12 @@ export async function createPlatformAdminToken(admin: Omit<PlatformAdminSession,
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(JWT_SECRET);
+    .sign(jwtSecret());
 }
 
 export async function verifyToken(token: string): Promise<SessionUser | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, jwtSecret());
     if (payload.type === "platform_admin") return null;
     return payload as unknown as SessionUser;
   } catch {
@@ -77,7 +79,7 @@ export async function verifyPlatformAdminToken(
   token: string
 ): Promise<PlatformAdminSession | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, jwtSecret());
     if (payload.type !== "platform_admin") return null;
     return payload as unknown as PlatformAdminSession;
   } catch {

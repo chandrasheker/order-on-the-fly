@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { assertJwtSecretForEnv } from "@/lib/jwt-secret";
+import { assertJwtSecretForEnv, isNextJsProductionBuild } from "@/lib/jwt-secret";
 import { isValidTenantBaseDomain } from "@/platform/host";
 
 const envSchema = z.object({
@@ -45,7 +45,7 @@ export function loadAppConfig(options?: { strict?: boolean }): AppConfig {
   }
 
   const isProduction = parsed.data.NODE_ENV === "production";
-  if (options?.strict !== false && isProduction) {
+  if (options?.strict !== false && isProduction && !isNextJsProductionBuild()) {
     assertProductionSecurityConfig({
       NODE_ENV: parsed.data.NODE_ENV,
       JWT_SECRET: parsed.data.JWT_SECRET ?? process.env.JWT_SECRET,

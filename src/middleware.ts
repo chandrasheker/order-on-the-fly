@@ -11,13 +11,15 @@ import {
 } from "@/platform/host";
 import { getJwtSecretBytes } from "@/lib/jwt-secret";
 
-const JWT_SECRET = getJwtSecretBytes();
+function jwtSecret() {
+  return getJwtSecretBytes();
+}
 
 async function getStaffSession(request: NextRequest) {
   const token = request.cookies.get("tabletap_session")?.value;
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, jwtSecret());
     if (payload.type === "platform_admin") return null;
     return payload;
   } catch {
@@ -29,7 +31,7 @@ async function getPlatformAdminSession(request: NextRequest) {
   const token = request.cookies.get("tabletap_admin_session")?.value;
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, jwtSecret());
     if (payload.type !== "platform_admin") return null;
     return payload;
   } catch {

@@ -23,7 +23,7 @@ import {
 } from "@/lib/staff-order-item-actions";
 import { scopedOrderItemIds, hasOnlyForeignOrderItemIds } from "@/lib/order-item-guard";
 import { assertProductionSecurityConfig } from "@/config/app-config";
-import { assertJwtSecretForEnv } from "@/lib/jwt-secret";
+import { assertJwtSecretForEnv, getJwtSecretValue } from "@/lib/jwt-secret";
 import type { TenantContext } from "@/platform/tenant-context";
 
 const ABC_ID = "restaurant-abc";
@@ -302,6 +302,24 @@ describe("9-10 production fail-closed configuration and hosts", () => {
     );
     assert.throws(() => assertJwtSecretForEnv("production", "short-secret"), /JWT_SECRET/);
     assert.equal(assertJwtSecretForEnv("production", strongJwt), strongJwt);
+  });
+
+  it("next build page-data collection does not throw on a placeholder JWT", () => {
+    assert.doesNotThrow(() =>
+      getJwtSecretValue({
+        NODE_ENV: "production",
+        JWT_SECRET: "change-this-to-a-secure-random-string-in-production",
+        NEXT_PHASE: "phase-production-build",
+      }),
+    );
+    assert.throws(
+      () =>
+        getJwtSecretValue({
+          NODE_ENV: "production",
+          JWT_SECRET: "change-this-to-a-secure-random-string-in-production",
+        }),
+      /JWT_SECRET/,
+    );
   });
 
   it("development startup does not require TENANT_BASE_DOMAIN or a custom JWT", () => {

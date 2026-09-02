@@ -3,7 +3,9 @@ import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { getJwtSecretBytes } from "@/lib/jwt-secret";
 
-const JWT_SECRET = getJwtSecretBytes();
+function jwtSecret() {
+  return getJwtSecretBytes();
+}
 
 export const DINING_COOKIE = "tabletap_dining";
 /** Dining pass lifetime after check-in (3 hours). */
@@ -23,12 +25,12 @@ export async function createDiningToken(payload: Omit<DiningTokenPayload, "type"
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${DINING_TTL_SEC}s`)
-    .sign(JWT_SECRET);
+    .sign(jwtSecret());
 }
 
 export async function verifyDiningToken(token: string): Promise<DiningTokenPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, jwtSecret());
     if (payload.type !== "dining") return null;
     if (
       typeof payload.tableId !== "string" ||
