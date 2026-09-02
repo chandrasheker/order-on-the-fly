@@ -304,6 +304,22 @@ describe("9-10 production fail-closed configuration and hosts", () => {
     assert.equal(assertJwtSecretForEnv("production", strongJwt), strongJwt);
   });
 
+  it("TABLETAP_PRODUCTION_BUILD skips JWT throw the same way as next build", () => {
+    const previous = process.env.TABLETAP_PRODUCTION_BUILD;
+    process.env.TABLETAP_PRODUCTION_BUILD = "1";
+    try {
+      assert.doesNotThrow(() =>
+        getJwtSecretValue({
+          NODE_ENV: "production",
+          JWT_SECRET: "change-this-to-a-secure-random-string-in-production",
+        }),
+      );
+    } finally {
+      if (previous === undefined) delete process.env.TABLETAP_PRODUCTION_BUILD;
+      else process.env.TABLETAP_PRODUCTION_BUILD = previous;
+    }
+  });
+
   it("next build page-data collection does not throw on a placeholder JWT", () => {
     assert.doesNotThrow(() =>
       getJwtSecretValue({

@@ -12,7 +12,11 @@ function runStep(label, command, args) {
   console.log(`\n[build-sequential] ${label}`);
   const result = spawnSync(process.execPath, [runWithMem, command, ...args], {
     stdio: "inherit",
-    env: process.env,
+    env: {
+      ...process.env,
+      // Page-data workers inherit this so placeholder JWT_SECRET cannot abort `next build`.
+      TABLETAP_PRODUCTION_BUILD: "1",
+    },
   });
   if (result.status !== 0) {
     process.exit(result.status ?? 1);

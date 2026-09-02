@@ -33,6 +33,7 @@ export function isNextJsProductionBuild(
   phase = process.env.NEXT_PHASE,
   npmLifecycle = process.env.npm_lifecycle_event,
 ): boolean {
+  if (process.env.TABLETAP_PRODUCTION_BUILD === "1") return true;
   if (phase === "phase-production-build" || phase === "phase-export") return true;
   return npmLifecycle === "build";
 }
