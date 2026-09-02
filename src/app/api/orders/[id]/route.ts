@@ -24,6 +24,11 @@ import {
 } from "@/lib/audit-service";
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import { loadOrderByIdForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
+import { hasOnlyForeignOrderItemIds, scopedOrderItemIds } from "@/lib/order-item-guard";
+import {
+  requireOwnedOrderItem,
+  requireOwnedOrderItemWithoutPayment,
+} from "@/lib/staff-order-item-actions";
 
 export async function PATCH(
   req: NextRequest,
@@ -237,12 +242,20 @@ export async function PATCH(
       return NextResponse.json({ error: "Valid payment amount required" }, { status: 400 });
     }
 
+    let scopedItemIds: string[] | undefined;
+    if (Array.isArray(itemIds) && itemIds.length > 0) {
+      if (hasOnlyForeignOrderItemIds(order, itemIds)) {
+        return opaqueNotFoundJson();
+      }
+      scopedItemIds = scopedOrderItemIds(order, itemIds);
+    }
+
     const result = await recordOrderPayment({
       orderId: id,
       amount: payAmount,
       method: method ?? "UPI",
       note,
-      itemIds: Array.isArray(itemIds) ? itemIds : undefined,
+      itemIds: scopedItemIds,
       collectedByUserId: session.id,
       collectedByName: session.name,
     });
@@ -268,42 +281,48 @@ export async function PATCH(
   }
 
   if (action === "serve-item" && itemId) {
-    const orderItem = order.items.find((i) => i.id === itemId);
-    const servedAt = new Date();
-    const timeline = orderItem
-      ? serveTimelineUpdate(orderItem.expectedReadyAt, servedAt, orderItem)
-      : { isOverdue: false, missedTimeline: false, minutesLate: null };
+    const owned = requireOwnedOrderItem(order, itemId, session.restaurantId);
+    if (!owned.ok) return opaqueNotFoundJson();
 
+    try {
+      await transitionOrderItemDirect({
+        orderId: id,
+        itemId: owned.item.id,
+        toStatus: "SERVED",
+        actorUserId: session.id,
+        actorName: session.name,
+        restaurantId: session.restaurantId,
+      });
+    } catch (err) {
+      if (err instanceof InvalidOrderTransitionError) {
+        return NextResponse.json({ error: err.message, code: "INVALID_TRANSITION" }, { status: 409 });
+      }
+      throw err;
+    }
+
+    const servedAt = new Date();
+    const timeline = serveTimelineUpdate(owned.item.expectedReadyAt, servedAt, owned.item);
     await prisma.orderItem.update({
-      where: { id: itemId },
-      data: {
-        status: "SERVED",
-        servedAt,
-        servedByUserId: session.id,
-        servedByName: session.name,
-        ...timeline,
-      },
+      where: { id: owned.item.id },
+      data: timeline,
     });
 
-    await clearAlertsForOrderItem(itemId);
-    await syncOrderStatus(id);
-
-    logInfo("api:orders/[id]", "Item served", { orderId: id, itemId });
+    logInfo("api:orders/[id]", "Item served", { orderId: id, itemId: owned.item.id });
     return NextResponse.json({ success: true });
   }
 
   if (action === "reject-item" && itemId) {
-    if (await orderItemHasPayment(itemId)) {
-      return NextResponse.json(
-        { error: "Cannot reject an item that has payment applied" },
-        { status: 400 },
-      );
+    const owned = await requireOwnedOrderItemWithoutPayment(
+      order,
+      itemId,
+      session.restaurantId,
+      orderItemHasPayment,
+    );
+    if (!owned.ok) {
+      if (owned.status === 404) return opaqueNotFoundJson();
+      return NextResponse.json({ error: owned.error }, { status: owned.status });
     }
-
-    const orderItem = order.items.find((i) => i.id === itemId);
-    if (!orderItem) {
-      return NextResponse.json({ error: "Item not found" }, { status: 404 });
-    }
+    const orderItem = owned.item;
 
     const flags = await getRestaurantFeatureFlags(session.restaurantId);
     let approvedByUserId: string | undefined;
@@ -335,7 +354,7 @@ export async function PATCH(
     try {
       await transitionOrderItemDirect({
         orderId: id,
-        itemId,
+        itemId: orderItem.id,
         toStatus: "UNAVAILABLE",
         actorUserId: session.id,
         actorName: session.name,
@@ -351,7 +370,7 @@ export async function PATCH(
     await recordAuditLog({
       restaurantId: session.restaurantId,
       actionType: "REJECT_ITEM",
-      entityId: itemId,
+      entityId: orderItem.id,
       reason: reason ? String(reason) : undefined,
       payload: {
         orderId: id,
@@ -365,15 +384,17 @@ export async function PATCH(
       requiresApproval: Boolean(approvedByUserId),
     });
 
-    logInfo("api:orders/[id]", "Item marked unavailable", { orderId: id, itemId });
+    logInfo("api:orders/[id]", "Item marked unavailable", { orderId: id, itemId: orderItem.id });
     return NextResponse.json({ success: true });
   }
 
   if (action === "prepare-item" && itemId) {
+    const owned = requireOwnedOrderItem(order, itemId, session.restaurantId);
+    if (!owned.ok) return opaqueNotFoundJson();
     try {
       await transitionOrderItemDirect({
         orderId: id,
-        itemId,
+        itemId: owned.item.id,
         toStatus: "PREPARING",
         actorUserId: session.id,
         actorName: session.name,
@@ -389,10 +410,12 @@ export async function PATCH(
   }
 
   if (action === "ready-item" && itemId) {
+    const owned = requireOwnedOrderItem(order, itemId, session.restaurantId);
+    if (!owned.ok) return opaqueNotFoundJson();
     try {
       await transitionOrderItemDirect({
         orderId: id,
-        itemId,
+        itemId: owned.item.id,
         toStatus: "READY",
         actorUserId: session.id,
         actorName: session.name,

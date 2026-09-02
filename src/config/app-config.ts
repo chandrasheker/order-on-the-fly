@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { assertJwtSecretForEnv } from "@/lib/jwt-secret";
+import { isValidTenantBaseDomain } from "@/platform/host";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -44,9 +46,11 @@ export function loadAppConfig(options?: { strict?: boolean }): AppConfig {
 
   const isProduction = parsed.data.NODE_ENV === "production";
   if (options?.strict !== false && isProduction) {
-    if (!parsed.data.JWT_SECRET || parsed.data.JWT_SECRET.length < 32) {
-      throw new Error("Production requires JWT_SECRET with at least 32 characters");
-    }
+    assertProductionSecurityConfig({
+      NODE_ENV: parsed.data.NODE_ENV,
+      JWT_SECRET: parsed.data.JWT_SECRET ?? process.env.JWT_SECRET,
+      TENANT_BASE_DOMAIN: parsed.data.TENANT_BASE_DOMAIN ?? process.env.TENANT_BASE_DOMAIN,
+    });
     if (!process.env.DATABASE_URL && !process.env.PRISMA_SCHEMA?.includes("sqlite")) {
       // allow sqlite file default in dev only
     }
@@ -63,6 +67,21 @@ export function loadAppConfig(options?: { strict?: boolean }): AppConfig {
 
 export function validateAppConfig() {
   return loadAppConfig({ strict: true });
+}
+
+export function assertProductionSecurityConfig(env: {
+  NODE_ENV?: string;
+  JWT_SECRET?: string;
+  TENANT_BASE_DOMAIN?: string;
+}) {
+  if (env.NODE_ENV !== "production") return;
+
+  assertJwtSecretForEnv(env.NODE_ENV, env.JWT_SECRET);
+
+  const domain = String(env.TENANT_BASE_DOMAIN ?? "").trim();
+  if (!isValidTenantBaseDomain(domain)) {
+    throw new Error("Production requires TENANT_BASE_DOMAIN (e.g. dvadtech.in)");
+  }
 }
 
 export function resetAppConfigCache() {

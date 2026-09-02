@@ -129,11 +129,12 @@ The hostname is an **authoritative security boundary**. A request on `abc.dvadte
 1. DNS: `*.dvadtech.in` → the same app host
 2. TLS: wildcard (or SAN) certificate
 3. Reverse proxy: one Caddy/Nginx site, **preserve `Host`** — see `scripts/deploy/nginx-wildcard-subdomain.conf`
-4. Env: `TENANT_BASE_DOMAIN=dvadtech.in`
+4. Env: `TENANT_BASE_DOMAIN=dvadtech.in` (required — production startup fails closed without it)
+5. Env: a strong `JWT_SECRET` (production rejects missing, placeholder, and weak values)
 
 Do **not** trust `X-Forwarded-Host` unless the proxy overwrites it and the Node port is not public (`TRUST_FORWARDED_HOST=1`).
 
-Unknown / disabled / malformed restaurant hosts fail closed (`404 Not found`). There is no default restaurant fallback.
+Unknown / disabled / malformed restaurant hosts fail closed (`404 Not found`). There is no default restaurant fallback. Production apex, raw IPs, and other reserved hosts are not a restaurant path/session bypass. The Nginx sample includes a default catch-all that rejects unknown hosts instead of forwarding them to the app.
 
 ### Local development
 

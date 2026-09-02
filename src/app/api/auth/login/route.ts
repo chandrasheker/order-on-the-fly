@@ -7,6 +7,7 @@ import { getRestaurantAccessState, accessBlockMessage } from "@/lib/access-contr
 import { recordLoginAudit, requestClientMeta } from "@/lib/login-audit-service";
 import { startStaffSession } from "@/lib/staff-session-service";
 import { jsonHostTenantNotFound, resolveTenantFromHost } from "@/platform/host-tenant";
+import { allowsLegacyRestaurantScoping } from "@/platform/host";
 
 export async function POST(req: NextRequest) {
   logApiRequest("auth/login", "POST");
@@ -23,6 +24,9 @@ export async function POST(req: NextRequest) {
 
     const hostTenant = await resolveTenantFromHost(req);
     if (!hostTenant.ok) {
+      return NextResponse.json(jsonHostTenantNotFound(), { status: 404 });
+    }
+    if (hostTenant.kind === "reserved" && !allowsLegacyRestaurantScoping(hostTenant.host)) {
       return NextResponse.json(jsonHostTenantNotFound(), { status: 404 });
     }
 

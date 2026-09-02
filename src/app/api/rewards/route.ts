@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     if (orderId) {
       const order = await prisma.order.findFirst({
-        where: { id: orderId, tableId: table.id },
+        where: { id: orderId, tableId: table.id, restaurantId: restaurant.id },
       });
       if (!order?.rewardSpun) {
         return NextResponse.json(

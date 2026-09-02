@@ -17,7 +17,7 @@
     "db:generate": "prisma generate",
     "start": "node scripts/run-with-mem.js npx next start",
     "lint": "node scripts/run-with-mem.js npx eslint",
-    "test": "node scripts/run-with-mem.js npx tsx --test src/platform/host.test.ts src/platform/tenant-isolation.test.ts",
+    "test": "node scripts/run-with-mem.js npx tsx --test src/platform/host.test.ts src/platform/tenant-isolation.test.ts src/platform/tenancy-security.test.ts",
     "slugs:check": "tsx scripts/check-restaurant-slugs.ts",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",

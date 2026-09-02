@@ -21,8 +21,12 @@ export type HostKind = (typeof HOST_KIND)[keyof typeof HOST_KIND];
 
 export type ClassifiedHost =
   | { kind: "restaurant"; hostname: string; slug: string; baseDomain: string }
-  | { kind: "reserved"; hostname: string }
+  | { kind: "reserved"; hostname: string; legacyRestaurantScoping: boolean }
   | { kind: "invalid"; hostname: string; reason: string };
+
+function reservedHost(hostname: string, production: boolean): Extract<ClassifiedHost, { kind: "reserved" }> {
+  return { kind: "reserved", hostname, legacyRestaurantScoping: !production };
+}
 
 /** Labels that must never be treated as a restaurant slug. */
 export const RESERVED_SUBDOMAINS = new Set([
@@ -110,6 +114,34 @@ export function isIpHostname(hostname: string): boolean {
   return false;
 }
 
+export function isProductionEnv(nodeEnv?: string): boolean {
+  return (nodeEnv ?? process.env.NODE_ENV) === "production";
+}
+
+/** Apex domain used for `{slug}.{domain}` — required in production. */
+export function isValidTenantBaseDomain(domain: string): boolean {
+  const value = String(domain || "").trim().toLowerCase().replace(/^\.+|\.+$/g, "");
+  if (!value) return false;
+  if (value === "localhost" || value.endsWith(".localhost")) return false;
+  if (isIpHostname(value)) return false;
+  if (!value.includes(".")) return false;
+  if (value.includes("/") || value.includes(" ") || value.includes(":")) return false;
+  return true;
+}
+
+/**
+ * Reserved hosts may use path/session restaurant scoping only in development
+ * (bare localhost / LAN). Production reserved hosts are platform/infrastructure
+ * only — they must not select a restaurant via path or session.
+ */
+export function allowsLegacyRestaurantScoping(
+  host?: ClassifiedHost,
+  nodeEnv?: string,
+): boolean {
+  if (isProductionEnv(nodeEnv)) return false;
+  return Boolean(host && host.kind === "reserved" && host.legacyRestaurantScoping);
+}
+
 function extraReservedHosts(): Set<string> {
   const raw = process.env.TENANT_RESERVED_HOSTS ?? "";
   return new Set(
@@ -148,17 +180,33 @@ export function classifyHostname(
   const baseDomain = (options?.baseDomain ?? getTenantBaseDomain()).toLowerCase();
   const reserved = extraReservedHosts();
 
-  if (reserved.has(host)) return { kind: "reserved", hostname: host };
-  if (isIpHostname(host)) return { kind: "reserved", hostname: host };
-  if (host === "localhost") return { kind: "reserved", hostname: host };
+  const nodeEnv = options?.nodeEnv ?? process.env.NODE_ENV;
+  const production = isProductionEnv(nodeEnv);
+
+  if (production && !baseDomain) {
+    return { kind: "invalid", hostname: host, reason: "missing_tenant_base_domain" };
+  }
+
+  if (reserved.has(host)) {
+    if (production && (isIpHostname(host) || host === "localhost")) {
+      return { kind: "invalid", hostname: host, reason: "production_dev_host" };
+    }
+    return reservedHost(host, production);
+  }
+
+  if (isIpHostname(host) || host === "localhost") {
+    if (production) return { kind: "invalid", hostname: host, reason: "production_dev_host" };
+    return reservedHost(host, production);
+  }
 
   const labels = host.split(".").filter(Boolean);
   if (labels.length < 2) {
     return { kind: "invalid", hostname: host, reason: "malformed_host" };
   }
 
-  // Dev: {slug}.localhost
+  // Dev only: {slug}.localhost
   if (labels.length === 2 && labels[1] === "localhost") {
+    if (production) return { kind: "invalid", hostname: host, reason: "production_dev_host" };
     const slug = labels[0] ?? "";
     if (!isValidRestaurantSubdomainSlug(slug)) {
       return { kind: "invalid", hostname: host, reason: "invalid_slug" };
@@ -167,7 +215,7 @@ export function classifyHostname(
   }
 
   if (baseDomain) {
-    if (host === baseDomain) return { kind: "reserved", hostname: host };
+    if (host === baseDomain) return reservedHost(host, production);
     const suffix = `.${baseDomain}`;
     if (host.endsWith(suffix)) {
       const prefix = host.slice(0, -suffix.length);
@@ -177,7 +225,7 @@ export function classifyHostname(
       }
       const slug = prefixLabels[0] ?? "";
       if (RESERVED_SUBDOMAINS.has(slug)) {
-        return { kind: "reserved", hostname: host };
+        return reservedHost(host, production);
       }
       if (!isValidRestaurantSubdomainSlug(slug)) {
         return { kind: "invalid", hostname: host, reason: "invalid_slug" };
@@ -185,18 +233,15 @@ export function classifyHostname(
       return { kind: "restaurant", hostname: host, slug, baseDomain };
     }
 
-    // Production with a configured base domain: unknown hosts fail closed.
-    const nodeEnv = options?.nodeEnv ?? process.env.NODE_ENV;
-    if (nodeEnv === "production") {
+    if (production) {
       return { kind: "invalid", hostname: host, reason: "unknown_host" };
     }
-    return { kind: "reserved", hostname: host };
+    return reservedHost(host, production);
   }
 
-  // No TENANT_BASE_DOMAIN: only {slug}.localhost is a restaurant host.
-  // Apex / LAN / existing APP_URL hosts stay reserved so current path-based
-  // flows keep working until the domain is configured.
-  return { kind: "reserved", hostname: host };
+  // Development without TENANT_BASE_DOMAIN: only {slug}.localhost is a restaurant
+  // host. Apex / LAN stay reserved so path-based QR and session login still work.
+  return reservedHost(host, production);
 }
 
 export function classifyRequestHost(
@@ -206,13 +251,45 @@ export function classifyRequestHost(
   return classifyHostname(getTrustedHostname(headers), options);
 }
 
+/**
+ * Production reserved/invalid hosts must not run restaurant guest/staff operations.
+ * Privileged platform/health/webhook/job paths are exempt at the middleware layer.
+ */
+export function blocksRestaurantOperationsOnHost(
+  host: ClassifiedHost,
+  nodeEnv?: string,
+): boolean {
+  if (host.kind === "invalid") return true;
+  if (host.kind === "reserved") {
+    return isProductionEnv(nodeEnv) || !host.legacyRestaurantScoping;
+  }
+  return false;
+}
+
 export function sessionMatchesHostSlug(
   sessionSlug: string | null | undefined,
   host: ClassifiedHost,
+  nodeEnv?: string,
 ): boolean {
-  if (host.kind !== "restaurant") return true;
+  if (host.kind === "invalid") return false;
+  if (host.kind === "reserved") return allowsLegacyRestaurantScoping(host, nodeEnv);
   if (!sessionSlug) return false;
   return normalizeRestaurantSlug(sessionSlug) === host.slug;
+}
+
+/** Fail closed: inability to read the request host must not authorize. */
+export async function sessionAllowedFromHeaders(
+  sessionSlug: string | null | undefined,
+  readHeaders: () => Promise<Headers | { get(name: string): string | null }>,
+  nodeEnv?: string,
+): Promise<boolean> {
+  let headerList: Headers | { get(name: string): string | null };
+  try {
+    headerList = await readHeaders();
+  } catch {
+    return false;
+  }
+  return sessionMatchesHostSlug(sessionSlug, classifyRequestHost(headerList, { nodeEnv }), nodeEnv);
 }
 
 export function pathSlugMatchesHost(pathSlug: string | null | undefined, host: ClassifiedHost): boolean {

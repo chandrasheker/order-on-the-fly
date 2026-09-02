@@ -19,6 +19,7 @@ import {
   selectOwnedResource,
   trustedRestaurantId,
   injectionIgnored,
+  blocksRestaurantOperationsOnHost,
 } from "@/platform/host";
 
 export { selectOwnedResource, trustedRestaurantId, injectionIgnored };
@@ -37,10 +38,24 @@ export function hostRestaurantId(resolution: HostTenantResolution): string | nul
   return restaurantIdFromResolution(resolution);
 }
 
+export function restaurantOpsAllowedOnResolution(resolution: HostTenantResolution): boolean {
+  if (!resolution.ok) return false;
+  if (blocksRestaurantOperationsOnHost(resolution.host)) return false;
+  return true;
+}
+
+export function scopeResourceForResolution<T extends { restaurantId: string }>(
+  resolution: HostTenantResolution,
+  resource: T | null | undefined,
+): T | null {
+  if (!restaurantOpsAllowedOnResolution(resolution)) return null;
+  return selectOwnedResource(hostRestaurantId(resolution), resource);
+}
+
 /** Resolve a table by globally unique QR token, then verify hostname ownership. */
 export async function loadTableByQrForRequest(req: { headers: Headers }, qrToken: string) {
   const resolution = await resolveTenantFromHost(req);
-  if (!resolution.ok) {
+  if (!restaurantOpsAllowedOnResolution(resolution)) {
     return { table: null, resolution };
   }
 
@@ -48,14 +63,13 @@ export async function loadTableByQrForRequest(req: { headers: Headers }, qrToken
     where: { qrToken },
     include: { restaurant: true },
   });
-  const owned = selectOwnedResource(hostRestaurantId(resolution), table);
-  return { table: owned, resolution };
+  return { table: scopeResourceForResolution(resolution, table), resolution };
 }
 
 /** Resolve an order by id, then verify hostname ownership. */
 export async function loadOrderByIdForRequest(req: { headers: Headers }, orderId: string) {
   const resolution = await resolveTenantFromHost(req);
-  if (!resolution.ok) {
+  if (!restaurantOpsAllowedOnResolution(resolution)) {
     return { order: null, resolution };
   }
 
@@ -63,8 +77,7 @@ export async function loadOrderByIdForRequest(req: { headers: Headers }, orderId
     where: { id: orderId },
     include: { items: true, table: true },
   });
-  const owned = selectOwnedResource(hostRestaurantId(resolution), order);
-  return { order: owned, resolution };
+  return { order: scopeResourceForResolution(resolution, order), resolution };
 }
 
 export function assertPathSlugForResolution(

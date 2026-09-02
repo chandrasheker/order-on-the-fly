@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyApiKey, requireScope } from "@/lib/api-key-service";
 import { prisma } from "@/lib/prisma";
-import { hostRestaurantId, opaqueNotFoundJson, resolveRequestRestaurant } from "@/platform/tenant-scope";
+import { hostRestaurantId, opaqueNotFoundJson, resolveRequestRestaurant, restaurantOpsAllowedOnResolution } from "@/platform/tenant-scope";
 
 async function assertApiKeyMatchesHost(req: NextRequest, restaurantId: string) {
   const resolution = await resolveRequestRestaurant(req);
-  if (!resolution.ok) return opaqueNotFoundJson();
+  if (!resolution.ok || !restaurantOpsAllowedOnResolution(resolution)) return opaqueNotFoundJson();
   const hostId = hostRestaurantId(resolution);
   if (hostId && hostId !== restaurantId) return opaqueNotFoundJson();
   return null;

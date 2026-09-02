@@ -59,7 +59,6 @@ export type RestaurantHostRow = {
 export type HostTenantLookup = {
   findRestaurantBySlug: (slug: string) => Promise<RestaurantHostRow | null>;
   resolveContext?: (restaurant: RestaurantHostRow) => Promise<TenantContext>;
-  ensureTenant?: (restaurantId: string) => Promise<void>;
 };
 
 const defaultLookup: HostTenantLookup = {
@@ -119,16 +118,11 @@ export async function resolveTenantFromClassifiedHost(
   if (!restaurant.isEnabled) {
     return fail(host, "RESTAURANT_DISABLED", "disabled");
   }
-  if (restaurant.tenant && !restaurant.tenant.isEnabled) {
-    return fail(host, "TENANT_DISABLED", "disabled");
+  if (!restaurant.tenantId || !restaurant.tenant) {
+    return fail(host, "INVALID_HIERARCHY", "hierarchy");
   }
-  if (!restaurant.tenantId) {
-    if (lookup.ensureTenant) {
-      await lookup.ensureTenant(restaurant.id);
-    } else {
-      const { ensureTenantForRestaurant } = await import("@/lib/tenant-service");
-      await ensureTenantForRestaurant(restaurant.id);
-    }
+  if (!restaurant.tenant.isEnabled) {
+    return fail(host, "TENANT_DISABLED", "disabled");
   }
 
   if (!lookup.resolveContext) {
@@ -143,29 +137,31 @@ export async function resolveTenantFromClassifiedHost(
     }
   }
 
-  try {
-    const context = lookup.resolveContext
-      ? await lookup.resolveContext(restaurant)
-      : await (await import("@/platform/tenant-context")).resolveTenantContext({
-          restaurantId: restaurant.id,
-        });
-    if (context.restaurantSlug !== host.slug || context.restaurantId !== restaurant.id) {
-      return fail(host, "INVALID_HIERARCHY", "hierarchy");
-    }
-    if (!context.tenantId) {
-      return fail(host, "INVALID_HIERARCHY", "hierarchy");
-    }
-    const resolution: HostTenantResolution = {
-      ok: true,
-      kind: "restaurant",
-      host,
-      context,
-    };
-    slugCache.set(cacheKey, { resolution, expiresAt: Date.now() + CACHE_MS });
-    return resolution;
-  } catch {
+  const context = lookup.resolveContext
+    ? await lookup.resolveContext(restaurant)
+    : {
+        tenantId: restaurant.tenantId,
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+        restaurantSlug: restaurant.slug,
+        branchId: null,
+        floorId: null,
+      };
+
+  if (context.restaurantSlug !== host.slug || context.restaurantId !== restaurant.id) {
     return fail(host, "INVALID_HIERARCHY", "hierarchy");
   }
+  if (!context.tenantId) {
+    return fail(host, "INVALID_HIERARCHY", "hierarchy");
+  }
+  const resolution: HostTenantResolution = {
+    ok: true,
+    kind: "restaurant",
+    host,
+    context,
+  };
+  slugCache.set(cacheKey, { resolution, expiresAt: Date.now() + CACHE_MS });
+  return resolution;
 }
 
 type HeaderSource = Headers | { headers: Headers } | { get(name: string): string | null };

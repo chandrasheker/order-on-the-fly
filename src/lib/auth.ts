@@ -3,11 +3,10 @@ import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import type { Role } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { classifyRequestHost, sessionMatchesHostSlug } from "@/platform/host";
+import { sessionAllowedFromHeaders } from "@/platform/host";
+import { getJwtSecretBytes } from "@/lib/jwt-secret";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "tabletap-super-secret-key-change-in-production"
-);
+const JWT_SECRET = getJwtSecretBytes();
 
 export interface SessionUser {
   id: string;
@@ -87,15 +86,10 @@ export async function verifyPlatformAdminToken(
 }
 
 async function sessionAllowedOnRequestHost(session: SessionUser): Promise<boolean> {
-  try {
+  return sessionAllowedFromHeaders(session.restaurantSlug, async () => {
     const { headers } = await import("next/headers");
-    const host = classifyRequestHost(await headers());
-    if (host.kind === "invalid") return false;
-    return sessionMatchesHostSlug(session.restaurantSlug, host);
-  } catch {
-    // headers() is unavailable in a few non-request contexts; do not invent a tenant.
-    return true;
-  }
+    return headers();
+  });
 }
 
 export async function getSession(): Promise<SessionUser | null> {

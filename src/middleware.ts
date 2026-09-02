@@ -4,14 +4,14 @@ import { jwtVerify } from "jose";
 import {
   classifyRequestHost,
   sessionMatchesHostSlug,
+  blocksRestaurantOperationsOnHost,
   HOST_KIND_HEADER,
   HOST_NAME_HEADER,
   HOST_SLUG_HEADER,
 } from "@/platform/host";
+import { getJwtSecretBytes } from "@/lib/jwt-secret";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "tabletap-super-secret-key-change-in-production"
-);
+const JWT_SECRET = getJwtSecretBytes();
 
 async function getStaffSession(request: NextRequest) {
   const token = request.cookies.get("tabletap_session")?.value;
@@ -102,7 +102,8 @@ function isPrivilegedCrossTenantPath(pathname: string) {
     pathname.startsWith("/api/webhooks/") ||
     pathname.startsWith("/api/print/") ||
     pathname.startsWith("/api/jobs/") ||
-    pathname === "/api/tenant/signup"
+    pathname === "/api/tenant/signup" ||
+    pathname === "/tenant/signup"
   );
 }
 
@@ -123,7 +124,7 @@ export async function middleware(request: NextRequest) {
   const privileged = isPrivilegedCrossTenantPath(pathname);
   const hostKey = classified.kind === "restaurant" ? classified.slug : classified.hostname || "unknown";
 
-  if (classified.kind === "invalid" && !privileged) {
+  if (blocksRestaurantOperationsOnHost(classified) && !privileged) {
     if (pathname.startsWith("/api/")) {
       return withSecurityHeaders(NextResponse.json({ error: "Not found" }, { status: 404 }));
     }

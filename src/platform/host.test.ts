@@ -105,6 +105,17 @@ describe("host classification", () => {
       "invalid",
     );
   });
+
+  it("production without TENANT_BASE_DOMAIN is invalid, not reserved", () => {
+    const host = classifyHostname("anything.example.com", { baseDomain: "", nodeEnv: "production" });
+    assert.equal(host.kind, "invalid");
+    if (host.kind === "invalid") assert.equal(host.reason, "missing_tenant_base_domain");
+  });
+
+  it("production raw IP is invalid", () => {
+    const host = classifyHostname("198.51.100.10", { baseDomain: "dvadtech.in", nodeEnv: "production" });
+    assert.equal(host.kind, "invalid");
+  });
 });
 
 describe("slug validation", () => {

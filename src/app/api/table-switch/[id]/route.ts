@@ -16,15 +16,15 @@ export async function PATCH(
   const { id } = await params;
   const { action } = await req.json();
 
-  const switchRequest = await prisma.tableSwitchRequest.findUnique({
-    where: { id },
+  const switchRequest = await prisma.tableSwitchRequest.findFirst({
+    where: { id, restaurantId: session.restaurantId },
     include: {
       sourceTable: true,
       targetTable: true,
     },
   });
 
-  if (!switchRequest || switchRequest.restaurantId !== session.restaurantId) {
+  if (!switchRequest) {
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
   }
 

@@ -47,6 +47,14 @@ const restaurants: Record<string, RestaurantHostRow> = {
     isEnabled: false,
     tenant: { id: TENANT_ABC, isEnabled: true },
   },
+  orphan: {
+    id: "restaurant-orphan",
+    name: "Orphan",
+    slug: "orphan",
+    tenantId: null,
+    isEnabled: true,
+    tenant: null,
+  },
 };
 
 function contextFor(row: RestaurantHostRow): TenantContext {
@@ -62,11 +70,18 @@ function contextFor(row: RestaurantHostRow): TenantContext {
   };
 }
 
+let resolveContextCalls = 0;
+let ensureTenantCalls = 0;
+
 const lookup: HostTenantLookup = {
   async findRestaurantBySlug(slug) {
     return restaurants[slug] ?? null;
   },
   async resolveContext(row) {
+    resolveContextCalls += 1;
+    if (!row.tenantId) {
+      ensureTenantCalls += 1;
+    }
     return contextFor(row);
   },
 };
@@ -88,6 +103,8 @@ const orders = {
 
 afterEach(() => {
   clearHostTenantCache();
+  resolveContextCalls = 0;
+  ensureTenantCalls = 0;
 });
 
 function host(name: string) {
@@ -124,6 +141,14 @@ describe("host resolution", () => {
     const result = await resolveTenantFromClassifiedHost(host("disabled.dvadtech.in"), lookup);
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.reason, "RESTAURANT_DISABLED");
+  });
+
+  it("missing tenantId is INVALID_HIERARCHY and does not repair tenancy", async () => {
+    const result = await resolveTenantFromClassifiedHost(host("orphan.dvadtech.in"), lookup);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.reason, "INVALID_HIERARCHY");
+    assert.equal(resolveContextCalls, 0);
+    assert.equal(ensureTenantCalls, 0);
   });
 
   it("requireTenantContext throws on reserved and unknown hosts", async () => {

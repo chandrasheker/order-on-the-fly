@@ -1,10 +1,9 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
+import { getJwtSecretBytes } from "@/lib/jwt-secret";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "tabletap-super-secret-key-change-in-production",
-);
+const JWT_SECRET = getJwtSecretBytes();
 
 export const DINING_COOKIE = "tabletap_dining";
 /** Dining pass lifetime after check-in (3 hours). */
