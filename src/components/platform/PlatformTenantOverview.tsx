@@ -80,6 +80,7 @@ export function PlatformTenantOverview({
     name: "",
     ownerEmail: "",
     ownerName: "Owner",
+    tableCount: "6",
   });
   const [message, setMessage] = useState("");
   const [createdRestaurantUrl, setCreatedRestaurantUrl] = useState("");
@@ -154,7 +155,7 @@ export function PlatformTenantOverview({
       }
       setMessage(`Added ${json.restaurant.name}`);
       setCreatedRestaurantUrl(String(json.restaurant?.url ?? ""));
-      setAddRestaurant({ name: "", ownerEmail: "", ownerName: "Owner" });
+      setAddRestaurant({ name: "", ownerEmail: "", ownerName: "Owner", tableCount: "6" });
       onRestaurantsChange();
       void loadOverview();
     } catch (error) {
@@ -601,6 +602,11 @@ export function PlatformTenantOverview({
             placeholder="Owner name"
             value={addRestaurant.ownerName}
             onChange={(e) => setAddRestaurant({ ...addRestaurant, ownerName: e.target.value })}
+          />
+          <Input
+            placeholder="Number of tables"
+            value={addRestaurant.tableCount}
+            onChange={(e) => setAddRestaurant({ ...addRestaurant, tableCount: e.target.value })}
           />
         </div>
         {addRestaurant.name.trim() && (

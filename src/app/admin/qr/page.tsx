@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Button, Card, Spinner, Input } from "@/components/ui";
 import { ArrowLeft, Download, Printer, QrCode, Users, CircleDollarSign, ImageIcon } from "lucide-react";
 import Link from "next/link";
+import { isDineInTable } from "@/lib/order-channel";
 
 interface QRData {
   id: string;
@@ -18,6 +19,7 @@ interface QRData {
 interface TableSetting {
   id: string;
   number: number;
+  kind?: string;
   maxSessions: number;
   activeSessions: number;
   isActive: boolean;
@@ -80,7 +82,9 @@ export default function QRPage() {
         setQrCodes(qrData.qrCodes);
         setRestaurantName(qrData.restaurantName);
         if (manageData) {
-          setTables(manageData.tables);
+          setTables(
+            (manageData.tables ?? []).filter((table: TableSetting) => isDineInTable(table)),
+          );
           setDefaultMaxSessions(manageData.defaultMaxSessions);
         }
         if (paymentData?.settings) {
