@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
-import { prisma } from "@/lib/prisma";
-import {
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { after, afterEach, before, describe, it } from "node:test";
+
+const dbPath = path.join(os.tmpdir(), `tabletap-lifecycle-${process.pid}-${Date.now()}.db`);
+process.env.DATABASE_URL = `file:${dbPath}`;
+
+const { prisma } = await import("@/lib/prisma");
+const {
   setTenantEnabled,
   setRestaurantEnabled,
   deleteRestaurantEverywhere,
   deleteTenantEverywhere,
-} from "@/lib/tenant-lifecycle";
+} = await import("@/lib/tenant-lifecycle");
 
 const prefix = `lifecycle-test-${Date.now()}`;
 const createdTenantIds: string[] = [];
@@ -28,6 +36,25 @@ async function cleanup() {
     await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => undefined);
   }
 }
+
+before(() => {
+  execFileSync(
+    process.execPath,
+    [path.join(process.cwd(), "scripts", "run-with-mem.js"), "npx", "prisma", "db", "push", "--skip-generate"],
+    {
+      cwd: process.cwd(),
+      env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
+      stdio: "inherit",
+    },
+  );
+});
+
+after(async () => {
+  await prisma.$disconnect().catch(() => undefined);
+  for (const suffix of ["", "-wal", "-shm", "-journal"]) {
+    fs.rmSync(`${dbPath}${suffix}`, { force: true });
+  }
+});
 
 afterEach(async () => {
   await cleanup();
