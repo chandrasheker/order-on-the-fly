@@ -10,6 +10,7 @@ import { PlatformStaffSetupPanel } from "@/components/platform/PlatformStaffSetu
 import { PlatformFeaturesPanel } from "@/components/platform/PlatformFeaturesPanel";
 import { PlatformTenantOverview } from "@/components/platform/PlatformTenantOverview";
 import { PlatformLoginLogsPanel } from "@/components/platform/PlatformLoginLogsPanel";
+import { ConfirmDangerDialog } from "@/components/platform/ConfirmDangerDialog";
 import { cn } from "@/lib/utils";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
 
@@ -55,6 +56,9 @@ export function PlatformTenantWorkspace() {
   const [tenantBaseDomain, setTenantBaseDomain] = useState("");
   const [loading, setLoading] = useState(true);
   const [togglingTenant, setTogglingTenant] = useState(false);
+  const [confirmDeleteTenant, setConfirmDeleteTenant] = useState(false);
+  const [deletingTenant, setDeletingTenant] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -92,8 +96,9 @@ export function PlatformTenantWorkspace() {
   const toggleTenant = async (enabled: boolean) => {
     if (!tenant) return;
     setTogglingTenant(true);
+    setActionError("");
     try {
-      await fetch("/api/platform/tenants", {
+      const res = await fetch("/api/platform/tenants", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -102,11 +107,44 @@ export function PlatformTenantWorkspace() {
           isEnabled: enabled,
         }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(json.error || "Could not update tenant.");
+        return;
+      }
       await load();
     } catch (error) {
       swallowPollingFetchError(error);
+      setActionError("Network error — try again.");
     } finally {
       setTogglingTenant(false);
+    }
+  };
+
+  const deleteTenant = async () => {
+    if (!tenant) return;
+    setDeletingTenant(true);
+    setActionError("");
+    try {
+      const res = await fetch("/api/platform/tenants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete_tenant",
+          tenantId: tenant.id,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(json.error || "Could not delete tenant.");
+        setDeletingTenant(false);
+        return;
+      }
+      router.push("/platform");
+    } catch (error) {
+      swallowPollingFetchError(error);
+      setActionError("Network error — try again.");
+      setDeletingTenant(false);
     }
   };
 
@@ -135,10 +173,19 @@ export function PlatformTenantWorkspace() {
             type="button"
             size="sm"
             variant={tenant.isEnabled ? "secondary" : "success"}
-            disabled={togglingTenant}
+            disabled={togglingTenant || deletingTenant}
             onClick={() => void toggleTenant(!tenant.isEnabled)}
           >
             {togglingTenant ? "…" : tenant.isEnabled ? "Disable tenant" : "Enable tenant"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="danger"
+            disabled={deletingTenant}
+            onClick={() => setConfirmDeleteTenant(true)}
+          >
+            Delete tenant
           </Button>
           <Link
             href={`/platform/billing?tenantId=${tenant.id}`}
@@ -172,6 +219,10 @@ export function PlatformTenantWorkspace() {
           ))}
         </div>
 
+        {actionError && (
+          <p className="text-sm text-red-400">{actionError}</p>
+        )}
+
         {tab === "overview" && (
           <PlatformTenantOverview
             tenantId={tenant.id}
@@ -182,6 +233,8 @@ export function PlatformTenantWorkspace() {
             onRestaurantsChange={() => void load()}
             onTenantToggle={toggleTenant}
             togglingTenant={togglingTenant}
+            onDeleteTenant={() => setConfirmDeleteTenant(true)}
+            deletingTenant={deletingTenant}
           />
         )}
 
@@ -196,6 +249,18 @@ export function PlatformTenantWorkspace() {
           />
         )}
       </div>
+
+      {confirmDeleteTenant && (
+        <ConfirmDangerDialog
+          title="Delete this tenant?"
+          subject={`Permanently delete ${tenant.name} and every restaurant under it.`}
+          details="All restaurants, staff, menus, orders, payments, and related records will be wiped from the database. This cannot be recovered."
+          confirmLabel="Delete tenant permanently"
+          busy={deletingTenant}
+          onCancel={() => setConfirmDeleteTenant(false)}
+          onConfirm={() => void deleteTenant()}
+        />
+      )}
     </PlatformShell>
   );
 }

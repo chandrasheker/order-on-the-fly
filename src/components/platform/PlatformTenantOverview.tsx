@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Building2, Plus, ChevronDown, ChevronUp, Layers, Users } from "lucide-react";
 import { Button, Card, Input, Badge } from "@/components/ui";
+import { ConfirmDangerDialog } from "@/components/platform/ConfirmDangerDialog";
 import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
@@ -40,6 +41,8 @@ interface PlatformTenantOverviewProps {
   onRestaurantsChange: () => void;
   onTenantToggle: (enabled: boolean) => Promise<void>;
   togglingTenant: boolean;
+  onDeleteTenant: () => void;
+  deletingTenant: boolean;
 }
 
 function roleSummary(byRole: ActiveSessions["byRole"]) {
@@ -60,6 +63,8 @@ export function PlatformTenantOverview({
   onRestaurantsChange,
   onTenantToggle,
   togglingTenant,
+  onDeleteTenant,
+  deletingTenant,
 }: PlatformTenantOverviewProps) {
   const [overview, setOverview] = useState<{
     stats?: Record<string, number>;
@@ -74,6 +79,8 @@ export function PlatformTenantOverview({
   const [message, setMessage] = useState("");
   const [createdRestaurantUrl, setCreatedRestaurantUrl] = useState("");
   const [togglingRestaurantId, setTogglingRestaurantId] = useState<string | null>(null);
+  const [deletingRestaurantId, setDeletingRestaurantId] = useState<string | null>(null);
+  const [confirmRestaurant, setConfirmRestaurant] = useState<TenantRestaurant | null>(null);
 
   const mergedRestaurants = (overview?.restaurants ?? restaurants).map((r) => {
     const base = restaurants.find((b) => b.id === r.id) ?? r;
@@ -149,8 +156,9 @@ export function PlatformTenantOverview({
 
   const toggleRestaurant = async (restaurant: TenantRestaurant) => {
     setTogglingRestaurantId(restaurant.id);
+    setMessage("");
     try {
-      await fetch("/api/platform/tenants", {
+      const res = await fetch("/api/platform/tenants", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -159,12 +167,46 @@ export function PlatformTenantOverview({
           isEnabled: !(restaurant.isEnabled ?? true),
         }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(json.error || "Could not update restaurant.");
+        return;
+      }
       onRestaurantsChange();
       void loadOverview();
     } catch (error) {
       swallowPollingFetchError(error);
+      setMessage("Network error — try again.");
     } finally {
       setTogglingRestaurantId(null);
+    }
+  };
+
+  const deleteRestaurant = async (restaurant: TenantRestaurant) => {
+    setDeletingRestaurantId(restaurant.id);
+    setMessage("");
+    try {
+      const res = await fetch("/api/platform/tenants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete_restaurant",
+          restaurantId: restaurant.id,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(json.error || "Could not delete restaurant.");
+        return;
+      }
+      setConfirmRestaurant(null);
+      onRestaurantsChange();
+      void loadOverview();
+    } catch (error) {
+      swallowPollingFetchError(error);
+      setMessage("Network error — try again.");
+    } finally {
+      setDeletingRestaurantId(null);
     }
   };
 
@@ -177,23 +219,34 @@ export function PlatformTenantOverview({
           <p className="font-medium">{tenantName}</p>
           <p className="text-sm text-zinc-400">
             {tenantEnabled
-              ? "Tenant is live — all enabled restaurants operate normally."
-              : "Tenant is disabled — all restaurants and staff access are blocked."}
+              ? "Tenant is live — enabled restaurants operate normally. Disabling this tenant immediately disables every restaurant under it."
+              : "Tenant is disabled — every restaurant under it is disabled and staff access is blocked. Re-enabling the tenant does not automatically re-enable restaurants."}
           </p>
         </div>
-        <Button
-          type="button"
-          variant={tenantEnabled ? "secondary" : "success"}
-          disabled={togglingTenant}
-          onClick={() => void onTenantToggle(!tenantEnabled)}
-        >
-          {togglingTenant ? "Saving…" : tenantEnabled ? "Disable tenant" : "Enable tenant"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant={tenantEnabled ? "secondary" : "success"}
+            disabled={togglingTenant || deletingTenant}
+            onClick={() => void onTenantToggle(!tenantEnabled)}
+          >
+            {togglingTenant ? "Saving…" : tenantEnabled ? "Disable tenant" : "Enable tenant"}
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={deletingTenant}
+            onClick={onDeleteTenant}
+          >
+            Delete tenant
+          </Button>
+        </div>
       </Card>
 
       <p className="text-sm text-zinc-400">
         Restaurants belonging to <span className="text-zinc-200">{tenantName}</span>. Disable a
-        restaurant temporarily to stop orders and staff logins for that location only.
+        restaurant to stop orders and staff logins for that location only. Delete permanently
+        wipes that restaurant and all of its records.
       </p>
 
       {stats && (
@@ -291,10 +344,19 @@ export function PlatformTenantOverview({
                         type="button"
                         size="sm"
                         variant={enabled ? "secondary" : "success"}
-                        disabled={togglingRestaurantId === r.id}
+                        disabled={togglingRestaurantId === r.id || deletingRestaurantId === r.id}
                         onClick={() => void toggleRestaurant(r)}
                       >
                         {togglingRestaurantId === r.id ? "…" : enabled ? "Disable" : "Enable"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="danger"
+                        disabled={deletingRestaurantId === r.id}
+                        onClick={() => setConfirmRestaurant(r)}
+                      >
+                        Delete
                       </Button>
                     </div>
                     {open && (
@@ -412,6 +474,18 @@ export function PlatformTenantOverview({
           </div>
         )}
       </Card>
+
+      {confirmRestaurant && (
+        <ConfirmDangerDialog
+          title="Delete this restaurant?"
+          subject={`Permanently delete ${confirmRestaurant.name}.`}
+          details="Staff, menus, orders, payments, tables, and every other record for this restaurant will be wiped from the database. This cannot be recovered."
+          confirmLabel="Delete restaurant permanently"
+          busy={deletingRestaurantId === confirmRestaurant.id}
+          onCancel={() => setConfirmRestaurant(null)}
+          onConfirm={() => void deleteRestaurant(confirmRestaurant)}
+        />
+      )}
     </div>
   );
 }

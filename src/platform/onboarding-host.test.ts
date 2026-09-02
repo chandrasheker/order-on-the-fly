@@ -180,13 +180,16 @@ describe("onboarding hostname activation", () => {
 
     restaurants["fp-south"]!.tenant = { id: "tenant-foodpark", isEnabled: false };
     restaurants["fp-east"]!.tenant = { id: "tenant-foodpark", isEnabled: false };
+    restaurants["fp-south"]!.isEnabled = false;
+    restaurants["fp-east"]!.isEnabled = false;
     invalidateHostTenantCacheForSlugs(["fp-south", "fp-east"]);
 
     const south = await resolveTenantFromClassifiedHost(prodHost("fp-south.dvadtech.in"), lookup);
     const east = await resolveTenantFromClassifiedHost(prodHost("fp-east.dvadtech.in"), lookup);
     assert.equal(south.ok, false);
     assert.equal(east.ok, false);
-    if (!south.ok) assert.equal(south.reason, "TENANT_DISABLED");
+    if (!south.ok) assert.equal(south.reason, "RESTAURANT_DISABLED");
+    if (!east.ok) assert.equal(east.reason, "RESTAURANT_DISABLED");
   });
 
   it("bare localhost development behavior remains unchanged", () => {
