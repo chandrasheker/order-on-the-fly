@@ -10,13 +10,25 @@ import {
   endStaffSessionsForRestaurant,
   endStaffSessionsForTenant,
 } from "@/lib/staff-session-service";
+import { getRestaurantPublicBaseUrl, publicRestaurantPayload } from "@/lib/server-app-url";
+import { getTenantBaseDomain } from "@/platform/host";
+import { invalidateHostTenantCache, invalidateHostTenantCacheForSlugs } from "@/platform/host-tenant";
 
 export async function GET() {
   const admin = await requirePlatformAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const tenants = await listTenantsWithRestaurants();
-  return NextResponse.json({ tenants });
+  return NextResponse.json({
+    tenantBaseDomain: getTenantBaseDomain(),
+    tenants: tenants.map((tenant) => ({
+      ...tenant,
+      restaurants: tenant.restaurants.map((restaurant) => ({
+        ...restaurant,
+        url: getRestaurantPublicBaseUrl(restaurant.slug),
+      })),
+    })),
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -37,7 +49,10 @@ export async function POST(req: NextRequest) {
         ownerName: String(body.ownerName ?? "Owner"),
         ownerPassword: body.ownerPassword ? String(body.ownerPassword) : undefined,
       });
-      return NextResponse.json({ ok: true, restaurant: result.restaurant }, { status: 201 });
+      return NextResponse.json(
+        { ok: true, restaurant: publicRestaurantPayload(result.restaurant) },
+        { status: 201 },
+      );
     }
 
     if (action === "add_branch") {
@@ -68,11 +83,15 @@ export async function PATCH(req: NextRequest) {
     if (action === "set_tenant_enabled") {
       const tenantId = String(body.tenantId ?? "");
       const isEnabled = Boolean(body.isEnabled);
-      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        include: { restaurants: { select: { slug: true } } },
+      });
       if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
 
       await prisma.tenant.update({ where: { id: tenantId }, data: { isEnabled } });
       if (!isEnabled) await endStaffSessionsForTenant(tenantId);
+      invalidateHostTenantCacheForSlugs(tenant.restaurants.map((restaurant) => restaurant.slug));
 
       return NextResponse.json({ ok: true, tenant: { id: tenantId, isEnabled } });
     }
@@ -85,6 +104,7 @@ export async function PATCH(req: NextRequest) {
 
       await prisma.restaurant.update({ where: { id: restaurantId }, data: { isEnabled } });
       if (!isEnabled) await endStaffSessionsForRestaurant(restaurantId);
+      invalidateHostTenantCache(restaurant.slug);
 
       return NextResponse.json({ ok: true, restaurant: { id: restaurantId, isEnabled } });
     }

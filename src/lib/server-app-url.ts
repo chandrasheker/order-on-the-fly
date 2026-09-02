@@ -43,3 +43,12 @@ export function getTableCheckInUrl(slug: string, qrToken: string): string {
 export function getTableOrderUrl(slug: string, qrToken: string): string {
   return getTableCheckInUrl(slug, qrToken);
 }
+
+export function publicRestaurantPayload(restaurant: { id: string; name: string; slug: string }) {
+  return {
+    id: restaurant.id,
+    name: restaurant.name,
+    slug: restaurant.slug,
+    url: getRestaurantPublicBaseUrl(restaurant.slug),
+  };
+}

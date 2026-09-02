@@ -6,6 +6,7 @@ import { Button, Card, Input, Badge } from "@/components/ui";
 import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
+import { slugify } from "@/lib/utils";
 
 type ActiveSessions = {
   total: number;
@@ -17,16 +18,24 @@ type TenantRestaurant = {
   id: string;
   name: string;
   slug: string;
+  url?: string;
   isEnabled?: boolean;
   branches: Array<{ id: string; name: string; slug: string; floors: Array<{ name: string }> }>;
   _count: { users: number; orders: number; tables: number };
   activeSessions?: ActiveSessions;
 };
 
+function restaurantHostPreview(slug: string, baseDomain: string) {
+  const normalized = slug.trim().toLowerCase();
+  if (!normalized || !baseDomain) return "";
+  return `https://${normalized}.${baseDomain}`;
+}
+
 interface PlatformTenantOverviewProps {
   tenantId: string;
   tenantName: string;
   tenantEnabled: boolean;
+  tenantBaseDomain?: string;
   restaurants: TenantRestaurant[];
   onRestaurantsChange: () => void;
   onTenantToggle: (enabled: boolean) => Promise<void>;
@@ -46,6 +55,7 @@ export function PlatformTenantOverview({
   tenantId,
   tenantName,
   tenantEnabled,
+  tenantBaseDomain = "",
   restaurants,
   onRestaurantsChange,
   onTenantToggle,
@@ -62,6 +72,7 @@ export function PlatformTenantOverview({
     ownerName: "Owner",
   });
   const [message, setMessage] = useState("");
+  const [createdRestaurantUrl, setCreatedRestaurantUrl] = useState("");
   const [togglingRestaurantId, setTogglingRestaurantId] = useState<string | null>(null);
 
   const mergedRestaurants = (overview?.restaurants ?? restaurants).map((r) => {
@@ -126,6 +137,7 @@ export function PlatformTenantOverview({
         return;
       }
       setMessage(`Added ${json.restaurant.name}`);
+      setCreatedRestaurantUrl(String(json.restaurant?.url ?? ""));
       setAddRestaurant({ name: "", slug: "", ownerEmail: "", ownerName: "Owner" });
       onRestaurantsChange();
       void loadOverview();
@@ -260,7 +272,9 @@ export function PlatformTenantOverview({
                               </Badge>
                             )}
                           </div>
-                          <p className="text-xs text-zinc-500">/{r.slug}</p>
+                          <p className="text-xs text-zinc-500">
+                            {r.url || restaurantHostPreview(r.slug, tenantBaseDomain) || `/${r.slug}`}
+                          </p>
                         </div>
                       </button>
                       <div className="text-right shrink-0 hidden sm:block">
@@ -289,8 +303,9 @@ export function PlatformTenantOverview({
                           {r._count.tables} tables · {r._count.users} staff · {r._count.orders}{" "}
                           orders
                         </p>
-                        <p className="text-xs text-emerald-400">
-                          Guest check-in: /order/{r.slug}/{r.slug}-table-1/check-in
+                        <p className="text-xs text-emerald-400 break-all">
+                          Restaurant host:{" "}
+                          {r.url || restaurantHostPreview(r.slug, tenantBaseDomain) || `/${r.slug}`}
                         </p>
 
                         <div className="rounded-lg bg-white/[0.03] border border-white/10 p-3">
@@ -357,11 +372,18 @@ export function PlatformTenantOverview({
             value={addRestaurant.name}
             onChange={(e) => setAddRestaurant({ ...addRestaurant, name: e.target.value })}
           />
-          <Input
-            placeholder="Slug (optional)"
-            value={addRestaurant.slug}
-            onChange={(e) => setAddRestaurant({ ...addRestaurant, slug: e.target.value })}
-          />
+          <div className="space-y-1">
+            <Input
+              placeholder="Restaurant subdomain"
+              value={addRestaurant.slug}
+              onChange={(e) => setAddRestaurant({ ...addRestaurant, slug: e.target.value })}
+            />
+            {restaurantHostPreview(addRestaurant.slug || slugify(addRestaurant.name), tenantBaseDomain) && (
+              <p className="text-xs text-orange-300">
+                {restaurantHostPreview(addRestaurant.slug || slugify(addRestaurant.name), tenantBaseDomain)}
+              </p>
+            )}
+          </div>
           <Input
             placeholder="Owner email"
             value={addRestaurant.ownerEmail}
@@ -378,6 +400,16 @@ export function PlatformTenantOverview({
           <p className={`text-sm ${message.startsWith("Added") ? "text-emerald-400" : "text-red-400"}`}>
             {message}
           </p>
+        )}
+        {createdRestaurantUrl && (
+          <div className="flex flex-wrap gap-3 text-sm">
+            <a href={createdRestaurantUrl} className="text-orange-300 underline">
+              Open restaurant
+            </a>
+            <a href={createdRestaurantUrl} className="text-orange-300 underline">
+              Staff sign in
+            </a>
+          </div>
         )}
       </Card>
     </div>

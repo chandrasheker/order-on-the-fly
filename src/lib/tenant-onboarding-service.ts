@@ -8,6 +8,7 @@ import {
   summarizeActiveSessions,
 } from "@/lib/staff-session-service";
 import { restaurantSlugValidationError } from "@/lib/restaurant-slug";
+import { invalidateHostTenantCache } from "@/platform/host-tenant";
 
 export type SignupTenantInput = {
   tenantName: string;
@@ -45,6 +46,7 @@ export async function signupTenantWithRestaurant(input: SignupTenantInput) {
       data: {
         name: input.tenantName,
         slug: tenantSlug,
+        isEnabled: true,
         plan,
         subscriptionStatus: "TRIAL",
         billingEmail: input.billingEmail,
@@ -63,6 +65,7 @@ export async function signupTenantWithRestaurant(input: SignupTenantInput) {
         name: input.restaurantName,
         slug: restaurantSlug,
         tenantId: tenant.id,
+        isEnabled: true,
         ownerSlots: 1,
         managerSlots: 1,
         cookSlots: 1,
@@ -122,6 +125,7 @@ export async function signupTenantWithRestaurant(input: SignupTenantInput) {
   });
 
   await ensureStarterMenuCategories(result.restaurant.id);
+  invalidateHostTenantCache(result.restaurant.slug);
   return result;
 }
 
@@ -157,6 +161,7 @@ export async function addRestaurantToTenant(
         name: input.name,
         slug,
         tenantId,
+        isEnabled: true,
         ownerSlots: 1,
         managerSlots: 1,
         cookSlots: 1,
@@ -210,6 +215,7 @@ export async function addRestaurantToTenant(
   });
 
   await ensureStarterMenuCategories(result.restaurant.id);
+  invalidateHostTenantCache(result.restaurant.slug);
   return result;
 }
 

@@ -15,6 +15,7 @@ import {
   classifyHostname,
   getTrustedHostname,
   getTenantBaseDomain,
+  normalizeRestaurantSlug,
   type ClassifiedHost,
 } from "@/platform/host";
 
@@ -84,6 +85,16 @@ const CACHE_MS = 15_000;
 
 export function clearHostTenantCache() {
   slugCache.clear();
+}
+
+/** Drop one slug so a just-created or just-revoked restaurant is not stuck on a stale lookup. */
+export function invalidateHostTenantCache(slug: string) {
+  const key = normalizeRestaurantSlug(slug);
+  if (key) slugCache.delete(key);
+}
+
+export function invalidateHostTenantCacheForSlugs(slugs: Iterable<string>) {
+  for (const slug of slugs) invalidateHostTenantCache(slug);
 }
 
 function fail(

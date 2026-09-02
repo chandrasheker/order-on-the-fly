@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { signupTenantWithRestaurant } from "@/lib/tenant-onboarding-service";
+import { getTableCheckInUrl, publicRestaurantPayload } from "@/lib/server-app-url";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,13 +18,15 @@ export async function POST(req: NextRequest) {
       tableCount: body.tableCount ? Number(body.tableCount) : undefined,
     });
 
+    const restaurant = publicRestaurantPayload(result.restaurant);
     return NextResponse.json(
       {
         ok: true,
         tenant: { id: result.tenant.id, slug: result.tenant.slug, name: result.tenant.name },
-        restaurant: { id: result.restaurant.id, slug: result.restaurant.slug, name: result.restaurant.name },
+        restaurant,
+        restaurantUrl: restaurant.url,
         ownerLogin: result.owner.email,
-        guestUrl: `/order/${result.restaurant.slug}/${result.restaurant.slug}-table-1/check-in`,
+        guestUrl: getTableCheckInUrl(result.restaurant.slug, `${result.restaurant.slug}-table-1`),
       },
       { status: 201 },
     );

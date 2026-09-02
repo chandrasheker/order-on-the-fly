@@ -52,6 +52,7 @@ export function PlatformTenantWorkspace() {
   );
   const [admin, setAdmin] = useState<{ name: string; email: string } | null>(null);
   const [tenant, setTenant] = useState<TenantDetail | null>(null);
+  const [tenantBaseDomain, setTenantBaseDomain] = useState("");
   const [loading, setLoading] = useState(true);
   const [togglingTenant, setTogglingTenant] = useState(false);
 
@@ -68,6 +69,7 @@ export function PlatformTenantWorkspace() {
       const res = await fetch("/api/platform/tenants");
       if (res.ok) {
         const json = await res.json();
+        setTenantBaseDomain(String(json.tenantBaseDomain ?? ""));
         const found = (json.tenants ?? []).find((t: TenantDetail) => t.id === tenantId);
         if (!found) {
           router.push("/platform");
@@ -175,6 +177,7 @@ export function PlatformTenantWorkspace() {
             tenantId={tenant.id}
             tenantName={tenant.name}
             tenantEnabled={tenant.isEnabled}
+            tenantBaseDomain={tenantBaseDomain}
             restaurants={tenant.restaurants}
             onRestaurantsChange={() => void load()}
             onTenantToggle={toggleTenant}
