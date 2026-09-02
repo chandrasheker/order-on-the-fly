@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
-import { readDiningTokenFromRequest } from "@/lib/dining-access";
+import { authorizeGuestTableSwitchRead, readDiningTokenFromRequest } from "@/lib/dining-access";
 import { todayDateString } from "@/lib/utils";
 import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 
@@ -20,11 +20,16 @@ function serializeRequest(request: Awaited<ReturnType<typeof findLatestCustomerR
   };
 }
 
-async function findLatestCustomerRequest(sourceTableId: string, sessionKey: string) {
+async function findLatestCustomerRequest(
+  sourceTableId: string,
+  sessionKey: string,
+  restaurantId: string,
+) {
   return prisma.tableSwitchRequest.findFirst({
     where: {
       sourceTableId,
       sessionKey,
+      restaurantId,
       requestedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
     },
     include: {
@@ -43,15 +48,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing tableToken or sessionKey" }, { status: 400 });
   }
 
+  const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
   const dining = await readDiningTokenFromRequest(req);
-  if (!dining || dining.tableToken !== tableToken || dining.sessionKey !== sessionKey) {
-    return NextResponse.json(
-      { error: "Scan the QR code at your table to view table switch status" },
-      { status: 403 },
-    );
+  const auth = authorizeGuestTableSwitchRead({
+    resolutionOk: resolution.ok,
+    table,
+    dining,
+    sessionKey,
+  });
+  if (!auth.ok) {
+    if (auth.status === 404) return opaqueNotFoundJson();
+    return NextResponse.json({ error: auth.error }, { status: 403 });
   }
 
-  const latest = await findLatestCustomerRequest(dining.tableId, sessionKey);
+  const latest = await findLatestCustomerRequest(auth.sourceTableId, sessionKey, auth.restaurantId);
   return NextResponse.json({ request: serializeRequest(latest) });
 }
 

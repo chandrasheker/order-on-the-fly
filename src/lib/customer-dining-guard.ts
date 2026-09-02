@@ -3,6 +3,8 @@ import {
   createDiningToken,
   diningCookieOptions,
   DINING_COOKIE,
+  diningTokenConflictsWithScopedTable,
+  diningTokenMatchesScopedTable,
   readDiningTokenFromRequest,
 } from "@/lib/dining-access";
 import { joinTableSession, validateTableSession } from "@/lib/table-session-service";
@@ -35,17 +37,11 @@ export async function assertCustomerDiningAccess(
   }
 
   const dining = await readDiningTokenFromRequest(req);
-  if (dining?.restaurantId && dining.restaurantId !== table.restaurantId) {
+  if (diningTokenConflictsWithScopedTable(dining, table)) {
     return { ok: false as const, status: 404, error: "Table not found" };
   }
-  const effectiveSessionKey = sessionKey ?? dining?.sessionKey;
-  if (
-    !dining ||
-    dining.tableToken !== tableToken ||
-    dining.tableId !== table.id ||
-    !effectiveSessionKey ||
-    (sessionKey && dining.sessionKey !== sessionKey)
-  ) {
+  const effectiveSessionKey = sessionKey ?? dining?.sessionKey ?? "";
+  if (!diningTokenMatchesScopedTable(dining, table, effectiveSessionKey)) {
     return {
       ok: false as const,
       status: 403,

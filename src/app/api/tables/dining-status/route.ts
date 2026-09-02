@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readDiningTokenFromRequest } from "@/lib/dining-access";
+import { diningTokenMatchesScopedTable, readDiningTokenFromRequest } from "@/lib/dining-access";
 import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 import {
   countActiveTableSessions,
@@ -22,12 +22,7 @@ export async function GET(req: NextRequest) {
   }
 
   const dining = await readDiningTokenFromRequest(req);
-  const diningMatch = Boolean(
-    dining &&
-      dining.tableToken === tableToken &&
-      dining.sessionKey === sessionKey &&
-      dining.tableId === table.id,
-  );
+  const diningMatch = diningTokenMatchesScopedTable(dining, table, sessionKey);
 
   const openTableWork = await hasOpenTableWork(table.id);
 

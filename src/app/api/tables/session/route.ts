@@ -9,6 +9,7 @@ import {
   createDiningToken,
   diningCookieOptions,
   DINING_COOKIE,
+  diningTokenMatchesScopedTable,
   readDiningTokenFromRequest,
 } from "@/lib/dining-access";
 import { logApiError, logApiRequest } from "@/lib/logger";
@@ -59,12 +60,7 @@ export async function PATCH(req: NextRequest) {
     const alive = await heartbeatTableSession(table.id, sessionKey);
     if (alive) {
       const dining = await readDiningTokenFromRequest(req);
-      if (
-        dining &&
-        dining.tableToken === tableToken &&
-        dining.sessionKey === sessionKey &&
-        dining.tableId === table.id
-      ) {
+      if (diningTokenMatchesScopedTable(dining, table, sessionKey)) {
         const token = await createDiningToken({
           tableId: table.id,
           tableToken,

@@ -52,31 +52,54 @@ export function scopeResourceForResolution<T extends { restaurantId: string }>(
   return selectOwnedResource(hostRestaurantId(resolution), resource);
 }
 
-/** Resolve a table by globally unique QR token, then verify hostname ownership. */
+/** Restaurant hosts query by identifier + host restaurantId. Reserved/dev may look up by identifier only. */
+export function tableByQrWhere(qrToken: string, hostRestaurantId: string | null) {
+  if (hostRestaurantId) return { qrToken, restaurantId: hostRestaurantId };
+  return { qrToken };
+}
+
+export function orderByIdWhere(orderId: string, hostRestaurantId: string | null) {
+  if (hostRestaurantId) return { id: orderId, restaurantId: hostRestaurantId };
+  return { id: orderId };
+}
+
+/** Resolve a table by QR token, scoped to the hostname restaurant when present. */
 export async function loadTableByQrForRequest(req: { headers: Headers }, qrToken: string) {
   const resolution = await resolveTenantFromHost(req);
   if (!restaurantOpsAllowedOnResolution(resolution)) {
     return { table: null, resolution };
   }
 
-  const table = await prisma.table.findUnique({
-    where: { qrToken },
-    include: { restaurant: true },
-  });
+  const hostId = hostRestaurantId(resolution);
+  const table = hostId
+    ? await prisma.table.findFirst({
+        where: tableByQrWhere(qrToken, hostId),
+        include: { restaurant: true },
+      })
+    : await prisma.table.findUnique({
+        where: { qrToken },
+        include: { restaurant: true },
+      });
   return { table: scopeResourceForResolution(resolution, table), resolution };
 }
 
-/** Resolve an order by id, then verify hostname ownership. */
+/** Resolve an order by id, scoped to the hostname restaurant when present. */
 export async function loadOrderByIdForRequest(req: { headers: Headers }, orderId: string) {
   const resolution = await resolveTenantFromHost(req);
   if (!restaurantOpsAllowedOnResolution(resolution)) {
     return { order: null, resolution };
   }
 
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { items: true, table: true },
-  });
+  const hostId = hostRestaurantId(resolution);
+  const order = hostId
+    ? await prisma.order.findFirst({
+        where: orderByIdWhere(orderId, hostId),
+        include: { items: true, table: true },
+      })
+    : await prisma.order.findUnique({
+        where: { id: orderId },
+        include: { items: true, table: true },
+      });
   return { order: scopeResourceForResolution(resolution, order), resolution };
 }
 
