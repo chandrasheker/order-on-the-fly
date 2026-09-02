@@ -4,20 +4,19 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, afterEach, before, describe, it } from "node:test";
+import type { PrismaClient } from "@/generated/prisma/client";
 
 const dbPath = path.join(os.tmpdir(), `tabletap-lifecycle-${process.pid}-${Date.now()}.db`);
 process.env.DATABASE_URL = `file:${dbPath}`;
 
-const { prisma } = await import("@/lib/prisma");
-const {
-  setTenantEnabled,
-  setRestaurantEnabled,
-  deleteRestaurantEverywhere,
-  deleteTenantEverywhere,
-} = await import("@/lib/tenant-lifecycle");
-
 const prefix = `lifecycle-test-${Date.now()}`;
 const createdTenantIds: string[] = [];
+
+let prisma: PrismaClient;
+let setTenantEnabled: typeof import("@/lib/tenant-lifecycle").setTenantEnabled;
+let setRestaurantEnabled: typeof import("@/lib/tenant-lifecycle").setRestaurantEnabled;
+let deleteRestaurantEverywhere: typeof import("@/lib/tenant-lifecycle").deleteRestaurantEverywhere;
+let deleteTenantEverywhere: typeof import("@/lib/tenant-lifecycle").deleteTenantEverywhere;
 
 async function cleanup() {
   for (const tenantId of createdTenantIds.splice(0)) {
@@ -37,20 +36,36 @@ async function cleanup() {
   }
 }
 
-before(() => {
+before(async () => {
   execFileSync(
     process.execPath,
-    [path.join(process.cwd(), "scripts", "run-with-mem.js"), "npx", "prisma", "db", "push", "--skip-generate"],
+    [
+      path.join(process.cwd(), "scripts", "run-with-mem.js"),
+      "npx",
+      "prisma",
+      "db",
+      "push",
+      "--url",
+      `file:${dbPath}`,
+    ],
     {
       cwd: process.cwd(),
       env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
       stdio: "inherit",
     },
   );
+
+  ({ prisma } = await import("@/lib/prisma"));
+  ({
+    setTenantEnabled,
+    setRestaurantEnabled,
+    deleteRestaurantEverywhere,
+    deleteTenantEverywhere,
+  } = await import("@/lib/tenant-lifecycle"));
 });
 
 after(async () => {
-  await prisma.$disconnect().catch(() => undefined);
+  if (prisma) await prisma.$disconnect().catch(() => undefined);
   for (const suffix of ["", "-wal", "-shm", "-journal"]) {
     fs.rmSync(`${dbPath}${suffix}`, { force: true });
   }
