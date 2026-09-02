@@ -47,12 +47,22 @@ export async function findBackgroundImageFile(restaurantId: string) {
   await ensureBackgroundsDir();
   const prefix = backgroundBasename(restaurantId);
   const entries = await fs.readdir(BACKGROUNDS_DIR);
-  const match = entries.find((name) => name.startsWith(prefix + "."));
+  const matches = entries.filter((name) => name.startsWith(prefix + "."));
+  if (matches.length === 0) return null;
 
-  if (!match) return null;
+  let newestPath: string | null = null;
+  let newestMtime = 0;
+  for (const name of matches) {
+    const filePath = path.join(BACKGROUNDS_DIR, name);
+    const stat = await fs.stat(filePath);
+    if (stat.mtimeMs >= newestMtime) {
+      newestMtime = stat.mtimeMs;
+      newestPath = filePath;
+    }
+  }
+  if (!newestPath) return null;
 
-  const filePath = path.join(BACKGROUNDS_DIR, match);
-  const ext = path.extname(match).toLowerCase();
+  const ext = path.extname(newestPath).toLowerCase();
   const contentType =
     ext === ".png"
       ? "image/png"
@@ -64,7 +74,7 @@ export async function findBackgroundImageFile(restaurantId: string) {
             ? "image/gif"
             : "application/octet-stream";
 
-  return { filePath, contentType };
+  return { filePath: newestPath, contentType, mtimeMs: newestMtime };
 }
 
 export async function removeBackgroundImageFile(restaurantId: string) {
@@ -81,4 +91,34 @@ export async function removeBackgroundImageFile(restaurantId: string) {
 export async function backgroundImageExists(restaurantId: string) {
   const file = await findBackgroundImageFile(restaurantId);
   return Boolean(file);
+}
+
+function isManagedBackgroundApiUrl(slug: string, url: string) {
+  const expected = `/api/branding/background/${encodeURIComponent(slug)}`;
+  return url === expected || url.startsWith(`${expected}?`);
+}
+
+/** Versioned public URL for the uploaded file; busts browser cache after replace. */
+export async function resolveBackgroundImagePublicUrl(restaurant: {
+  id: string;
+  slug: string;
+  backgroundImageUrl: string | null;
+}): Promise<string | null> {
+  const stored = await findBackgroundImageFile(restaurant.id);
+  if (!stored) {
+    const legacy = restaurant.backgroundImageUrl?.trim() || null;
+    if (legacy?.includes("/api/branding/background/")) {
+      return null;
+    }
+    return legacy;
+  }
+
+  const dbUrl = restaurant.backgroundImageUrl?.trim() ?? "";
+  if (dbUrl && isManagedBackgroundApiUrl(restaurant.slug, dbUrl.split("?")[0] ?? dbUrl)) {
+    if (dbUrl.includes("?v=")) {
+      return dbUrl;
+    }
+  }
+
+  return getBackgroundImagePublicUrl(restaurant.slug, stored.mtimeMs);
 }

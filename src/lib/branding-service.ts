@@ -1,7 +1,6 @@
-import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import {
   backgroundImageExists,
-  getBackgroundImagePublicUrl,
+  resolveBackgroundImagePublicUrl,
 } from "@/lib/background-image-storage";
 
 export async function getCustomerBackgroundImageUrl(restaurant: {
@@ -9,13 +8,18 @@ export async function getCustomerBackgroundImageUrl(restaurant: {
   slug: string;
   backgroundImageUrl: string | null;
 }): Promise<string | null> {
-  const flags = await getRestaurantFeatureFlags(restaurant.id);
+  const flags = await import("@/lib/feature-flags").then((m) =>
+    m.getRestaurantFeatureFlags(restaurant.id),
+  );
   if (!flags.custom_background) return null;
 
-  const hasUploaded = await backgroundImageExists(restaurant.id);
-  if (hasUploaded) {
-    return getBackgroundImagePublicUrl(restaurant.slug);
+  if (!(await backgroundImageExists(restaurant.id))) {
+    const url = restaurant.backgroundImageUrl?.trim() ?? "";
+    if (url && !url.includes("/api/branding/background/")) {
+      return url;
+    }
+    return null;
   }
 
-  return restaurant.backgroundImageUrl;
+  return resolveBackgroundImagePublicUrl(restaurant);
 }
