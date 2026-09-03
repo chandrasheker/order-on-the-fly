@@ -718,6 +718,7 @@ describe("M2 gateway receipts", () => {
       paymentId: settled.payment.id,
       restaurantId: restaurant.id,
       amount: 200,
+      requestId: `tabletap-refund-${crypto.randomUUID()}`,
     });
     assert.equal(over.ok, false);
 
@@ -1196,6 +1197,101 @@ describe("M2 gateway receipts", () => {
     });
     assert.equal(invalid.ok, false);
     assert.equal(invalid.status, 400);
+  });
+
+  it("requires a client requestId for Razorpay refunds and isolates retries from later actions", async () => {
+    const suffix = `reqid-${Date.now()}`;
+    const { restaurant, table, menuItem } = await seedRestaurant(suffix, { razorpay: true });
+    const order = await seedServedOrder({
+      restaurantId: restaurant.id,
+      tableId: table.id,
+      menuItemId: menuItem.id,
+      orderNumber: 1,
+      unitPrice: 500,
+    });
+    const created = await createOrReuseRazorpayCheckout({
+      restaurantId: restaurant.id,
+      orderId: order.id,
+      tableId: table.id,
+    });
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+    const paymentId = `pay_reqid_${suffix}`;
+    fake.addPayment({
+      id: paymentId,
+      order_id: created.checkout.orderId!,
+      amount: created.checkout.amountPaise,
+      currency: "INR",
+      status: "captured",
+    });
+    const settled = await settleRazorpayCapture({
+      restaurantId: restaurant.id,
+      providerOrderId: created.checkout.orderId!,
+      providerPaymentId: paymentId,
+      amountPaise: created.checkout.amountPaise,
+    });
+    assert.equal(settled.ok, true);
+    if (!settled.ok || !settled.payment) return;
+
+    const refundsBefore = fake.refunds.size;
+    const requestsBefore = fake.refundRequests.length;
+    const missing = await refundAutomaticPayment({
+      paymentId: settled.payment.id,
+      restaurantId: restaurant.id,
+      amount: 100,
+    });
+    assert.equal(missing.ok, false);
+    assert.equal(missing.status, 400);
+    assert.equal(fake.refunds.size, refundsBefore);
+    assert.equal(fake.refundRequests.length, requestsBefore);
+    assert.equal(
+      await prisma.gatewayRefundAttempt.count({ where: { restaurantId: restaurant.id } }),
+      0,
+    );
+    assert.equal(
+      await prisma.payment.count({
+        where: { restaurantId: restaurant.id, refundOfPaymentId: settled.payment.id },
+      }),
+      0,
+    );
+
+    const requestA = `tabletap-refund-${crypto.randomUUID()}`;
+    fake.failNextRefund("network");
+    const interrupted = await refundAutomaticPayment({
+      paymentId: settled.payment.id,
+      restaurantId: restaurant.id,
+      amount: 100,
+      requestId: requestA,
+    });
+    assert.equal(interrupted.ok, false);
+    const retried = await refundAutomaticPayment({
+      paymentId: settled.payment.id,
+      restaurantId: restaurant.id,
+      amount: 100,
+      requestId: requestA,
+    });
+    assert.equal(retried.ok, true);
+    const requestB = `tabletap-refund-${crypto.randomUUID()}`;
+    const second = await refundAutomaticPayment({
+      paymentId: settled.payment.id,
+      restaurantId: restaurant.id,
+      amount: 100,
+      requestId: requestB,
+    });
+    assert.equal(second.ok, true);
+    if (retried.ok && second.ok) {
+      assert.notEqual(retried.payment.id, second.payment.id);
+    }
+    assert.equal(fake.refunds.size, refundsBefore + 2);
+    const localRefunds = await prisma.payment.findMany({
+      where: { restaurantId: restaurant.id, refundOfPaymentId: settled.payment.id },
+    });
+    assert.equal(localRefunds.length, 2);
+    assert.equal(localRefunds.reduce((sum, row) => sum + row.amount, 0), 200);
+    const usedKeys = fake.refundRequests.slice(requestsBefore).map((row) => row.refundIdempotencyKey);
+    assert.ok(usedKeys.includes(requestA));
+    assert.ok(usedKeys.includes(requestB));
+    assert.equal(usedKeys.filter((key) => key === requestA).length >= 1, true);
   });
 
   it("requires a restaurant host for public receipt and gateway tokens", async () => {

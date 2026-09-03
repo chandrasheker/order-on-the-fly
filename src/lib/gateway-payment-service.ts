@@ -17,7 +17,6 @@ import {
 import { generatePublicToken } from "@/lib/public-token";
 import {
   RazorpayApiError,
-  createRazorpayRefundIdempotencyKey,
   normalizeRazorpayRefundIdempotencyKey,
   razorpayCreateOrder,
   razorpayCreateRefund,
@@ -657,7 +656,9 @@ export async function verifyRazorpayCheckoutCallback(params: {
 
 function resolveRefundRequestKey(raw?: string | null) {
   const trimmed = raw?.trim() ?? "";
-  if (!trimmed) return { ok: true as const, key: createRazorpayRefundIdempotencyKey() };
+  if (!trimmed) {
+    return { ok: false as const, error: "Refund request id is required", status: 400 };
+  }
   const normalized = normalizeRazorpayRefundIdempotencyKey(trimmed);
   if (!normalized) {
     return { ok: false as const, error: "Invalid refund request id", status: 400 };

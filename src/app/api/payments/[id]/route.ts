@@ -89,6 +89,7 @@ export async function PATCH(
     if (session.role !== "OWNER" && session.role !== "MANAGER") {
       return NextResponse.json({ error: "Refunds require a manager" }, { status: 403 });
     }
+    const isRazorpayRefund = owned.provider === "razorpay" && Boolean(owned.providerPaymentId);
     const rawRequestId =
       typeof body.requestId === "string"
         ? body.requestId
@@ -98,10 +99,13 @@ export async function PATCH(
             ? body.idempotencyKey
             : "";
     let requestId: string | undefined;
-    if (rawRequestId.trim()) {
+    if (isRazorpayRefund) {
       const normalized = normalizeRazorpayRefundIdempotencyKey(rawRequestId);
       if (!normalized) {
-        return NextResponse.json({ error: "Invalid refund request id" }, { status: 400 });
+        return NextResponse.json(
+          { error: rawRequestId.trim() ? "Invalid refund request id" : "Refund request id is required" },
+          { status: 400 },
+        );
       }
       requestId = normalized;
     }
