@@ -39,6 +39,7 @@ enum TableSwitchRequestStatus {
 enum PaymentMethod {
   CASH
   UPI
+  MANUAL_UPI
   CARD
 }
 
@@ -86,6 +87,17 @@ enum AuditActionType {
   COMP
   DISCOUNT
   STOCK_ADJUST
+  BILL_FINALIZED
+  BILL_VOIDED
+  PAYMENT_CAPTURED
+  PAYMENT_REFUNDED
+  PRINT_REPRINT
+}
+
+enum BillStatus {
+  DRAFT
+  FINALIZED
+  VOIDED
 }
 
 enum PromotionType {
@@ -170,6 +182,8 @@ model Restaurant {
   serverSlots           Int            @default(4)
   staffConfigured       Boolean        @default(false)
   paymentQrUrl          String?
+  upiVpa                String?
+  upiMerchantName       String?
   receiptAddress        String?
   receiptPhone          String?
   receiptGstin          String?
@@ -185,6 +199,7 @@ model Restaurant {
   paymentGatewayKeyId   String?
   paymentGatewaySecretEnc String?
   paymentWebhookSecret  String?
+  paymentWebhookSecretEnc String?
   pushAlertsEnabled     Boolean        @default(true)
   smsAlertsEnabled      Boolean        @default(true)
   tenantId              String?
@@ -213,6 +228,9 @@ model Restaurant {
   guestServiceRequests  GuestServiceRequest[]
   pushSubscriptions     PushSubscription[]
   paymentWebhookEvents  PaymentWebhookEvent[]
+  bills                 Bill[]
+  gatewayPaymentAttempts GatewayPaymentAttempt[]
+  gatewayRefundAttempts  GatewayRefundAttempt[]
   backgroundJobs        BackgroundJob[]
   platformEvents        PlatformEvent[]
   ingredients           Ingredient[]
@@ -392,6 +410,8 @@ model Order {
   updatedAt      DateTime    @updatedAt
   date           String
   payments       Payment[]
+  bills          Bill[]
+  gatewayPaymentAttempts GatewayPaymentAttempt[]
 
   @@index([restaurantId, date])
   @@index([tableId])
@@ -444,17 +464,66 @@ model Payment {
   table             Table               @relation(fields: [tableId], references: [id], onDelete: Cascade)
   orderId           String?
   order             Order?              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  billId            String?
+  bill              Bill?               @relation(fields: [billId], references: [id], onDelete: SetNull)
   amount            Float
   method            PaymentMethod       @default(UPI)
+  status            String              @default("CAPTURED")
+  verificationStatus String?
+  cashTendered      Float?
+  cashChange        Float?
+  idempotencyKey    String?
+  provider          String?
+  providerPaymentId String?
+  refundOfPaymentId String?
   note              String?
   collectedByUserId String?
   collectedByName   String?
   createdAt         DateTime            @default(now())
+  capturedAt        DateTime?
   allocations       PaymentAllocation[]
 
+  @@unique([restaurantId, idempotencyKey])
+  @@unique([restaurantId, provider, providerPaymentId])
   @@index([restaurantId, createdAt])
   @@index([orderId])
   @@index([tableId])
+  @@index([billId])
+  @@index([status])
+}
+
+model Bill {
+  id              String     @id @default(cuid())
+  tenantId        String?
+  restaurantId    String
+  restaurant      Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  branchId        String?
+  orderId         String
+  order           Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  billNumber      String
+  publicToken     String?    @unique
+  status          BillStatus @default(FINALIZED)
+  snapshot        String
+  itemSubtotal    Float
+  orderDiscount   Float      @default(0)
+  gstAmount       Float      @default(0)
+  cgstAmount      Float      @default(0)
+  sgstAmount      Float      @default(0)
+  grandTotal      Float
+  finalizedAt     DateTime?
+  finalizedByUserId String?
+  finalizedByName String?
+  voidedAt        DateTime?
+  voidedByUserId  String?
+  voidedByName    String?
+  voidReason      String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  payments        Payment[]
+
+  @@unique([orderId])
+  @@unique([restaurantId, billNumber])
+  @@index([restaurantId, createdAt])
 }
 
 model PaymentAllocation {
@@ -788,6 +857,59 @@ model PaymentWebhookEvent {
 
   @@unique([restaurantId, provider, externalId])
   @@index([restaurantId, createdAt])
+}
+
+model GatewayPaymentAttempt {
+  id                 String    @id @default(cuid())
+  publicToken        String    @unique
+  tenantId           String?
+  restaurantId       String
+  restaurant         Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  branchId           String?
+  tableId            String
+  orderId            String
+  order              Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  billId             String?
+  provider           String
+  amountPaise        Int
+  currency           String    @default("INR")
+  status             String
+  idempotencyKey     String
+  providerOrderId    String?
+  providerPaymentId  String?
+  providerReceipt    String?
+  failureCode        String?
+  failureMessage     String?
+  expiresAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  verifiedAt         DateTime?
+  capturedAt         DateTime?
+
+  @@unique([restaurantId, idempotencyKey])
+  @@unique([restaurantId, provider, providerOrderId])
+  @@unique([restaurantId, provider, providerPaymentId])
+  @@index([orderId, status])
+  @@index([restaurantId, createdAt])
+}
+
+model GatewayRefundAttempt {
+  id                String    @id @default(cuid())
+  restaurantId      String
+  restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  paymentId         String
+  gatewayAttemptId  String?
+  amountPaise       Int
+  status            String
+  idempotencyKey    String
+  providerRefundId  String?
+  failureMessage    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([restaurantId, idempotencyKey])
+  @@unique([restaurantId, providerRefundId])
+  @@index([paymentId])
 }
 
 model Tenant {

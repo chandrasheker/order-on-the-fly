@@ -65,6 +65,7 @@ function computeSummaryFromOrder(
       method: PaymentMethod;
       status?: string | null;
       verificationStatus?: string | null;
+      provider?: string | null;
       note: string | null;
       collectedByName: string | null;
       createdAt: Date;
@@ -140,6 +141,7 @@ function computeSummaryFromOrder(
       method: p.method,
       status: p.status ?? PAYMENT_STATUS.CAPTURED,
       verificationStatus: p.verificationStatus,
+      provider: p.provider ?? null,
       note: p.note,
       collectedByName: p.collectedByName,
       createdAt: p.createdAt,
@@ -402,6 +404,19 @@ export async function recordOrderPayment(params: {
       const status =
         params.status ??
         (capture ? PAYMENT_STATUS.CAPTURED : PAYMENT_STATUS.PENDING);
+
+      const isGatewayCapture = params.provider === "razorpay" && Boolean(params.providerPaymentId) && capture;
+      if (capture && !isGatewayCapture) {
+        const { findActiveGatewayAttempt } = await import("@/lib/gateway-attempt-guard");
+        const activeGateway = await findActiveGatewayAttempt(order.id);
+        if (activeGateway) {
+          return {
+            ok: false as const,
+            error: "Automatic payment is in progress. Cancel or wait before collecting another method.",
+            status: 409,
+          };
+        }
+      }
 
       if (order.paidAt || summary.remaining <= FINANCIAL_PAID_EPSILON) {
         if (!order.paidAt && summary.fullyPaid) {
@@ -692,6 +707,15 @@ export async function initiateManualUpiPayment(params: {
     select: { id: true, tableId: true, restaurantId: true },
   });
   if (!order) return { ok: false as const, error: "Order not found", status: 404 };
+
+  const { findActiveGatewayAttempt } = await import("@/lib/gateway-attempt-guard");
+  if (await findActiveGatewayAttempt(params.orderId)) {
+    return {
+      ok: false as const,
+      error: "Automatic payment is in progress. Please don't start a second payment.",
+      status: 409,
+    };
+  }
 
   const { getTableTabPaymentSummary } = await import("@/lib/table-tab-service");
   const tab = await getTableTabPaymentSummary(params.tableId ?? order.tableId);
@@ -987,6 +1011,8 @@ export async function refundCapturedPayment(params: {
   actorUserId?: string;
   actorName?: string;
   idempotencyKey?: string;
+  provider?: string;
+  providerPaymentId?: string;
 }) {
   try {
     const result = await runWithUniqueConstraintRetry(() =>
@@ -1042,6 +1068,8 @@ export async function refundCapturedPayment(params: {
             method: original.method,
             status: PAYMENT_STATUS.REFUNDED,
             refundOfPaymentId: original.id,
+            provider: params.provider ?? original.provider,
+            providerPaymentId: params.providerPaymentId ?? null,
             idempotencyKey: idempotencyKey ?? `refund:${original.id}:${crypto.randomUUID()}`,
             note: `Refund of ${original.id}`,
             collectedByUserId: params.actorUserId,

@@ -5,6 +5,7 @@ import {
   customerPaymentAction,
   resolveCanonicalCustomerDue,
   shouldOfferManualUpiIntent,
+  shouldOfferRazorpayCheckout,
 } from "@/lib/customer-payment-amount";
 import { computeOrderFinancials } from "@/lib/order-financials";
 import { buildUpiIntents } from "@/lib/upi-intent";
@@ -58,6 +59,30 @@ describe("canonical customer payment amount", () => {
     assert.equal(
       customerPaymentAction({ unpaidOrderCount: 1, upiVpa: "abcrestaurant@upi" }),
       "initiate-manual-upi",
+    );
+    assert.equal(
+      customerPaymentAction({
+        unpaidOrderCount: 1,
+        upiVpa: "abcrestaurant@upi",
+        automaticUpiEnabled: true,
+      }),
+      "request-payment",
+    );
+    assert.equal(
+      shouldOfferRazorpayCheckout({
+        canonicalDue: 157.5,
+        unpaidOrderCount: 1,
+        automaticUpiEnabled: true,
+      }),
+      true,
+    );
+    assert.equal(
+      shouldOfferRazorpayCheckout({
+        canonicalDue: 157.5,
+        unpaidOrderCount: 2,
+        automaticUpiEnabled: true,
+      }),
+      false,
     );
   });
 });

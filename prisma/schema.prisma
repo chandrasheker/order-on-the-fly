@@ -214,6 +214,7 @@ model Restaurant {
   paymentGatewayKeyId   String?
   paymentGatewaySecretEnc String?
   paymentWebhookSecret  String?
+  paymentWebhookSecretEnc String?
   pushAlertsEnabled     Boolean        @default(true)
   smsAlertsEnabled      Boolean        @default(true)
   tenantId              String?
@@ -244,6 +245,8 @@ model Restaurant {
   guestServiceRequests  GuestServiceRequest[]
   pushSubscriptions     PushSubscription[]
   paymentWebhookEvents  PaymentWebhookEvent[]
+  gatewayPaymentAttempts GatewayPaymentAttempt[]
+  gatewayRefundAttempts  GatewayRefundAttempt[]
   backgroundJobs        BackgroundJob[]
   platformEvents        PlatformEvent[]
   ingredients           Ingredient[]
@@ -507,6 +510,7 @@ model Order {
   date           String
   payments       Payment[]
   bills          Bill[]
+  gatewayPaymentAttempts GatewayPaymentAttempt[]
 
   @@index([restaurantId, date])
   @@index([tableId])
@@ -602,6 +606,7 @@ model Bill {
   orderId         String
   order           Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
   billNumber      String
+  publicToken     String?    @unique
   status          BillStatus @default(FINALIZED)
   snapshot        String
   itemSubtotal    Float
@@ -965,6 +970,60 @@ model PaymentWebhookEvent {
 
   @@unique([restaurantId, provider, externalId])
   @@index([restaurantId, createdAt])
+}
+
+/** External checkout attempt. Not a captured ledger Payment. */
+model GatewayPaymentAttempt {
+  id                 String    @id @default(cuid())
+  publicToken        String    @unique
+  tenantId           String?
+  restaurantId       String
+  restaurant         Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  branchId           String?
+  tableId            String
+  orderId            String
+  order              Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  billId             String?
+  provider           String
+  amountPaise        Int
+  currency           String    @default("INR")
+  status             String
+  idempotencyKey     String
+  providerOrderId    String?
+  providerPaymentId  String?
+  providerReceipt    String?
+  failureCode        String?
+  failureMessage     String?
+  expiresAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  verifiedAt         DateTime?
+  capturedAt         DateTime?
+
+  @@unique([restaurantId, idempotencyKey])
+  @@unique([restaurantId, provider, providerOrderId])
+  @@unique([restaurantId, provider, providerPaymentId])
+  @@index([orderId, status])
+  @@index([restaurantId, createdAt])
+}
+
+model GatewayRefundAttempt {
+  id                String    @id @default(cuid())
+  restaurantId      String
+  restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  paymentId         String
+  gatewayAttemptId  String?
+  amountPaise       Int
+  status            String
+  idempotencyKey    String
+  providerRefundId  String?
+  failureMessage    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([restaurantId, idempotencyKey])
+  @@unique([restaurantId, providerRefundId])
+  @@index([paymentId])
 }
 
 model Tenant {

@@ -79,7 +79,16 @@ export default function RealtimeAdminPage() {
         setMenuItems(flat);
       }
       if (kitchenRes.ok) setKitchen((await kitchenRes.json()).state ?? null);
-      if (gwRes.ok) setGateway((await gwRes.json()).settings ?? null);
+      if (gwRes.ok) {
+        const settings = (await gwRes.json()).settings ?? null;
+        setGateway(settings);
+        setGatewayForm({
+          provider: String(settings?.provider ?? "RAZORPAY"),
+          keyId: String(settings?.keyId ?? ""),
+          secret: "",
+          webhookSecret: "",
+        });
+      }
       if (alertRes.ok) setAlertSettings((await alertRes.json()).settings ?? null);
     } catch {
       /* ignore network errors */
@@ -389,9 +398,17 @@ export default function RealtimeAdminPage() {
 
         {tab === "gateway" && (
           <Card className="p-4 space-y-4">
-            <h2 className="font-semibold">Payment webhooks</h2>
+            <h2 className="font-semibold">Automatic payment gateway</h2>
+            <p className="text-sm text-zinc-400">
+              Razorpay is the production automatic gateway. Key secret and webhook secret are never shown after save.
+            </p>
+            <p className={`text-sm ${gateway?.configured ? "text-emerald-300" : "text-amber-200"}`}>
+              Status: {gateway?.configured ? "Configured" : "Incomplete"}
+            </p>
             {gateway?.webhookUrl ? (
-              <p className="text-xs text-zinc-400 break-all">Webhook URL: {String(gateway.webhookUrl)}?provider=razorpay</p>
+              <p className="text-xs text-zinc-400 break-all">
+                Webhook callback URL: {String(gateway.webhookUrl)}?provider=razorpay
+              </p>
             ) : null}
             <select
               className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm"
@@ -399,12 +416,17 @@ export default function RealtimeAdminPage() {
               onChange={(e) => setGatewayForm({ ...gatewayForm, provider: e.target.value })}
             >
               <option value="RAZORPAY">Razorpay</option>
-              <option value="PHONEPE">PhonePe</option>
-              <option value="PAYTM">Paytm</option>
+              <option value="PHONEPE">PhonePe (automatic checkout not available yet)</option>
+              <option value="PAYTM">Paytm (automatic checkout not available yet)</option>
             </select>
+            {gatewayForm.provider !== "RAZORPAY" ? (
+              <p className="text-xs text-amber-200">
+                Automatic gateway not available for this provider yet. Cash and manual UPI still work.
+              </p>
+            ) : null}
             <Input placeholder="Key ID" value={gatewayForm.keyId} onChange={(e) => setGatewayForm({ ...gatewayForm, keyId: e.target.value })} />
-            <Input placeholder="Secret (stored encrypted)" type="password" value={gatewayForm.secret} onChange={(e) => setGatewayForm({ ...gatewayForm, secret: e.target.value })} />
-            <Input placeholder="Webhook secret" type="password" value={gatewayForm.webhookSecret} onChange={(e) => setGatewayForm({ ...gatewayForm, webhookSecret: e.target.value })} />
+            <Input placeholder="Key secret (leave blank to keep current)" type="password" value={gatewayForm.secret} onChange={(e) => setGatewayForm({ ...gatewayForm, secret: e.target.value })} autoComplete="new-password" />
+            <Input placeholder="Webhook secret (leave blank to keep current)" type="password" value={gatewayForm.webhookSecret} onChange={(e) => setGatewayForm({ ...gatewayForm, webhookSecret: e.target.value })} autoComplete="new-password" />
             <Button onClick={() => void saveGateway()}>Save gateway</Button>
           </Card>
         )}

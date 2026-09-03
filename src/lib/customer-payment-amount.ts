@@ -27,10 +27,22 @@ export function shouldOfferManualUpiIntent(params: {
   return isValidUpiVpa(params.upiVpa);
 }
 
+export function shouldOfferRazorpayCheckout(params: {
+  canonicalDue: number | null;
+  unpaidOrderCount: number;
+  automaticUpiEnabled?: boolean;
+}) {
+  if (!canStartCustomerPayment(params.canonicalDue)) return false;
+  if (params.unpaidOrderCount !== 1) return false;
+  return Boolean(params.automaticUpiEnabled);
+}
+
 export function customerPaymentAction(params: {
   unpaidOrderCount: number;
   upiVpa?: string | null;
+  automaticUpiEnabled?: boolean;
 }): "initiate-manual-upi" | "request-payment" {
   if (params.unpaidOrderCount > 1) return "request-payment";
+  if (params.automaticUpiEnabled) return "request-payment";
   return isValidUpiVpa(params.upiVpa) ? "initiate-manual-upi" : "request-payment";
 }

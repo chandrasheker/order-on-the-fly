@@ -10,6 +10,27 @@ import { FINANCIAL_PAID_EPSILON, PAYMENT_STATUS } from "@/lib/order-financials";
 import { isUniqueConstraintError } from "@/lib/bill-service";
 import { logInfo, logWarn } from "@/lib/logger";
 import type { PaymentGatewayProvider } from "@/generated/prisma/client";
+import { isRazorpayAutomaticReady, readWebhookSecret } from "@/lib/automatic-gateway";
+import { RAZORPAY_PROVIDER } from "@/lib/gateway-constants";
+import { settleRazorpayCapture } from "@/lib/gateway-payment-service";
+
+function publicGatewaySettings(row: {
+  paymentGatewayProvider: PaymentGatewayProvider | null;
+  paymentGatewayKeyId: string | null;
+  paymentGatewaySecretEnc?: string | null;
+  paymentWebhookSecret?: string | null;
+  paymentWebhookSecretEnc?: string | null;
+  slug: string;
+}) {
+  return {
+    provider: row.paymentGatewayProvider,
+    keyId: row.paymentGatewayKeyId,
+    configured: isRazorpayAutomaticReady(row),
+    webhookConfigured: Boolean(readWebhookSecret(row)),
+    webhookUrl: `${getAppBaseUrl()}/api/webhooks/payment/${row.slug}`,
+    automaticAvailable: isRazorpayAutomaticReady(row),
+  };
+}
 
 export async function getPaymentGatewaySettings(restaurantId: string) {
   const row = await prisma.restaurant.findUnique({
@@ -17,17 +38,14 @@ export async function getPaymentGatewaySettings(restaurantId: string) {
     select: {
       paymentGatewayProvider: true,
       paymentGatewayKeyId: true,
+      paymentGatewaySecretEnc: true,
       paymentWebhookSecret: true,
+      paymentWebhookSecretEnc: true,
       slug: true,
     },
   });
   if (!row) return null;
-  return {
-    provider: row.paymentGatewayProvider,
-    keyId: row.paymentGatewayKeyId,
-    webhookConfigured: Boolean(row.paymentWebhookSecret),
-    webhookUrl: `${getAppBaseUrl()}/api/webhooks/payment/${row.slug}`,
-  };
+  return publicGatewaySettings(row);
 }
 
 export async function updatePaymentGatewaySettings(
@@ -45,23 +63,20 @@ export async function updatePaymentGatewaySettings(
 
   const update: Record<string, unknown> = {};
   if (data.provider !== undefined) update.paymentGatewayProvider = data.provider;
-  if (data.keyId !== undefined) update.paymentGatewayKeyId = data.keyId;
-  if (data.webhookSecret !== undefined) update.paymentWebhookSecret = data.webhookSecret;
-  if (data.secret !== undefined) {
-    update.paymentGatewaySecretEnc = data.secret
-      ? encryptSecret(data.secret)
-      : null;
+  if (typeof data.keyId === "string") update.paymentGatewayKeyId = data.keyId.trim() || null;
+  if (typeof data.webhookSecret === "string" && data.webhookSecret.trim()) {
+    update.paymentWebhookSecretEnc = encryptSecret(data.webhookSecret.trim());
+    update.paymentWebhookSecret = null;
+  }
+  if (typeof data.secret === "string" && data.secret.trim()) {
+    update.paymentGatewaySecretEnc = encryptSecret(data.secret.trim());
   }
 
-  return prisma.restaurant.update({
+  await prisma.restaurant.update({
     where: { id: restaurantId },
     data: update,
-    select: {
-      paymentGatewayProvider: true,
-      paymentGatewayKeyId: true,
-      paymentWebhookSecret: true,
-    },
   });
+  return getPaymentGatewaySettings(restaurantId);
 }
 
 export async function processPaymentWebhook(params: {
@@ -87,7 +102,16 @@ export async function processPaymentWebhook(params: {
     return { ok: false as const, status: 401, error: "Invalid provider" };
   }
 
-  const webhookSecret = restaurant.paymentWebhookSecret;
+  const providerName = params.provider.toLowerCase();
+  if (providerName === "phonepe" || providerName === "paytm") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Automatic gateway not available for this provider yet",
+    };
+  }
+
+  const webhookSecret = readWebhookSecret(restaurant);
   if (!webhookSecret) {
     return { ok: false as const, status: 400, error: "Webhook secret not configured" };
   }
@@ -184,7 +208,7 @@ export async function processPaymentWebhook(params: {
     return { ok: false as const, status: 409, error: "Webhook event restaurant mismatch" };
   }
 
-  const result = await applyAutoPayment(restaurant.id, parsed, params.provider);
+  const result = await applyVerifiedWebhookPayment(restaurant.id, parsed, params.provider);
   if (result.ok) {
     await prisma.paymentWebhookEvent.updateMany({
       where: { id: event.id, restaurantId: restaurant.id },
@@ -237,33 +261,96 @@ function parseWebhookPayload(provider: string, payload: Record<string, unknown>)
     const entity = (payload.payload as { payment?: { entity?: Record<string, unknown> } })?.payment
       ?.entity;
     if (!entity) return null;
-    const amount = Number(entity.amount) / 100;
+    const amountPaise = Number(entity.amount);
+    const amount = amountPaise / 100;
     const externalId = String(entity.id);
     const notes = (entity.notes as Record<string, string>) ?? {};
     return {
       externalId,
       amount,
+      amountPaise,
+      currency: typeof entity.currency === "string" ? entity.currency : "INR",
+      providerOrderId: typeof entity.order_id === "string" ? entity.order_id : undefined,
       tableId: notes.tableId,
       orderId: notes.orderId,
       reference: notes.reference,
     };
   }
 
-  if (provider === "phonepe" || provider === "paytm") {
-    const data = (payload.data ?? payload) as Record<string, unknown>;
-    const amount = Number(data.amount ?? data.transactionAmount ?? 0) / (provider === "phonepe" ? 100 : 1);
-    const externalId = String(data.transactionId ?? data.merchantTransactionId ?? data.orderId ?? "");
-    const meta = (data.metaInfo ?? data.notes ?? data) as Record<string, string>;
+  return null;
+}
+
+async function applyVerifiedWebhookPayment(
+  restaurantId: string,
+  parsed: {
+    amount: number;
+    amountPaise?: number;
+    currency?: string;
+    providerOrderId?: string;
+    tableId?: string;
+    orderId?: string;
+    reference?: string;
+    externalId?: string;
+  },
+  provider: string,
+) {
+  if (provider.toLowerCase() !== RAZORPAY_PROVIDER) {
     return {
-      externalId,
-      amount,
-      tableId: meta.tableId,
-      orderId: meta.orderId,
-      reference: meta.reference ?? meta.udf1,
+      ok: false as const,
+      message: "Automatic gateway not available for this provider yet",
+      retryable: false,
     };
   }
 
-  return null;
+  if (parsed.externalId) {
+    const attempt =
+      (parsed.providerOrderId
+        ? await prisma.gatewayPaymentAttempt.findFirst({
+            where: {
+              restaurantId,
+              provider: RAZORPAY_PROVIDER,
+              providerOrderId: parsed.providerOrderId,
+            },
+          })
+        : null) ??
+      (await prisma.gatewayPaymentAttempt.findFirst({
+        where: {
+          restaurantId,
+          provider: RAZORPAY_PROVIDER,
+          providerPaymentId: parsed.externalId,
+        },
+      }));
+    if (attempt) {
+      const settled = await settleRazorpayCapture({
+        restaurantId,
+        attemptId: attempt.id,
+        providerOrderId: parsed.providerOrderId ?? attempt.providerOrderId ?? undefined,
+        providerPaymentId: parsed.externalId,
+        amountPaise: parsed.amountPaise ?? attempt.amountPaise,
+        currency: parsed.currency ?? "INR",
+      });
+      if (settled.ok) {
+        const order = await prisma.order.findFirst({
+          where: { id: attempt.orderId, restaurantId },
+          include: { table: true },
+        });
+        return {
+          ok: true as const,
+          orderId: attempt.orderId,
+          tableId: attempt.tableId,
+          tableNumber: order?.table.number,
+          message: "Razorpay payment captured",
+        };
+      }
+      return {
+        ok: false as const,
+        message: settled.error,
+        retryable: settled.status >= 500,
+      };
+    }
+  }
+
+  return applyAutoPayment(restaurantId, parsed, provider);
 }
 
 async function applyAutoPayment(

@@ -9,6 +9,7 @@ import { listActivePromotions, listComboMeals } from "@/lib/promotion-service";
 import { getKitchenCapacityState } from "@/lib/kitchen-capacity-service";
 import { resolveTenantFromHost } from "@/platform/host-tenant";
 import { assertPathSlugForResolution, opaqueNotFoundJson } from "@/platform/tenant-scope";
+import { isRazorpayAutomaticReady } from "@/lib/automatic-gateway";
 
 export async function GET(
   req: NextRequest,
@@ -40,6 +41,9 @@ export async function GET(
         upiMerchantName: true,
         paymentGatewayProvider: true,
         paymentGatewayKeyId: true,
+        paymentGatewaySecretEnc: true,
+        paymentWebhookSecret: true,
+        paymentWebhookSecretEnc: true,
       },
     });
 
@@ -151,7 +155,7 @@ export async function GET(
         paymentQrUrl,
         upiVpa: restaurant.upiVpa ?? null,
         upiMerchantName: restaurant.upiMerchantName ?? restaurant.name,
-        automaticUpiEnabled: Boolean(restaurant.paymentGatewayProvider && restaurant.paymentGatewayKeyId),
+        automaticUpiEnabled: isRazorpayAutomaticReady(restaurant),
       },
       table: { id: table.id, number: table.number, qrToken: table.qrToken },
       paymentBlocked,
