@@ -212,6 +212,95 @@ describe("M1 financial correctness", () => {
     assert.equal(first.payment.status === "FAILED" || rejected.ok, true);
   });
 
+  it("concurrent initiateManualUpiPayment creates exactly one active pending row", async () => {
+    const suffix = `init-race-${Date.now()}`;
+    const { restaurant, table, menuItem } = await seedRestaurant(suffix);
+    const order = await seedServedOrder({
+      restaurantId: restaurant.id,
+      tableId: table.id,
+      menuItemId: menuItem.id,
+      orderNumber: 1,
+      unitPrice: 180,
+    });
+    const [first, second] = await Promise.all([
+      initiateManualUpiPayment({ orderId: order.id }),
+      initiateManualUpiPayment({ orderId: order.id }),
+    ]);
+    assert.equal(first.ok, true);
+    assert.equal(second.ok, true);
+    if (!first.ok || !first.payment || !second.ok || !second.payment) return;
+    assert.equal(first.payment.id, second.payment.id);
+    assert.ok(first.payment.status === "PENDING" || first.payment.status === "INITIATED");
+    assert.ok(second.payment.status === "PENDING" || second.payment.status === "INITIATED");
+    const pending = await prisma.payment.findMany({
+      where: {
+        orderId: order.id,
+        method: "MANUAL_UPI",
+        status: { in: ["PENDING", "INITIATED"] },
+      },
+    });
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0]?.id, first.payment.id);
+    assert.equal(pending[0]?.amount, 180);
+  });
+
+  it("confirm cancels sibling pending UPI and captured total cannot exceed the bill", async () => {
+    const suffix = `sib-${Date.now()}`;
+    const { restaurant, table, menuItem } = await seedRestaurant(suffix);
+    const order = await seedServedOrder({
+      restaurantId: restaurant.id,
+      tableId: table.id,
+      menuItemId: menuItem.id,
+      orderNumber: 1,
+      unitPrice: 220,
+    });
+    const pending = await initiateManualUpiPayment({ orderId: order.id });
+    assert.equal(pending.ok, true);
+    if (!pending.ok || !pending.payment) return;
+    const sibling = await prisma.payment.create({
+      data: {
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        orderId: order.id,
+        amount: 220,
+        method: "MANUAL_UPI",
+        status: "PENDING",
+        verificationStatus: "PENDING_VERIFICATION",
+        idempotencyKey: `manual-upi-sibling:${order.id}`,
+        note: "raced sibling",
+      },
+    });
+    const confirmed = await confirmManualUpiPayment({
+      paymentId: pending.payment.id,
+      restaurantId: restaurant.id,
+    });
+    assert.equal(confirmed.ok, true);
+    const replay = await confirmManualUpiPayment({
+      paymentId: pending.payment.id,
+      restaurantId: restaurant.id,
+    });
+    assert.equal(replay.ok, true);
+    const leftover = await prisma.payment.findMany({
+      where: {
+        orderId: order.id,
+        method: "MANUAL_UPI",
+        status: { in: ["PENDING", "INITIATED"] },
+      },
+    });
+    assert.equal(leftover.length, 0);
+    const siblingRow = await prisma.payment.findUnique({ where: { id: sibling.id } });
+    assert.equal(siblingRow?.status, "CANCELLED");
+    const captured = await prisma.payment.findMany({
+      where: { orderId: order.id, status: "CAPTURED" },
+    });
+    const capturedTotal = captured.reduce((sum, row) => sum + row.amount, 0);
+    assert.equal(captured.length, 1);
+    assert.equal(capturedTotal, 220);
+    const summary = await getOrderPaymentSummary(order.id);
+    assert.equal(summary?.remaining, 0);
+    assert.ok((summary?.paid ?? 0) <= 220.01);
+  });
+
   it("staff full payment cancels pending UPI so verify cannot double-capture", async () => {
     const suffix = `race-${Date.now()}`;
     const { restaurant, table, menuItem } = await seedRestaurant(suffix);

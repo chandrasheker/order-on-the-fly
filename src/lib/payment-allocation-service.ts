@@ -465,6 +465,7 @@ export async function recordOrderPayment(params: {
           data: {
             status: PAYMENT_STATUS.CANCELLED,
             verificationStatus: MANUAL_UPI_VERIFICATION.REJECTED,
+            idempotencyKey: null,
           },
         });
       }
@@ -671,6 +672,15 @@ export async function recordTableTabFullPayment(params: {
   };
 }
 
+/** Deterministic key for the single active MANUAL_UPI attempt on an order. */
+export function manualUpiActiveAttemptKey(orderId: string) {
+  return `manual-upi-active:${orderId}`;
+}
+
+function isActiveManualUpiStatus(status: string | null | undefined) {
+  return status === PAYMENT_STATUS.PENDING || status === PAYMENT_STATUS.INITIATED;
+}
+
 export async function initiateManualUpiPayment(params: {
   orderId: string;
   tableId?: string;
@@ -693,6 +703,7 @@ export async function initiateManualUpiPayment(params: {
     };
   }
 
+  const activeKey = manualUpiActiveAttemptKey(params.orderId);
   const active = await prisma.payment.findFirst({
     where: {
       orderId: params.orderId,
@@ -717,7 +728,7 @@ export async function initiateManualUpiPayment(params: {
     return { ok: false as const, error: "Nothing to pay", status: 400 };
   }
 
-  return recordOrderPayment({
+  const created = await recordOrderPayment({
     orderId: params.orderId,
     amount: summary.remaining,
     method: "MANUAL_UPI",
@@ -725,10 +736,41 @@ export async function initiateManualUpiPayment(params: {
     verificationStatus: MANUAL_UPI_VERIFICATION.PENDING_VERIFICATION,
     capture: false,
     note: "Customer opened UPI — awaiting staff verification",
-    idempotencyKey: `manual-upi-pending:${params.orderId}:${crypto.randomUUID()}`,
+    idempotencyKey: activeKey,
     collectedByUserId: params.actorUserId,
     collectedByName: params.actorName,
   });
+
+  if (created.ok && created.payment && isActiveManualUpiStatus(created.payment.status)) {
+    return created;
+  }
+
+  const raced = await prisma.payment.findFirst({
+    where: {
+      restaurantId: order.restaurantId,
+      orderId: params.orderId,
+      method: "MANUAL_UPI",
+      status: { in: [PAYMENT_STATUS.PENDING, PAYMENT_STATUS.INITIATED] },
+    },
+    include: { allocations: true },
+  });
+  if (raced) {
+    const racedSummary = await getOrderPaymentSummary(params.orderId);
+    return {
+      ok: true as const,
+      payment: raced,
+      summary: racedSummary,
+      fullyPaid: Boolean(racedSummary?.fullyPaid),
+      idempotent: true as const,
+    };
+  }
+
+  if (created.ok && !created.payment) {
+    return created;
+  }
+  return created.ok
+    ? { ok: false as const, error: "Could not start a unique UPI attempt", status: 409 }
+    : created;
 }
 
 export async function confirmManualUpiPayment(params: {
@@ -806,6 +848,21 @@ export async function confirmManualUpiPayment(params: {
           billId: payment.billId ?? billResult.bill.id,
           collectedByUserId: params.actorUserId ?? payment.collectedByUserId,
           collectedByName: params.actorName ?? payment.collectedByName,
+          idempotencyKey: null,
+        },
+      });
+
+      await tx.payment.updateMany({
+        where: {
+          orderId: order.id,
+          id: { not: payment.id },
+          method: "MANUAL_UPI",
+          status: { in: [PAYMENT_STATUS.PENDING, PAYMENT_STATUS.INITIATED] },
+        },
+        data: {
+          status: PAYMENT_STATUS.CANCELLED,
+          verificationStatus: MANUAL_UPI_VERIFICATION.REJECTED,
+          idempotencyKey: null,
         },
       });
 
@@ -917,6 +974,7 @@ export async function rejectManualUpiPayment(params: {
     data: {
       status: PAYMENT_STATUS.FAILED,
       verificationStatus: MANUAL_UPI_VERIFICATION.REJECTED,
+      idempotencyKey: null,
     },
   });
   return { ok: true as const, payment: updated };
