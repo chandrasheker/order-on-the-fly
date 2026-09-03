@@ -117,9 +117,25 @@ export async function processPaymentWebhook(params: {
     return { ok: true as const, status: 200, message: "Ignored event" };
   }
 
+  const eventIdentity = {
+    restaurantId_provider_externalId: {
+      restaurantId: restaurant.id,
+      provider: params.provider,
+      externalId: parsed.externalId,
+    },
+  };
   const existing = await prisma.paymentWebhookEvent.findUnique({
-    where: { provider_externalId: { provider: params.provider, externalId: parsed.externalId } },
+    where: eventIdentity,
   });
+  if (existing && existing.restaurantId !== restaurant.id) {
+    logWarn("payments:webhook", "Refusing cross-restaurant webhook event", {
+      restaurantId: restaurant.id,
+      eventRestaurantId: existing.restaurantId,
+      provider: params.provider,
+      externalId: parsed.externalId,
+    });
+    return { ok: false as const, status: 409, error: "Webhook event restaurant mismatch" };
+  }
   if (existing?.processedAt) {
     return { ok: true as const, status: 200, message: "Already processed" };
   }
@@ -141,9 +157,12 @@ export async function processPaymentWebhook(params: {
     } catch (error) {
       if (!isUniqueConstraintError(error)) throw error;
       event = await prisma.paymentWebhookEvent.findUnique({
-        where: { provider_externalId: { provider: params.provider, externalId: parsed.externalId } },
+        where: eventIdentity,
       });
       if (!event) throw error;
+      if (event.restaurantId !== restaurant.id) {
+        return { ok: false as const, status: 409, error: "Webhook event restaurant mismatch" };
+      }
       if (event.processedAt) {
         return { ok: true as const, status: 200, message: "Already processed" };
       }
@@ -161,11 +180,14 @@ export async function processPaymentWebhook(params: {
   if (!event) {
     return { ok: false as const, status: 503, error: "Webhook event could not be recorded" };
   }
+  if (event.restaurantId !== restaurant.id) {
+    return { ok: false as const, status: 409, error: "Webhook event restaurant mismatch" };
+  }
 
   const result = await applyAutoPayment(restaurant.id, parsed, params.provider);
   if (result.ok) {
-    await prisma.paymentWebhookEvent.update({
-      where: { id: event.id },
+    await prisma.paymentWebhookEvent.updateMany({
+      where: { id: event.id, restaurantId: restaurant.id },
       data: {
         status: "PROCESSED",
         processedAt: new Date(),
@@ -184,8 +206,8 @@ export async function processPaymentWebhook(params: {
     return { ok: true as const, status: 200, message: result.message ?? "Processed" };
   }
 
-  await prisma.paymentWebhookEvent.update({
-    where: { id: event.id },
+  await prisma.paymentWebhookEvent.updateMany({
+    where: { id: event.id, restaurantId: restaurant.id },
     data: {
       status: "FAILED",
       processedAt: null,

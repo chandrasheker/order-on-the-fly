@@ -393,7 +393,13 @@ describe("M1 financial correctness", () => {
     assert.equal(failed.ok, false);
     assert.equal(failed.status, 503);
     const event = await prisma.paymentWebhookEvent.findUnique({
-      where: { provider_externalId: { provider: "razorpay", externalId: `pay_${suffix}` } },
+      where: {
+        restaurantId_provider_externalId: {
+          restaurantId: restaurant.id,
+          provider: "razorpay",
+          externalId: `pay_${suffix}`,
+        },
+      },
     });
     assert.equal(event?.processedAt, null);
     await prisma.order.update({ where: { id: order.id }, data: { status: "SERVED" } });
@@ -418,7 +424,13 @@ describe("M1 financial correctness", () => {
     });
     assert.equal(payments.length, 1);
     const processed = await prisma.paymentWebhookEvent.findUnique({
-      where: { provider_externalId: { provider: "razorpay", externalId: `pay_${suffix}` } },
+      where: {
+        restaurantId_provider_externalId: {
+          restaurantId: restaurant.id,
+          provider: "razorpay",
+          externalId: `pay_${suffix}`,
+        },
+      },
     });
     assert.ok(processed?.processedAt);
   });
@@ -462,6 +474,121 @@ describe("M1 financial correctness", () => {
     assert.equal(result.ok, false);
     const payments = await prisma.payment.count({ where: { tableId: table.id } });
     assert.equal(payments, 0);
+  });
+
+  it("same provider externalId is isolated per restaurant", async () => {
+    const suffix = `iso-${Date.now()}`;
+    const a = await seedRestaurant(`${suffix}-a`, { webhook: true });
+    const b = await seedRestaurant(`${suffix}-b`, { webhook: true });
+    const orderA = await seedServedOrder({
+      restaurantId: a.restaurant.id,
+      tableId: a.table.id,
+      menuItemId: a.menuItem.id,
+      orderNumber: 1,
+      unitPrice: 100,
+    });
+    const orderB = await seedServedOrder({
+      restaurantId: b.restaurant.id,
+      tableId: b.table.id,
+      menuItemId: b.menuItem.id,
+      orderNumber: 1,
+      unitPrice: 150,
+    });
+    const externalId = `pay_shared_${suffix}`;
+    const payloadA = {
+      event: "payment.captured",
+      payload: {
+        payment: {
+          entity: {
+            id: externalId,
+            amount: 10000,
+            notes: { orderId: orderA.id, tableId: a.table.id },
+          },
+        },
+      },
+    };
+    const payloadB = {
+      event: "payment.captured",
+      payload: {
+        payment: {
+          entity: {
+            id: externalId,
+            amount: 15000,
+            notes: { orderId: orderB.id, tableId: b.table.id },
+          },
+        },
+      },
+    };
+    const firstA = await processPaymentWebhook({
+      slug: a.restaurant.slug,
+      provider: "razorpay",
+      ...signedRazorpay(payloadA, "whsec_test"),
+    });
+    const firstB = await processPaymentWebhook({
+      slug: b.restaurant.slug,
+      provider: "razorpay",
+      ...signedRazorpay(payloadB, "whsec_test"),
+    });
+    assert.equal(firstA.ok, true);
+    assert.equal(firstB.ok, true);
+
+    const events = await prisma.paymentWebhookEvent.findMany({
+      where: { provider: "razorpay", externalId },
+    });
+    assert.equal(events.length, 2);
+    assert.equal(new Set(events.map((row) => row.restaurantId)).size, 2);
+    assert.ok(events.every((row) => row.processedAt));
+
+    const eventA = events.find((row) => row.restaurantId === a.restaurant.id);
+    const eventB = events.find((row) => row.restaurantId === b.restaurant.id);
+    assert.equal(eventA?.orderId, orderA.id);
+    assert.equal(eventB?.orderId, orderB.id);
+    assert.equal(eventA?.amount, 100);
+    assert.equal(eventB?.amount, 150);
+
+    const replayA = await processPaymentWebhook({
+      slug: a.restaurant.slug,
+      provider: "razorpay",
+      ...signedRazorpay(payloadA, "whsec_test"),
+    });
+    const replayB = await processPaymentWebhook({
+      slug: b.restaurant.slug,
+      provider: "razorpay",
+      ...signedRazorpay(payloadB, "whsec_test"),
+    });
+    assert.equal(replayA.ok, true);
+    assert.equal(replayB.ok, true);
+
+    const eventsAfter = await prisma.paymentWebhookEvent.findMany({
+      where: { provider: "razorpay", externalId },
+    });
+    assert.equal(eventsAfter.length, 2);
+    assert.equal(eventsAfter.find((row) => row.restaurantId === a.restaurant.id)?.id, eventA?.id);
+    assert.equal(eventsAfter.find((row) => row.restaurantId === b.restaurant.id)?.id, eventB?.id);
+
+    const paymentsA = await prisma.payment.findMany({
+      where: { restaurantId: a.restaurant.id, status: "CAPTURED" },
+    });
+    const paymentsB = await prisma.payment.findMany({
+      where: { restaurantId: b.restaurant.id, status: "CAPTURED" },
+    });
+    assert.equal(paymentsA.length, 1);
+    assert.equal(paymentsB.length, 1);
+    assert.equal(paymentsA[0]?.orderId, orderA.id);
+    assert.equal(paymentsB[0]?.orderId, orderB.id);
+    assert.equal(paymentsA[0]?.amount, 100);
+    assert.equal(paymentsB[0]?.amount, 150);
+    assert.equal(paymentsA[0]?.providerPaymentId, externalId);
+    assert.equal(paymentsB[0]?.providerPaymentId, externalId);
+
+    const crossA = await prisma.payment.count({
+      where: { restaurantId: a.restaurant.id, orderId: orderB.id },
+    });
+    const crossB = await prisma.payment.count({
+      where: { restaurantId: b.restaurant.id, orderId: orderA.id },
+    });
+    assert.equal(crossA, 0);
+    assert.equal(crossB, 0);
   });
 
   it("concurrent first payments get distinct bills and every capture has a billId", async () => {
