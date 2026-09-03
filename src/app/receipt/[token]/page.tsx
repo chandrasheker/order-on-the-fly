@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import { getPublicReceiptByToken } from "@/lib/public-receipt-service";
-import { hostRestaurantId, resolveRequestRestaurant } from "@/platform/tenant-scope";
+import { publicCustomerHostScope, resolveRequestRestaurant } from "@/platform/tenant-scope";
 
 export default async function PublicReceiptPage({
   params,
@@ -12,11 +12,13 @@ export default async function PublicReceiptPage({
   const { token } = await params;
   const headerList = await headers();
   const resolution = await resolveRequestRestaurant({ headers: headerList });
-  if (!resolution.ok) notFound();
+  const scope = publicCustomerHostScope(resolution);
+  if (!scope.ok) notFound();
 
   const receipt = await getPublicReceiptByToken({
     token,
-    hostRestaurantId: hostRestaurantId(resolution),
+    hostRestaurantId: scope.restaurantId,
+    requireRestaurant: scope.requireRestaurant,
   });
   if (!receipt) notFound();
 

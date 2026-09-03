@@ -37,6 +37,7 @@ export function gatewayCaptureIdempotencyKey(provider: string, providerPaymentId
   return `gateway:${provider}:${providerPaymentId}`;
 }
 
-export function gatewayRefundIdempotencyKey(paymentId: string, amountPaise: number, requestKey?: string) {
-  return requestKey?.trim() || `gateway-refund:${paymentId}:${amountPaise}`;
+export function lateCaptureRefundRequestKey(providerPaymentId: string) {
+  const safe = providerPaymentId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40);
+  return `tabletap-late-${safe}`;
 }

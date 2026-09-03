@@ -20,6 +20,7 @@ import {
   trustedRestaurantId,
   injectionIgnored,
   blocksRestaurantOperationsOnHost,
+  allowsLegacyRestaurantScoping,
 } from "@/platform/host";
 
 export { selectOwnedResource, trustedRestaurantId, injectionIgnored };
@@ -43,6 +44,25 @@ export function restaurantOpsAllowedOnResolution(resolution: HostTenantResolutio
   if (resolution.kind === "tenant") return false;
   if (blocksRestaurantOperationsOnHost(resolution.host)) return false;
   return true;
+}
+
+/**
+ * Production public customer resources (receipts, gateway status) are
+ * restaurant-host scoped. Reserved/tenant hosts must not infer ownership
+ * from the token. Development reserved localhost may still look up by unique token.
+ */
+export function publicCustomerHostScope(
+  resolution: HostTenantResolution,
+  nodeEnv?: string,
+): { ok: false } | { ok: true; restaurantId: string | null; requireRestaurant: boolean } {
+  if (!resolution.ok) return { ok: false };
+  if (resolution.kind === "restaurant") {
+    return { ok: true, restaurantId: resolution.context.restaurantId, requireRestaurant: true };
+  }
+  if (resolution.kind === "reserved" && allowsLegacyRestaurantScoping(resolution.host, nodeEnv)) {
+    return { ok: true, restaurantId: null, requireRestaurant: false };
+  }
+  return { ok: false };
 }
 
 export function scopeResourceForResolution<T extends { restaurantId: string }>(

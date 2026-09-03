@@ -4,8 +4,8 @@ import {
   getGatewayAttemptPublicStatus,
 } from "@/lib/gateway-payment-service";
 import {
-  hostRestaurantId,
   opaqueNotFoundJson,
+  publicCustomerHostScope,
   resolveRequestRestaurant,
 } from "@/platform/tenant-scope";
 import { logApiRequest } from "@/lib/logger";
@@ -17,11 +17,13 @@ export async function GET(
   const { publicToken } = await params;
   logApiRequest("payments/gateway/[publicToken]", "GET");
   const resolution = await resolveRequestRestaurant(req);
-  if (!resolution.ok) return opaqueNotFoundJson();
+  const scope = publicCustomerHostScope(resolution);
+  if (!scope.ok) return opaqueNotFoundJson();
 
   const status = await getGatewayAttemptPublicStatus(
     publicToken,
-    hostRestaurantId(resolution) ?? undefined,
+    scope.restaurantId,
+    scope.requireRestaurant,
   );
   if (!status) return opaqueNotFoundJson();
   return NextResponse.json({ status });
@@ -37,10 +39,12 @@ export async function POST(
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
   const resolution = await resolveRequestRestaurant(req);
-  if (!resolution.ok) return opaqueNotFoundJson();
+  const scope = publicCustomerHostScope(resolution);
+  if (!scope.ok) return opaqueNotFoundJson();
   const result = await cancelGatewayAttempt({
     publicToken,
-    restaurantId: hostRestaurantId(resolution) ?? undefined,
+    restaurantId: scope.restaurantId,
+    requireRestaurant: scope.requireRestaurant,
   });
   if (!result.ok) return opaqueNotFoundJson();
   return NextResponse.json({ ok: true, status: result.status });

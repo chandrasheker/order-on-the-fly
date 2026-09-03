@@ -245,6 +245,10 @@ export function canManageMenu(role: Role) {
   return role === "OWNER" || role === "MANAGER";
 }
 
+export function canMutatePaymentGatewayCredentials(role: Role) {
+  return role === "OWNER";
+}
+
 export function canManageStaff(role: Role) {
   return role === "OWNER" || role === "MANAGER";
 }

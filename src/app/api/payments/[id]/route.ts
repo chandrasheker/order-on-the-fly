@@ -7,6 +7,7 @@ import {
   rejectManualUpiPayment,
 } from "@/lib/payment-allocation-service";
 import { refundAutomaticPayment } from "@/lib/gateway-payment-service";
+import { normalizeRazorpayRefundIdempotencyKey } from "@/lib/razorpay-client";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
 import { opaqueNotFoundJson } from "@/platform/tenant-scope";
 
@@ -88,10 +89,27 @@ export async function PATCH(
     if (session.role !== "OWNER" && session.role !== "MANAGER") {
       return NextResponse.json({ error: "Refunds require a manager" }, { status: 403 });
     }
+    const rawRequestId =
+      typeof body.requestId === "string"
+        ? body.requestId
+        : typeof body.refundRequestId === "string"
+          ? body.refundRequestId
+          : typeof body.idempotencyKey === "string"
+            ? body.idempotencyKey
+            : "";
+    let requestId: string | undefined;
+    if (rawRequestId.trim()) {
+      const normalized = normalizeRazorpayRefundIdempotencyKey(rawRequestId);
+      if (!normalized) {
+        return NextResponse.json({ error: "Invalid refund request id" }, { status: 400 });
+      }
+      requestId = normalized;
+    }
     const result = await refundAutomaticPayment({
       paymentId: id,
       restaurantId: session.restaurantId,
       amount: typeof body.amount === "number" ? body.amount : undefined,
+      requestId,
       actorUserId: session.id,
       actorName: session.name,
     });

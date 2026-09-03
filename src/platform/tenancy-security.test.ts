@@ -20,6 +20,7 @@ import {
 import {
   scopeResourceForResolution,
   restaurantOpsAllowedOnResolution,
+  publicCustomerHostScope,
 } from "@/platform/tenant-scope";
 import {
   requireOwnedOrderItem,
@@ -461,5 +462,101 @@ describe("11-12 development localhost isolation", () => {
     );
     assert.ok(scoped);
     assert.equal(scoped?.restaurantId, ABC_ID);
+  });
+});
+
+describe("public customer receipt and gateway hosts", () => {
+  it("allows the owning restaurant host and rejects reserved, tenant, and unknown hosts", () => {
+    const abcHost = classifyHostname("abc.dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const xyzHost = classifyHostname("xyz.dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const apex = classifyHostname("dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const tenantHub = classifyHostname("tenant-hub.dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const unknown = classifyHostname("unknown.dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    assert.equal(abcHost.kind, "restaurant");
+    assert.equal(xyzHost.kind, "restaurant");
+    assert.equal(tenantHub.kind, "restaurant");
+    if (abcHost.kind !== "restaurant" || xyzHost.kind !== "restaurant" || tenantHub.kind !== "restaurant") {
+      return;
+    }
+
+    const abcScope = publicCustomerHostScope(
+      {
+        ok: true,
+        kind: "restaurant",
+        host: abcHost,
+        context: {
+          tenantId: "tenant-abc",
+          restaurantId: ABC_ID,
+          restaurantName: "ABC",
+          restaurantSlug: "abc",
+          branchId: null,
+          floorId: null,
+        },
+      },
+      "production",
+    );
+    const xyzScope = publicCustomerHostScope(
+      {
+        ok: true,
+        kind: "restaurant",
+        host: xyzHost,
+        context: {
+          tenantId: "tenant-xyz",
+          restaurantId: XYZ_ID,
+          restaurantName: "XYZ",
+          restaurantSlug: "xyz",
+          branchId: null,
+          floorId: null,
+        },
+      },
+      "production",
+    );
+    assert.deepEqual(abcScope, { ok: true, restaurantId: ABC_ID, requireRestaurant: true });
+    assert.deepEqual(xyzScope, { ok: true, restaurantId: XYZ_ID, requireRestaurant: true });
+    assert.notEqual(abcScope.ok && abcScope.restaurantId, xyzScope.ok && xyzScope.restaurantId);
+    assert.equal(
+      publicCustomerHostScope({ ok: true, kind: "reserved", host: apex }, "production").ok,
+      false,
+    );
+    assert.equal(
+      publicCustomerHostScope(
+        {
+          ok: true,
+          kind: "tenant",
+          host: tenantHub,
+          tenant: { tenantId: "hub", tenantName: "Hub", tenantSlug: "tenant-hub" },
+        },
+        "production",
+      ).ok,
+      false,
+    );
+    assert.equal(
+      publicCustomerHostScope(
+        {
+          ok: false,
+          kind: "unknown",
+          reason: "UNKNOWN_SUBDOMAIN",
+          status: 404,
+          host: unknown,
+        },
+        "production",
+      ).ok,
+      false,
+    );
   });
 });

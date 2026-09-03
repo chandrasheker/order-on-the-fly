@@ -11,12 +11,14 @@ import {
   GATEWAY_REFUND_STATUS,
   RAZORPAY_PROVIDER,
   gatewayCaptureIdempotencyKey,
-  gatewayRefundIdempotencyKey,
+  lateCaptureRefundRequestKey,
   razorpayActiveAttemptKey,
 } from "@/lib/gateway-constants";
 import { generatePublicToken } from "@/lib/public-token";
 import {
   RazorpayApiError,
+  createRazorpayRefundIdempotencyKey,
+  normalizeRazorpayRefundIdempotencyKey,
   razorpayCreateOrder,
   razorpayCreateRefund,
   razorpayFetchOrder,
@@ -315,10 +317,23 @@ async function recoverRazorpayOrder(
   }
 }
 
-export async function cancelGatewayAttempt(params: { publicToken: string; restaurantId?: string }) {
+function publicAttemptVisible(
+  attempt: { restaurantId: string },
+  restaurantId?: string | null,
+  requireRestaurant?: boolean,
+) {
+  if (requireRestaurant && !restaurantId) return false;
+  if (restaurantId && attempt.restaurantId !== restaurantId) return false;
+  return true;
+}
+
+export async function cancelGatewayAttempt(params: {
+  publicToken: string;
+  restaurantId?: string | null;
+  requireRestaurant?: boolean;
+}) {
   const attempt = await prisma.gatewayPaymentAttempt.findUnique({ where: { publicToken: params.publicToken } });
-  if (!attempt) return { ok: false as const, error: "Not found", status: 404 };
-  if (params.restaurantId && attempt.restaurantId !== params.restaurantId) {
+  if (!attempt || !publicAttemptVisible(attempt, params.restaurantId, params.requireRestaurant)) {
     return { ok: false as const, error: "Not found", status: 404 };
   }
   if (attempt.status === GATEWAY_ATTEMPT_STATUS.CAPTURED) {
@@ -333,9 +348,13 @@ export async function cancelGatewayAttempt(params: { publicToken: string; restau
   return { ok: true as const, status: GATEWAY_ATTEMPT_STATUS.CANCELLED };
 }
 
-export async function getGatewayAttemptPublicStatus(publicToken: string, restaurantId?: string) {
+export async function getGatewayAttemptPublicStatus(
+  publicToken: string,
+  restaurantId?: string | null,
+  requireRestaurant?: boolean,
+) {
   const attempt = await prisma.gatewayPaymentAttempt.findUnique({ where: { publicToken } });
-  if (!attempt || (restaurantId && attempt.restaurantId !== restaurantId)) {
+  if (!attempt || !publicAttemptVisible(attempt, restaurantId, requireRestaurant)) {
     return null;
   }
   const summary = await getOrderPaymentSummary(attempt.orderId);
@@ -423,23 +442,38 @@ export async function settleRazorpayCapture(params: {
   });
   if (!order) return { ok: false as const, error: "Order not found", status: 404 };
 
+  const existingByProvider = await prisma.payment.findFirst({
+    where: {
+      restaurantId: params.restaurantId,
+      provider: RAZORPAY_PROVIDER,
+      providerPaymentId: params.providerPaymentId,
+    },
+  });
+  if (existingByProvider) {
+    if (existingByProvider.orderId !== attempt.orderId) {
+      return {
+        ok: false as const,
+        error: "Provider payment is already attached to another order",
+        status: 409,
+      };
+    }
+    return markSameProviderPaymentCaptured({
+      attempt,
+      payment: existingByProvider,
+      providerPaymentId: params.providerPaymentId,
+    });
+  }
+
   const summary = await getOrderPaymentSummary(order.id);
-  if (summary && summary.remaining <= FINANCIAL_PAID_EPSILON && order.paidAt) {
-    const lateRefund = await refundCapturedProviderPayment({
+  const orderAlreadySettled = Boolean(
+    summary && summary.remaining <= FINANCIAL_PAID_EPSILON && order.paidAt,
+  );
+  if (orderAlreadySettled) {
+    return refundLateCompetingCapture({
+      attempt,
       restaurantId: params.restaurantId,
       providerPaymentId: params.providerPaymentId,
-      amountPaise: attempt.amountPaise,
-      reason: "late_duplicate_capture",
     });
-    await prisma.gatewayPaymentAttempt.update({
-      where: { id: attempt.id },
-      data: {
-        status: GATEWAY_ATTEMPT_STATUS.REFUNDED,
-        providerPaymentId: params.providerPaymentId,
-        failureMessage: lateRefund.ok ? "Late capture refunded" : lateRefund.error,
-      },
-    });
-    return { ok: false as const, error: "Order already paid; provider capture was refunded", status: 409 };
   }
 
   const recorded = await recordOrderPayment({
@@ -458,42 +492,135 @@ export async function settleRazorpayCapture(params: {
     return { ok: false as const, error: recorded.error, status: recorded.status };
   }
 
-  const bill = recorded.payment?.billId
-    ? await prisma.bill.findUnique({ where: { id: recorded.payment.billId } })
-    : await getBillForOrder(order.id, params.restaurantId);
+  const recordedPayment =
+    recorded.payment && recorded.payment.providerPaymentId === params.providerPaymentId
+      ? recorded.payment
+      : await prisma.payment.findFirst({
+          where: {
+            restaurantId: params.restaurantId,
+            provider: RAZORPAY_PROVIDER,
+            providerPaymentId: params.providerPaymentId,
+          },
+        });
+  if (recordedPayment) {
+    if (recordedPayment.orderId !== attempt.orderId) {
+      return {
+        ok: false as const,
+        error: "Provider payment is already attached to another order",
+        status: 409,
+      };
+    }
+    return markSameProviderPaymentCaptured({
+      attempt,
+      payment: recordedPayment,
+      providerPaymentId: params.providerPaymentId,
+    });
+  }
+
+  return refundLateCompetingCapture({
+    attempt,
+    restaurantId: params.restaurantId,
+    providerPaymentId: params.providerPaymentId,
+  });
+}
+
+async function markSameProviderPaymentCaptured(params: {
+  attempt: {
+    id: string;
+    billId: string | null;
+    capturedAt: Date | null;
+    verifiedAt: Date | null;
+  };
+  payment: { id: string; billId: string | null };
+  providerPaymentId: string;
+}) {
+  const bill = params.payment.billId
+    ? await prisma.bill.findUnique({ where: { id: params.payment.billId } })
+    : null;
   if (bill) await ensureBillPublicToken(bill.id);
 
   await prisma.gatewayPaymentAttempt.update({
-    where: { id: attempt.id },
+    where: { id: params.attempt.id },
     data: {
       status: GATEWAY_ATTEMPT_STATUS.CAPTURED,
       providerPaymentId: params.providerPaymentId,
-      billId: bill?.id ?? attempt.billId,
-      capturedAt: new Date(),
-      verifiedAt: new Date(),
+      billId: bill?.id ?? params.attempt.billId,
+      capturedAt: params.attempt.capturedAt ?? new Date(),
+      verifiedAt: params.attempt.verifiedAt ?? new Date(),
     },
   });
 
-  logInfo("payments:gateway", "Razorpay capture settled", {
-    restaurantId: params.restaurantId,
-    orderId: order.id,
-    attemptId: attempt.id,
-    paymentId: recorded.payment?.id,
-  });
+  return {
+    ok: true as const,
+    payment: params.payment,
+    attemptId: params.attempt.id,
+    billId: bill?.id ?? params.attempt.billId,
+  };
+}
 
-  return { ok: true as const, payment: recorded.payment, attemptId: attempt.id, billId: bill?.id ?? null };
+async function refundLateCompetingCapture(params: {
+  attempt: { id: string; amountPaise: number };
+  restaurantId: string;
+  providerPaymentId: string;
+}) {
+  const lateRefund = await refundCapturedProviderPayment({
+    restaurantId: params.restaurantId,
+    providerPaymentId: params.providerPaymentId,
+    amountPaise: params.attempt.amountPaise,
+    reason: "late_duplicate_capture",
+  });
+  if (lateRefund.refunded) {
+    await prisma.gatewayPaymentAttempt.update({
+      where: { id: params.attempt.id },
+      data: {
+        status: GATEWAY_ATTEMPT_STATUS.REFUNDED,
+        providerPaymentId: params.providerPaymentId,
+        failureMessage: "Late competing capture refunded",
+      },
+    });
+    return { ok: false as const, error: "Order already paid; provider capture was refunded", status: 409 };
+  }
+  if (lateRefund.pending) {
+    await prisma.gatewayPaymentAttempt.update({
+      where: { id: params.attempt.id },
+      data: {
+        status: GATEWAY_ATTEMPT_STATUS.REFUND_PENDING,
+        providerPaymentId: params.providerPaymentId,
+        failureMessage: lateRefund.error,
+      },
+    });
+    return {
+      ok: false as const,
+      error: "Order already paid; provider refund is still processing",
+      status: 409,
+    };
+  }
+  await prisma.gatewayPaymentAttempt.update({
+    where: { id: params.attempt.id },
+    data: {
+      status: GATEWAY_ATTEMPT_STATUS.REFUND_PENDING,
+      providerPaymentId: params.providerPaymentId,
+      failureMessage: lateRefund.error,
+    },
+  });
+  return {
+    ok: false as const,
+    error: "Order already paid; provider refund could not be completed",
+    status: 409,
+  };
 }
 
 export async function verifyRazorpayCheckoutCallback(params: {
   publicToken: string;
-  restaurantId?: string;
+  restaurantId?: string | null;
+  requireRestaurant?: boolean;
   razorpayPaymentId: string;
   razorpaySignature: string;
 }) {
   const attempt = await prisma.gatewayPaymentAttempt.findUnique({
     where: { publicToken: params.publicToken },
   });
-  if (!attempt || (params.restaurantId && attempt.restaurantId !== params.restaurantId)) {
+  if (!attempt || !publicAttemptVisible(attempt, params.restaurantId, params.requireRestaurant)) {
     return { ok: false as const, error: "Not found", status: 404 };
   }
   const configured = await restaurantAuth(attempt.restaurantId);
@@ -528,10 +655,25 @@ export async function verifyRazorpayCheckoutCallback(params: {
   });
 }
 
+function resolveRefundRequestKey(raw?: string | null) {
+  const trimmed = raw?.trim() ?? "";
+  if (!trimmed) return { ok: true as const, key: createRazorpayRefundIdempotencyKey() };
+  const normalized = normalizeRazorpayRefundIdempotencyKey(trimmed);
+  if (!normalized) {
+    return { ok: false as const, error: "Invalid refund request id", status: 400 };
+  }
+  return { ok: true as const, key: normalized };
+}
+
+function providerRefundCompleted(status: string) {
+  return status === "processed" || status === "completed";
+}
+
 export async function refundAutomaticPayment(params: {
   paymentId: string;
   restaurantId: string;
   amount?: number;
+  requestId?: string;
   idempotencyKey?: string;
   actorUserId?: string;
   actorName?: string;
@@ -545,11 +687,20 @@ export async function refundAutomaticPayment(params: {
     return refundCapturedPayment(params);
   }
 
+  const resolvedKey = resolveRefundRequestKey(params.requestId ?? params.idempotencyKey);
+  if (!resolvedKey.ok) return resolvedKey;
+  const idempotencyKey = resolvedKey.key;
+
   const amountPaise = params.amount == null ? toPaise(payment.amount) : toPaise(params.amount);
-  const idempotencyKey = gatewayRefundIdempotencyKey(payment.id, amountPaise, params.idempotencyKey);
   const existing = await prisma.gatewayRefundAttempt.findUnique({
     where: { restaurantId_idempotencyKey: { restaurantId: params.restaurantId, idempotencyKey } },
   });
+  if (existing && existing.paymentId !== payment.id) {
+    return { ok: false as const, error: "Refund request id already used", status: 409 };
+  }
+  if (existing && existing.amountPaise !== amountPaise) {
+    return { ok: false as const, error: "Refund request id already used for a different amount", status: 409 };
+  }
   if (existing?.status === GATEWAY_REFUND_STATUS.SUCCEEDED) {
     const { refundCapturedPayment } = await import("@/lib/payment-allocation-service");
     return refundCapturedPayment({
@@ -569,16 +720,26 @@ export async function refundAutomaticPayment(params: {
     return { ok: false as const, error: "Refund exceeds captured amount", status: 400 };
   }
 
-  const refundAttempt = existing
-    ?? (await prisma.gatewayRefundAttempt.create({
-      data: {
-        restaurantId: params.restaurantId,
-        paymentId: payment.id,
-        amountPaise,
-        status: GATEWAY_REFUND_STATUS.PENDING,
-        idempotencyKey,
-      },
-    }));
+  let refundAttempt = existing;
+  if (!refundAttempt) {
+    try {
+      refundAttempt = await prisma.gatewayRefundAttempt.create({
+        data: {
+          restaurantId: params.restaurantId,
+          paymentId: payment.id,
+          amountPaise,
+          status: GATEWAY_REFUND_STATUS.PENDING,
+          idempotencyKey,
+        },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      refundAttempt = await prisma.gatewayRefundAttempt.findUnique({
+        where: { restaurantId_idempotencyKey: { restaurantId: params.restaurantId, idempotencyKey } },
+      });
+      if (!refundAttempt) throw error;
+    }
+  }
 
   const configured = await restaurantAuth(params.restaurantId);
   if (!configured) return { ok: false as const, error: "Automatic gateway is not configured", status: 409 };
@@ -595,12 +756,21 @@ export async function refundAutomaticPayment(params: {
         where: { id: refundAttempt.id },
         data: { status: GATEWAY_REFUND_STATUS.PENDING, providerRefundId: refund.id },
       });
-      return { ok: false as const, error: "Refund is still processing at the provider", status: 409 };
+      return {
+        ok: false as const,
+        error: "Refund is still processing at the provider",
+        status: 409,
+        pending: true as const,
+      };
     }
-    if (refund.status === "failed") {
+    if (refund.status === "failed" || !providerRefundCompleted(refund.status)) {
       await prisma.gatewayRefundAttempt.update({
         where: { id: refundAttempt.id },
-        data: { status: GATEWAY_REFUND_STATUS.FAILED, failureMessage: "Provider refund failed", providerRefundId: refund.id },
+        data: {
+          status: GATEWAY_REFUND_STATUS.FAILED,
+          failureMessage: "Provider refund failed",
+          providerRefundId: refund.id,
+        },
       });
       return { ok: false as const, error: "Provider refund failed", status: 502 };
     }
@@ -617,6 +787,21 @@ export async function refundAutomaticPayment(params: {
       providerPaymentId: refund.id,
     });
   } catch (error) {
+    if (error instanceof RazorpayApiError && error.kind === "retryable") {
+      await prisma.gatewayRefundAttempt.update({
+        where: { id: refundAttempt.id },
+        data: {
+          status: GATEWAY_REFUND_STATUS.PENDING,
+          failureMessage: error.message,
+        },
+      });
+      return {
+        ok: false as const,
+        error: "Refund could not be completed. Retry with the same request.",
+        status: 503,
+        pending: true as const,
+      };
+    }
     await prisma.gatewayRefundAttempt.update({
       where: { id: refundAttempt.id },
       data: {
@@ -624,9 +809,6 @@ export async function refundAutomaticPayment(params: {
         failureMessage: error instanceof Error ? error.message : "Provider refund failed",
       },
     });
-    if (error instanceof RazorpayApiError && error.kind === "retryable") {
-      return { ok: false as const, error: "Refund could not be completed. Retry with the same request.", status: 503 };
-    }
     return { ok: false as const, error: "Provider refund failed", status: 502 };
   }
 }
@@ -638,26 +820,45 @@ async function refundCapturedProviderPayment(params: {
   reason: string;
 }) {
   const configured = await restaurantAuth(params.restaurantId);
-  if (!configured) return { ok: false as const, error: "Automatic gateway is not configured" };
-  const idempotencyKey = `late-refund:${params.providerPaymentId}`;
+  if (!configured) {
+    return { ok: false as const, refunded: false as const, error: "Automatic gateway is not configured" };
+  }
+  const idempotencyKey = lateCaptureRefundRequestKey(params.providerPaymentId);
   try {
-    await razorpayCreateRefund({
+    const refund = await razorpayCreateRefund({
       auth: configured.auth,
       paymentId: params.providerPaymentId,
       amountPaise: params.amountPaise,
       idempotencyKey,
     });
-    logInfo("payments:gateway", "Late provider capture refunded", {
-      restaurantId: params.restaurantId,
-      providerPaymentId: params.providerPaymentId,
-      reason: params.reason,
-    });
-    return { ok: true as const };
+    if (providerRefundCompleted(refund.status)) {
+      logInfo("payments:gateway", "Late provider capture refunded", {
+        restaurantId: params.restaurantId,
+        providerPaymentId: params.providerPaymentId,
+        reason: params.reason,
+      });
+      return { ok: true as const, refunded: true as const };
+    }
+    if (refund.status === "pending") {
+      return {
+        ok: false as const,
+        refunded: false as const,
+        pending: true as const,
+        error: "Provider refund is still processing",
+      };
+    }
+    return { ok: false as const, refunded: false as const, error: "Provider refund failed" };
   } catch (error) {
+    const retryable = error instanceof RazorpayApiError && error.kind === "retryable";
     logWarn("payments:gateway", "Late provider refund failed", {
       restaurantId: params.restaurantId,
       message: error instanceof Error ? error.message : "unknown",
     });
-    return { ok: false as const, error: error instanceof Error ? error.message : "refund failed" };
+    return {
+      ok: false as const,
+      refunded: false as const,
+      pending: retryable || undefined,
+      error: error instanceof Error ? error.message : "refund failed",
+    };
   }
 }

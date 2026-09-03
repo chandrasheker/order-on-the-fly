@@ -20,8 +20,10 @@ export async function ensureBillPublicToken(billId: string) {
 export async function getPublicReceiptByToken(params: {
   token: string;
   hostRestaurantId: string | null;
+  requireRestaurant?: boolean;
 }) {
   if (!isHighEntropyPublicToken(params.token)) return null;
+  if (params.requireRestaurant && !params.hostRestaurantId) return null;
   const bill = await prisma.bill.findUnique({ where: { publicToken: params.token } });
   if (!bill || bill.status === "VOIDED") return null;
   if (params.hostRestaurantId && !billOwnedByRestaurant(params.hostRestaurantId, bill)) {

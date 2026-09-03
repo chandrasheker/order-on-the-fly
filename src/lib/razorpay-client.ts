@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { RAZORPAY_API_BASE } from "@/lib/gateway-constants";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -8,8 +8,27 @@ export type RazorpayRequest = {
   path: string;
   body?: unknown;
   idempotencyKey?: string;
+  refundIdempotencyKey?: string;
   auth: { keyId: string; keySecret: string };
 };
+
+export const RAZORPAY_REFUND_IDEMPOTENCY_HEADER = "X-Refund-Idempotency";
+const RAZORPAY_REFUND_KEY_RE = /^[A-Za-z0-9_-]{10,64}$/;
+
+export function isValidRazorpayRefundIdempotencyKey(value: string) {
+  return RAZORPAY_REFUND_KEY_RE.test(value);
+}
+
+export function createRazorpayRefundIdempotencyKey() {
+  return `tabletap-refund-${randomUUID()}`;
+}
+
+export function normalizeRazorpayRefundIdempotencyKey(raw?: string | null) {
+  const trimmed = raw?.trim() ?? "";
+  if (!trimmed) return null;
+  if (!isValidRazorpayRefundIdempotencyKey(trimmed)) return null;
+  return trimmed;
+}
 
 export type RazorpayHttpResult = {
   status: number;
@@ -43,6 +62,7 @@ export const defaultRazorpayTransport: RazorpayHttpTransport = async (req) => {
     Accept: "application/json",
   };
   if (req.body !== undefined) headers["Content-Type"] = "application/json";
+  if (req.refundIdempotencyKey) headers[RAZORPAY_REFUND_IDEMPOTENCY_HEADER] = req.refundIdempotencyKey;
   if (req.idempotencyKey) headers["Idempotency-Key"] = req.idempotencyKey;
 
   try {
@@ -165,13 +185,23 @@ export async function razorpayCreateRefund(params: {
   amountPaise: number;
   idempotencyKey: string;
 }) {
-  return razorpayRequest<RazorpayRefund>({
+  const req: RazorpayRequest = {
     method: "POST",
-    path: `/payments/${encodeURIComponent(params.paymentId)}/refunds`,
+    path: `/payments/${encodeURIComponent(params.paymentId)}/refund`,
     auth: params.auth,
-    idempotencyKey: params.idempotencyKey,
+    refundIdempotencyKey: params.idempotencyKey,
     body: { amount: params.amountPaise },
-  });
+  };
+  const result = await transport(req);
+  if (result.status >= 200 && result.status < 300) {
+    return result.json as RazorpayRefund;
+  }
+  const retryable = result.status === 409 || result.retryable;
+  throw new RazorpayApiError(
+    errorMessageFromBody(result.json, `Razorpay request failed (${result.status || "network"})`),
+    retryable ? "retryable" : "permanent",
+    result.status,
+  );
 }
 
 export function verifyRazorpayCheckoutSignature(params: {

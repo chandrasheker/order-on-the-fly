@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyRazorpayCheckoutCallback } from "@/lib/gateway-payment-service";
 import {
-  hostRestaurantId,
   opaqueNotFoundJson,
+  publicCustomerHostScope,
   resolveRequestRestaurant,
 } from "@/platform/tenant-scope";
 import { logApiRequest } from "@/lib/logger";
@@ -20,11 +20,13 @@ export async function POST(req: NextRequest) {
   }
 
   const resolution = await resolveRequestRestaurant(req);
-  if (!resolution.ok) return opaqueNotFoundJson();
+  const scope = publicCustomerHostScope(resolution);
+  if (!scope.ok) return opaqueNotFoundJson();
 
   const result = await verifyRazorpayCheckoutCallback({
     publicToken,
-    restaurantId: hostRestaurantId(resolution) ?? undefined,
+    restaurantId: scope.restaurantId,
+    requireRestaurant: scope.requireRestaurant,
     razorpayPaymentId,
     razorpaySignature,
   });
