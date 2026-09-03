@@ -1,18 +1,25 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
-import { CircleDollarSign, X, Smartphone } from "lucide-react";
+import { buildUpiIntents, isValidUpiVpa } from "@/lib/upi-intent";
+import { CircleDollarSign, QrCode, Smartphone, X } from "lucide-react";
 
 interface PaymentModalProps {
   orderNumber: number;
-  billTotal: number;
+  billTotal: number | null;
   consolidated?: boolean;
   paymentQrUrl?: string | null;
+  upiVpa?: string | null;
+  upiMerchantName?: string | null;
+  automaticUpiEnabled?: boolean;
+  paymentReference?: string;
   onClose: () => void;
   onConfirm: () => void;
   confirming: boolean;
+  onRefreshAmount?: () => void;
 }
 
 export function PaymentModal({
@@ -20,11 +27,29 @@ export function PaymentModal({
   billTotal,
   consolidated = false,
   paymentQrUrl,
+  upiVpa,
+  upiMerchantName,
+  automaticUpiEnabled = false,
+  paymentReference,
   onClose,
   onConfirm,
   confirming,
+  onRefreshAmount,
 }: PaymentModalProps) {
+  const [showQr, setShowQr] = useState(false);
   const hasQr = Boolean(paymentQrUrl?.trim());
+  const amountReady = billTotal != null && Number.isFinite(billTotal) && billTotal > 0;
+  const hasVpa = isValidUpiVpa(upiVpa);
+  const intents = useMemo(() => {
+    if (!amountReady || consolidated || !hasVpa || !upiVpa || billTotal == null) return null;
+    return buildUpiIntents({
+      vpa: upiVpa,
+      payeeName: upiMerchantName || "Restaurant",
+      amount: billTotal,
+      transactionRef: (paymentReference ?? `BILL${orderNumber}`).slice(0, 35),
+      note: `Order ${orderNumber}`,
+    });
+  }, [amountReady, consolidated, hasVpa, upiVpa, upiMerchantName, billTotal, paymentReference, orderNumber]);
 
   return (
     <motion.div
@@ -43,7 +68,7 @@ export function PaymentModal({
               {consolidated ? "Combined table bill" : `Order #${orderNumber}`}
             </p>
             <h3 className="text-xl font-bold text-white mt-1">
-              Pay {formatCurrency(billTotal)}
+              {amountReady ? `Pay ${formatCurrency(billTotal!)}` : "Refreshing bill…"}
             </h3>
           </div>
           <button
@@ -56,58 +81,100 @@ export function PaymentModal({
           </button>
         </div>
 
-        {hasQr ? (
-          <>
-            <div className="rounded-2xl bg-white p-4 mb-4">
-              <img
-                src={paymentQrUrl!}
-                alt="PhonePe payment QR code"
-                className="w-full max-w-[220px] mx-auto aspect-square object-contain"
-              />
+        {consolidated && amountReady ? (
+          <p className="text-xs text-amber-200 mb-4">
+            This table has more than one order. Staff will confirm the full table amount
+            {" "}{formatCurrency(billTotal!)}. Do not pay a single-order UPI amount.
+          </p>
+        ) : null}
+
+        {intents ? (
+          <div className="space-y-3 mb-4">
+            <p className="text-sm text-zinc-300">Pay with a UPI app on this phone</p>
+            <div className="grid grid-cols-2 gap-2">
+              <a href={intents.gpay} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-white">
+                Google Pay
+              </a>
+              <a href={intents.phonepe} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-white">
+                PhonePe
+              </a>
+              <a href={intents.paytm} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-white">
+                Paytm
+              </a>
+              <a href={intents.generic} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-white">
+                Other UPI app
+              </a>
             </div>
-            <div className="flex items-start gap-2 text-sm text-zinc-300 mb-4">
-              <Smartphone className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-              <p>
-                Open <strong className="text-white">PhonePe</strong> → Scan QR → Pay{" "}
-                <strong className="text-emerald-400">{formatCurrency(billTotal)}</strong>
+            {automaticUpiEnabled ? (
+              <p className="text-xs text-emerald-300">
+                After you pay, wait here. Payment is confirmed by the bank, not by this screen.
               </p>
-            </div>
-            <Button
-              variant="success"
-              className="w-full bg-emerald-600 hover:bg-emerald-500 mb-2"
-              disabled={confirming}
-              onClick={onConfirm}
-            >
-              <CircleDollarSign className="w-4 h-4" />
-              {confirming ? "Notifying staff..." : "I've paid — notify staff"}
-            </Button>
-            <p className="text-xs text-zinc-500 text-center">
-              Staff will verify your payment. You can keep ordering — new items join this bill.
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="p-4 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-100 text-sm mb-4">
-              <p className="font-medium">Pay with staff at the table</p>
-              <p className="text-amber-200/80 text-xs mt-1">
-                Online QR is not set up yet. Tap below to alert your server — they will collect
-                payment offline and confirm your bill.
+            ) : (
+              <p className="text-xs text-amber-200">
+                Opening a UPI app does not mark this bill paid. Staff must verify the payment.
               </p>
-            </div>
-            <Button
-              variant="success"
-              className="w-full bg-emerald-600 hover:bg-emerald-500 mb-2"
-              disabled={confirming}
-              onClick={onConfirm}
-            >
-              <CircleDollarSign className="w-4 h-4" />
-              {confirming ? "Alerting server..." : `Pay ${formatCurrency(billTotal)} — alert server`}
-            </Button>
-            <p className="text-xs text-zinc-500 text-center">
-              You can keep ordering while payment is pending — all rounds stay on one bill.
-            </p>
+            )}
+          </div>
+        ) : null}
+
+        {(hasQr || !intents) && (
+          <>
+            {hasQr && (showQr || !intents) ? (
+              <>
+                <div className="rounded-2xl bg-white p-4 mb-4">
+                  <img
+                    src={paymentQrUrl!}
+                    alt="UPI payment QR code"
+                    className="w-full max-w-[220px] mx-auto aspect-square object-contain"
+                  />
+                </div>
+                <div className="flex items-start gap-2 text-sm text-zinc-300 mb-4">
+                  <Smartphone className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <p>
+                    Scan this QR from another phone and pay{" "}
+                    <strong className="text-emerald-400">
+                      {amountReady ? formatCurrency(billTotal!) : "the billed amount"}
+                    </strong>
+                  </p>
+                </div>
+              </>
+            ) : hasQr ? (
+              <button
+                type="button"
+                onClick={() => setShowQr(true)}
+                className="w-full mb-4 rounded-xl border border-white/10 px-3 py-2 text-sm text-zinc-300 flex items-center justify-center gap-2"
+              >
+                <QrCode className="w-4 h-4" /> Show QR for another phone
+              </button>
+            ) : !intents ? (
+              <div className="p-4 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-100 text-sm mb-4">
+                <p className="font-medium">Pay cash at the table</p>
+                <p className="text-amber-200/80 text-xs mt-1">
+                  Online UPI is not set up. Alert your server to collect cash.
+                </p>
+              </div>
+            ) : null}
           </>
         )}
+
+        <Button
+          variant="success"
+          className="w-full bg-emerald-600 hover:bg-emerald-500 mb-2"
+          disabled={confirming || (!amountReady && !onRefreshAmount)}
+          onClick={amountReady ? onConfirm : onRefreshAmount}
+        >
+          <CircleDollarSign className="w-4 h-4" />
+          {confirming
+            ? "Notifying staff..."
+            : !amountReady
+              ? "Refresh bill total"
+              : intents
+                ? "I've paid — staff will verify"
+                : `Pay ${formatCurrency(billTotal!)} — alert server`}
+        </Button>
+        <p className="text-xs text-zinc-500 text-center">
+          This screen never marks payment successful by itself.
+        </p>
       </motion.div>
     </motion.div>
   );

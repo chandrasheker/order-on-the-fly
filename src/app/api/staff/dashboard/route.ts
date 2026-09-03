@@ -115,6 +115,8 @@ export async function GET() {
         where: {
           restaurantId: session.restaurantId,
           createdAt: { gte: new Date(`${today}T00:00:00.000`) },
+          status: "CAPTURED",
+          refundOfPaymentId: null,
         },
         _sum: { amount: true },
       }),

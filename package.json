@@ -17,7 +17,7 @@
     "db:generate": "prisma generate",
     "start": "node scripts/run-with-mem.js npx next start",
     "lint": "node scripts/run-with-mem.js npx eslint",
-    "test": "node scripts/run-with-mem.js npx tsx --test src/platform/host.test.ts src/platform/tenant-isolation.test.ts src/platform/tenancy-security.test.ts src/platform/table-switch-security.test.ts src/platform/onboarding-host.test.ts src/platform/tenant-lifecycle.test.ts src/platform/hostname-rules.test.ts src/platform/tenant-hub.test.ts src/platform/dine-in-tables.test.ts scripts/ensure-production-jwt.test.js",
+    "test": "node scripts/run-with-mem.js npx tsx --test src/platform/host.test.ts src/platform/tenant-isolation.test.ts src/platform/tenancy-security.test.ts src/platform/table-switch-security.test.ts src/platform/onboarding-host.test.ts src/platform/tenant-lifecycle.test.ts src/platform/hostname-rules.test.ts src/platform/tenant-hub.test.ts src/platform/dine-in-tables.test.ts src/platform/order-financials.test.ts src/platform/bill-snapshot.test.ts src/platform/payment-foundation.test.ts src/platform/customer-payment-amount.test.ts scripts/ensure-production-jwt.test.js && node scripts/run-with-mem.js npx tsx --test src/platform/m1-financial-correctness.test.ts",
     "slugs:check": "tsx scripts/check-restaurant-slugs.ts",
     "hosts:list": "tsx scripts/list-restaurant-hosts.ts",
     "db:migrate": "prisma migrate deploy",

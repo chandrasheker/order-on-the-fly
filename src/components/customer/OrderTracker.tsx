@@ -9,8 +9,12 @@ import {
   isOrderItemOpen,
   shouldShowCustomerOrder,
   shouldShowCustomerPaymentOrder,
-  customerOrderBillTotal,
 } from "@/lib/utils";
+import {
+  canStartCustomerPayment,
+  customerPaymentAction,
+  resolveCanonicalCustomerDue,
+} from "@/lib/customer-payment-amount";
 import { PaymentModal } from "@/components/customer/PaymentModal";
 import { Button, Badge } from "@/components/ui";
 import {
@@ -51,16 +55,24 @@ export function OrderTracker({
   orders,
   tableToken,
   paymentQrUrl,
+  upiVpa,
+  upiMerchantName,
+  automaticUpiEnabled,
+  tabRemaining,
   onRefresh,
   onPaymentRequested,
 }: {
   orders: Order[];
   tableToken: string;
   paymentQrUrl?: string | null;
+  upiVpa?: string | null;
+  upiMerchantName?: string | null;
+  automaticUpiEnabled?: boolean;
+  tabRemaining?: number | null;
   onRefresh: () => void;
   onPaymentRequested?: () => void;
 }) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   const [alarmSent, setAlarmSent] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [payingId, setPayingId] = useState<string | null>(null);
@@ -68,7 +80,9 @@ export function OrderTracker({
   const [dismissingOosId, setDismissingOosId] = useState<string | null>(null);
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
+    const tick = () => setNow(Date.now());
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -117,7 +131,13 @@ export function OrderTracker({
       const res = await fetch(`/api/orders/${payModalOrder.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "request-payment", tableToken }),
+        body: JSON.stringify({
+          action: customerPaymentAction({
+            unpaidOrderCount: paymentOrders.length,
+            upiVpa,
+          }),
+          tableToken,
+        }),
       });
       if (res.ok) {
         setPayModalOrder(null);
@@ -339,10 +359,8 @@ export function OrderTracker({
       })}
 
       {paymentOrders.length > 0 && (() => {
-        const consolidatedTotal = paymentOrders.reduce(
-          (sum, order) => sum + customerOrderBillTotal(order.items),
-          0,
-        );
+        const canonicalDue = resolveCanonicalCustomerDue(tabRemaining);
+        const amountReady = canStartCustomerPayment(canonicalDue);
         const paymentPending = paymentOrders.some((o) => Boolean(o.paymentRequestedAt));
         const anchorOrder = paymentOrders[0]!;
 
@@ -378,7 +396,7 @@ export function OrderTracker({
               <div className="text-right">
                 <p className="text-xs text-zinc-500">Bill total</p>
                 <p className="text-xl font-bold text-emerald-400">
-                  {formatCurrency(consolidatedTotal)}
+                  {canonicalDue == null ? "…" : formatCurrency(canonicalDue)}
                 </p>
               </div>
             </div>
@@ -432,13 +450,25 @@ export function OrderTracker({
                 <Button
                   variant="success"
                   className="w-full bg-emerald-600 hover:bg-emerald-500"
-                  disabled={Boolean(payingId)}
-                  onClick={() =>
-                    paymentQrUrl ? openPayModal(anchorOrder) : requestPaymentOffline(anchorOrder)
-                  }
+                  disabled={Boolean(payingId) || !amountReady}
+                  onClick={() => {
+                    if (!amountReady) {
+                      void onRefresh();
+                      return;
+                    }
+                    if (paymentQrUrl || upiVpa) {
+                      openPayModal(anchorOrder);
+                      return;
+                    }
+                    requestPaymentOffline(anchorOrder);
+                  }}
                 >
                   <CircleDollarSign className="w-4 h-4" />
-                  {payingId ? "Processing..." : `Pay ${formatCurrency(consolidatedTotal)}`}
+                  {payingId
+                    ? "Processing..."
+                    : amountReady
+                      ? `Pay ${formatCurrency(canonicalDue!)}`
+                      : "Refreshing bill…"}
                 </Button>
                 <p className="text-xs text-zinc-500 text-center mt-2">
                   {paymentOrders.length > 1
@@ -458,15 +488,17 @@ export function OrderTracker({
           orderNumber={
             paymentOrders.length > 1 ? 0 : payModalOrder.orderNumber
           }
-          billTotal={paymentOrders.reduce(
-            (sum, order) => sum + customerOrderBillTotal(order.items),
-            0,
-          )}
+          billTotal={resolveCanonicalCustomerDue(tabRemaining)}
           consolidated={paymentOrders.length > 1}
           paymentQrUrl={paymentQrUrl}
+          upiVpa={upiVpa}
+          upiMerchantName={upiMerchantName}
+          automaticUpiEnabled={automaticUpiEnabled}
+          paymentReference={payModalOrder.id}
           confirming={Boolean(payingId)}
           onClose={() => setPayModalOrder(null)}
           onConfirm={confirmPaymentRequest}
+          onRefreshAmount={() => void onRefresh()}
         />
       )}
     </div>

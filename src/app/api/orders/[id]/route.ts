@@ -9,7 +9,7 @@ import {
 } from "@/lib/order-service";
 import { transitionOrderItemDirect, InvalidOrderTransitionError } from "@/domains/orders/transitions";
 import { requestOrderPayment } from "@/lib/payment-service";
-import { recordFullOrderPayment, recordOrderPayment, recordTableTabFullPayment, orderItemHasPayment } from "@/lib/payment-allocation-service";
+import { recordFullOrderPayment, recordOrderPayment, recordTableTabFullPayment, orderItemHasPayment, initiateManualUpiPayment } from "@/lib/payment-allocation-service";
 import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
@@ -35,7 +35,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { action, itemId, tableToken, amount, method, itemIds, note, tipAmount, managerUserId, managerPassword, reason, payTab } =
+  const { action, itemId, tableToken, amount, method, itemIds, note, tipAmount, managerUserId, managerPassword, reason, payTab, cashTendered } =
     await req.json();
   logApiRequest("orders/[id]", "PATCH", { orderId: id, action, itemId });
 
@@ -100,6 +100,27 @@ export async function PATCH(
     });
 
     return NextResponse.json({ success: true });
+  }
+
+  if (action === "initiate-manual-upi") {
+    if (!tableToken || order.table.qrToken !== tableToken) {
+      return opaqueNotFoundJson();
+    }
+    const dining = await assertCustomerDiningAccess(req, String(tableToken));
+    if (!dining.ok) {
+      return NextResponse.json({ error: dining.error, code: dining.code }, { status: dining.status });
+    }
+    const result = await initiateManualUpiPayment({ orderId: id, tableId: order.tableId });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    await requestOrderPayment(id, tableToken);
+    return NextResponse.json({
+      success: true,
+      pending: true,
+      message: "Payment recorded as pending. Staff will verify before the bill is marked paid.",
+      summary: result.summary,
+    });
   }
 
   if (action === "request-payment" || action === "pay") {
@@ -195,6 +216,7 @@ export async function PATCH(
       method: method ?? "UPI",
       collectedByUserId: session.id,
       collectedByName: session.name,
+      cashTendered: typeof cashTendered === "number" ? cashTendered : undefined,
     });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
@@ -258,6 +280,7 @@ export async function PATCH(
       itemIds: scopedItemIds,
       collectedByUserId: session.id,
       collectedByName: session.name,
+      cashTendered: typeof cashTendered === "number" ? cashTendered : undefined,
     });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });

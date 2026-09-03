@@ -786,7 +786,7 @@ model PaymentWebhookEvent {
   processedAt  DateTime?
   createdAt    DateTime   @default(now())
 
-  @@unique([provider, externalId])
+  @@unique([restaurantId, provider, externalId])
   @@index([restaurantId, createdAt])
 }
 

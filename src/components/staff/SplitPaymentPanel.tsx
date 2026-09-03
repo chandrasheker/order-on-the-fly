@@ -27,6 +27,7 @@ type PaymentSummary = {
     id: string;
     amount: number;
     method: string;
+    status?: string;
     collectedByName: string | null;
     createdAt: string;
   }>;
@@ -55,7 +56,8 @@ export function SplitPaymentPanel({
   const [expanded, setExpanded] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [splitCount, setSplitCount] = useState(2);
-  const [method, setMethod] = useState<"UPI" | "CASH" | "CARD">("UPI");
+  const [method, setMethod] = useState<"UPI" | "MANUAL_UPI" | "CASH" | "CARD">("UPI");
+  const [cashTendered, setCashTendered] = useState("");
 
   if (!summary || summary.remaining <= 0) return null;
 
@@ -106,7 +108,15 @@ export function SplitPaymentPanel({
         size="sm"
         className="w-full bg-emerald-600 hover:bg-emerald-500"
         disabled={disabled}
-        onClick={() => submitPayment({ action: "mark-paid", method })}
+        onClick={() =>
+          submitPayment({
+            action: "mark-paid",
+            method,
+            ...(method === "CASH" && cashTendered
+              ? { cashTendered: Number(cashTendered) }
+              : {}),
+          })
+        }
       >
         <CircleDollarSign className="w-4 h-4" /> Pay full {formatCurrency(summary.remaining)}
       </Button>
@@ -200,17 +210,51 @@ export function SplitPaymentPanel({
             onChange={(e) => setMethod(e.target.value as typeof method)}
             className="w-full rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-xs"
           >
-            <option value="UPI">UPI / PhonePe</option>
+            <option value="UPI">UPI (verified)</option>
+            <option value="MANUAL_UPI">Manual UPI (I verified)</option>
             <option value="CASH">Cash</option>
             <option value="CARD">Card</option>
           </select>
+          {method === "CASH" && (
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={cashTendered}
+              onChange={(e) => setCashTendered(e.target.value)}
+              placeholder="Cash tendered (optional)"
+              className="w-full rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-xs"
+            />
+          )}
 
           {summary.payments.length > 0 && (
             <div className="text-xs text-zinc-500 space-y-1">
               {summary.payments.map((p) => (
-                <div key={p.id}>
-                  {formatCurrency(p.amount)} · {p.method}
-                  {p.collectedByName ? ` · ${p.collectedByName}` : ""}
+                <div key={p.id} className="flex items-center justify-between gap-2">
+                  <span>
+                    {formatCurrency(p.amount)} · {p.method}
+                    {p.status && p.status !== "CAPTURED" ? ` · ${p.status}` : ""}
+                    {p.collectedByName ? ` · ${p.collectedByName}` : ""}
+                  </span>
+                  {p.status === "PENDING" && p.method === "MANUAL_UPI" && (
+                    <button
+                      type="button"
+                      className="text-emerald-400"
+                      onClick={() =>
+                        void runPayment(`confirm-${p.id}`, async () => {
+                          const res = await fetch(`/api/payments/${p.id}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "confirm" }),
+                          });
+                          const json = await res.json().catch(() => ({}));
+                          await onPaymentComplete(res, json);
+                        })
+                      }
+                    >
+                      Verify
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

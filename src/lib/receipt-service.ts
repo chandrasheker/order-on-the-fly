@@ -1,4 +1,4 @@
-import { sumOrderRevenue } from "@/lib/utils";
+import { financialsForOrder } from "@/lib/order-financials";
 
 export type ReceiptLineItem = {
   name: string;
@@ -25,9 +25,11 @@ export type ReceiptPayload = {
     tableNumber: number;
     customerName: string | null;
     paidAt: string;
+    billNumber?: string;
   };
   items: ReceiptLineItem[];
   subtotal: number;
+  discountAmount?: number;
   gstAmount: number;
   cgstAmount: number;
   sgstAmount: number;
@@ -50,6 +52,7 @@ type OrderForReceipt = {
   orderNumber: number;
   customerName: string | null;
   paidAt: Date | null;
+  discountAmount?: number | null;
   table: { number: number };
   items: Array<{
     itemName: string;
@@ -65,19 +68,13 @@ export function buildReceiptPayload(
   paidAt: Date = new Date(),
 ): ReceiptPayload {
   const billableItems = order.items.filter((item) => item.status !== "UNAVAILABLE");
-  const subtotal = sumOrderRevenue(
-    billableItems.map((item) => ({
-      unitPrice: item.unitPrice,
-      quantity: item.quantity,
-      status: item.status,
-    })),
-  );
-
+  const financials = financialsForOrder({
+    items: order.items,
+    discountAmount: order.discountAmount,
+    gstEnabled: restaurant.receiptGstEnabled,
+    gstRate: restaurant.receiptGstRate,
+  });
   const gstRate = restaurant.receiptGstEnabled ? Math.max(0, restaurant.receiptGstRate) : 0;
-  const gstAmount = restaurant.receiptGstEnabled
-    ? Math.round((subtotal * gstRate) / 100)
-    : 0;
-  const halfGst = Math.round(gstAmount / 2);
 
   return {
     restaurant: {
@@ -104,11 +101,12 @@ export function buildReceiptPayload(
       lineTotal: item.unitPrice * item.quantity,
       status: item.status,
     })),
-    subtotal,
-    gstAmount,
-    cgstAmount: halfGst,
-    sgstAmount: gstAmount - halfGst,
-    total: subtotal + gstAmount,
+    subtotal: financials.itemSubtotal,
+    discountAmount: financials.orderDiscount,
+    gstAmount: financials.gstAmount,
+    cgstAmount: financials.cgstAmount,
+    sgstAmount: financials.sgstAmount,
+    total: financials.grandTotal,
   };
 }
 
@@ -135,3 +133,4 @@ export const RECEIPT_ORDER_INCLUDE = {
     orderBy: { expectedReadyAt: "asc" as const },
   },
 } as const;
+
