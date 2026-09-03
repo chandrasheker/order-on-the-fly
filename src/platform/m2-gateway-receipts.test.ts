@@ -16,8 +16,6 @@ import {
   isValidRazorpayRefundIdempotencyKey,
   RAZORPAY_REFUND_IDEMPOTENCY_HEADER,
 } from "@/lib/razorpay-client";
-import { canMutatePaymentGatewayCredentials } from "@/lib/auth";
-import { publicCustomerHostScope } from "@/platform/tenant-scope";
 import { classifyHostname } from "@/platform/host";
 import type { HostTenantResolution } from "@/platform/host-tenant";
 
@@ -41,6 +39,8 @@ let getPublicReceiptByToken: typeof import("@/lib/public-receipt-service").getPu
 let voidOrderBill: typeof import("@/lib/bill-service").voidOrderBill;
 let setRazorpayTransportForTests: typeof import("@/lib/razorpay-client").setRazorpayTransportForTests;
 let invalidateFeatureCache: typeof import("@/lib/feature-flags").invalidateFeatureCache;
+let canMutatePaymentGatewayCredentials: typeof import("@/lib/auth").canMutatePaymentGatewayCredentials;
+let publicCustomerHostScope: typeof import("@/platform/tenant-scope").publicCustomerHostScope;
 
 type FakeOrder = { id: string; amount: number; currency: string; receipt?: string; status: string };
 type FakePayment = { id: string; order_id: string; amount: number; currency: string; status: string };
@@ -201,6 +201,8 @@ before(async () => {
   ({ voidOrderBill } = await import("@/lib/bill-service"));
   ({ setRazorpayTransportForTests } = await import("@/lib/razorpay-client"));
   ({ invalidateFeatureCache } = await import("@/lib/feature-flags"));
+  ({ canMutatePaymentGatewayCredentials } = await import("@/lib/auth"));
+  ({ publicCustomerHostScope } = await import("@/platform/tenant-scope"));
   setRazorpayTransportForTests(fake.transport);
 });
 
