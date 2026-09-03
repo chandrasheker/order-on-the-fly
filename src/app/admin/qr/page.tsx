@@ -454,12 +454,11 @@ export default function QRPage() {
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-3">
             <CircleDollarSign className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-lg font-bold">UPI and payment QR</h2>
+            <h2 className="text-lg font-bold">Manual UPI</h2>
           </div>
           <p className="text-sm text-zinc-400 mb-4">
-            Add your UPI ID so customers can pay from their phone app. Upload a QR for another
-            phone or desktop. Staff must still verify manual UPI. Automatic confirmation only
-            happens if a payment gateway webhook is configured.
+            Staff verifies payment. Add your UPI ID and optional static QR. Automatic Razorpay
+            checkout is configured separately under Realtime → Payments.
           </p>
           <div className="space-y-3 mb-4">
             <div>

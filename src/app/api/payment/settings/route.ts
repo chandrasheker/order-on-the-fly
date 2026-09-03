@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { getPaymentQrPublicUrl, paymentQrExists, removePaymentQrFile } from "@/lib/payment-qr-storage";
+import { isRazorpayAutomaticReady } from "@/lib/automatic-gateway";
 
 export async function GET() {
   const session = await requireSession(["OWNER", "MANAGER"]);
@@ -17,6 +18,9 @@ export async function GET() {
       upiMerchantName: true,
       paymentGatewayProvider: true,
       paymentGatewayKeyId: true,
+      paymentGatewaySecretEnc: true,
+      paymentWebhookSecret: true,
+      paymentWebhookSecretEnc: true,
     },
   });
 
@@ -29,7 +33,7 @@ export async function GET() {
       paymentQrUrl,
       upiVpa: restaurant?.upiVpa ?? "",
       upiMerchantName: restaurant?.upiMerchantName ?? "",
-      automaticUpiEnabled: Boolean(restaurant?.paymentGatewayProvider && restaurant?.paymentGatewayKeyId),
+      automaticUpiEnabled: restaurant ? isRazorpayAutomaticReady(restaurant) : false,
     },
   });
 }

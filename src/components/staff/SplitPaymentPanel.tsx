@@ -28,6 +28,8 @@ type PaymentSummary = {
     amount: number;
     method: string;
     status?: string;
+    provider?: string | null;
+    verificationStatus?: string | null;
     collectedByName: string | null;
     createdAt: string;
   }>;
@@ -232,8 +234,19 @@ export function SplitPaymentPanel({
               {summary.payments.map((p) => (
                 <div key={p.id} className="flex items-center justify-between gap-2">
                   <span>
-                    {formatCurrency(p.amount)} · {p.method}
-                    {p.status && p.status !== "CAPTURED" ? ` · ${p.status}` : ""}
+                    {formatCurrency(p.amount)} ·{" "}
+                    {p.method === "MANUAL_UPI"
+                      ? p.status === "PENDING"
+                        ? "Manual UPI pending verification"
+                        : "Manual UPI"
+                      : p.provider === "razorpay"
+                        ? p.status === "CAPTURED"
+                          ? "Razorpay captured"
+                          : `Razorpay ${p.status ?? ""}`
+                        : p.method}
+                    {p.method !== "MANUAL_UPI" && p.provider !== "razorpay" && p.status && p.status !== "CAPTURED"
+                      ? ` · ${p.status}`
+                      : ""}
                     {p.collectedByName ? ` · ${p.collectedByName}` : ""}
                   </span>
                   {p.status === "PENDING" && p.method === "MANUAL_UPI" && (

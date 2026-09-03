@@ -456,7 +456,7 @@ export function OrderTracker({
                       void onRefresh();
                       return;
                     }
-                    if (paymentQrUrl || upiVpa) {
+                    if (paymentQrUrl || upiVpa || automaticUpiEnabled) {
                       openPayModal(anchorOrder);
                       return;
                     }
@@ -472,9 +472,11 @@ export function OrderTracker({
                 </Button>
                 <p className="text-xs text-zinc-500 text-center mt-2">
                   {paymentOrders.length > 1
-                    ? "One combined bill for all rounds at your table"
-                    : paymentQrUrl
-                      ? "Scan PhonePe QR to pay, or alert staff after paying"
+                    ? "Please ask staff to settle the combined table bill."
+                    : automaticUpiEnabled
+                      ? "Pay securely. This screen never marks you paid by itself."
+                    : paymentQrUrl || upiVpa
+                      ? "Staff must verify the payment."
                       : "Alert staff to collect payment at the table"}
                 </p>
               </>
@@ -485,6 +487,8 @@ export function OrderTracker({
 
       {payModalOrder && (
         <PaymentModal
+          orderId={payModalOrder.id}
+          tableToken={tableToken}
           orderNumber={
             paymentOrders.length > 1 ? 0 : payModalOrder.orderNumber
           }
@@ -493,12 +497,17 @@ export function OrderTracker({
           paymentQrUrl={paymentQrUrl}
           upiVpa={upiVpa}
           upiMerchantName={upiMerchantName}
-          automaticUpiEnabled={automaticUpiEnabled}
+          automaticUpiEnabled={Boolean(automaticUpiEnabled) && paymentOrders.length === 1}
           paymentReference={payModalOrder.id}
           confirming={Boolean(payingId)}
           onClose={() => setPayModalOrder(null)}
           onConfirm={confirmPaymentRequest}
           onRefreshAmount={() => void onRefresh()}
+          onPaid={() => {
+            setPayModalOrder(null);
+            onPaymentRequested?.();
+            void onRefresh();
+          }}
         />
       )}
     </div>

@@ -134,8 +134,25 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
     const tabSummary = await getTableTabPaymentSummary(table.id);
+    const { ensureBillPublicToken } = await import("@/lib/public-receipt-service");
+    const bills = await prisma.bill.findMany({
+      where: {
+        restaurantId: table.restaurantId,
+        orderId: { in: ordersWithMenu.map((order) => order.id) },
+        status: "FINALIZED",
+      },
+      select: { id: true, orderId: true, publicToken: true },
+    });
+    const receiptByOrder = new Map<string, string>();
+    for (const bill of bills) {
+      const token = bill.publicToken || (await ensureBillPublicToken(bill.id));
+      if (token) receiptByOrder.set(bill.orderId, `/receipt/${token}`);
+    }
     return NextResponse.json({
-      orders: ordersWithMenu,
+      orders: ordersWithMenu.map((order) => ({
+        ...order,
+        receiptUrl: receiptByOrder.get(order.id) ?? null,
+      })),
       paymentBlocked: await isTablePaymentBlocked(table.id),
       tabPaymentPending: tabSummary.paymentRequested,
       tabSummary: {

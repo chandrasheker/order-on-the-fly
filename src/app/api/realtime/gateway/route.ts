@@ -33,9 +33,12 @@ export async function PATCH(req: NextRequest) {
   try {
     const settings = await updatePaymentGatewaySettings(session.restaurantId, {
       provider: (body.provider ?? null) as PaymentGatewayProvider | null,
-      keyId: body.keyId ?? null,
-      secret: body.secret ?? null,
-      webhookSecret: body.webhookSecret ?? null,
+      keyId: typeof body.keyId === "string" ? body.keyId : undefined,
+      secret: typeof body.secret === "string" && body.secret.trim() ? body.secret : undefined,
+      webhookSecret:
+        typeof body.webhookSecret === "string" && body.webhookSecret.trim()
+          ? body.webhookSecret
+          : undefined,
     });
     return NextResponse.json({ settings });
   } catch (error) {

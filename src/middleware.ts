@@ -71,6 +71,12 @@ function isPublicApi(pathname: string, request: NextRequest) {
   if (/^\/api\/webhooks\/orders\/[^/]+$/.test(pathname) && request.method === "POST") return true;
   if (/^\/api\/webhooks\/(swiggy|zomato)\/[^/]+$/.test(pathname) && request.method === "POST") return true;
   if (/^\/api\/webhooks\/payment\/[^/]+$/.test(pathname) && request.method === "POST") return true;
+  if (pathname === "/api/payments/gateway/create" && request.method === "POST") return true;
+  if (pathname === "/api/payments/gateway/verify" && request.method === "POST") return true;
+  if (/^\/api\/payments\/gateway\/[^/]+$/.test(pathname) && (request.method === "GET" || request.method === "POST")) {
+    return true;
+  }
+  if (/^\/api\/receipts\/public\/[^/]+$/.test(pathname) && request.method === "GET") return true;
   if (pathname === "/api/guest/service-request" && request.method === "POST") return true;
   if (pathname === "/api/push/vapid" && request.method === "GET") return true;
   if (/^\/api\/orders\/[^/]+$/.test(pathname) && request.method === "PATCH") {
@@ -258,7 +264,7 @@ export async function middleware(request: NextRequest) {
     return nextWithHost(request);
   }
 
-  if (pathname.startsWith("/order/")) {
+  if (pathname.startsWith("/order/") || pathname.startsWith("/receipt/")) {
     return nextWithHost(request);
   }
 

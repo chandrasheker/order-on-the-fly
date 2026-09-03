@@ -5,9 +5,18 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import { buildUpiIntents, isValidUpiVpa } from "@/lib/upi-intent";
+import { RAZORPAY_CHECKOUT_SCRIPT } from "@/lib/gateway-constants";
 import { CircleDollarSign, QrCode, Smartphone, X } from "lucide-react";
 
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
+  }
+}
+
 interface PaymentModalProps {
+  orderId?: string;
+  tableToken?: string;
   orderNumber: number;
   billTotal: number | null;
   consolidated?: boolean;
@@ -20,9 +29,47 @@ interface PaymentModalProps {
   onConfirm: () => void;
   confirming: boolean;
   onRefreshAmount?: () => void;
+  onPaid?: (receiptUrl?: string | null) => void;
+}
+
+type GatewayPhase =
+  | "idle"
+  | "preparing"
+  | "waiting"
+  | "verifying"
+  | "success"
+  | "failed"
+  | "cancelled"
+  | "processing";
+
+function loadRazorpayScript() {
+  return new Promise<void>((resolve, reject) => {
+    if (typeof window === "undefined") {
+      reject(new Error("unavailable"));
+      return;
+    }
+    if (window.Razorpay) {
+      resolve();
+      return;
+    }
+    const existing = document.querySelector(`script[src="${RAZORPAY_CHECKOUT_SCRIPT}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("script")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = RAZORPAY_CHECKOUT_SCRIPT;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("script"));
+    document.body.appendChild(script);
+  });
 }
 
 export function PaymentModal({
+  orderId,
+  tableToken,
   orderNumber,
   billTotal,
   consolidated = false,
@@ -35,13 +82,20 @@ export function PaymentModal({
   onConfirm,
   confirming,
   onRefreshAmount,
+  onPaid,
 }: PaymentModalProps) {
   const [showQr, setShowQr] = useState(false);
+  const [phase, setPhase] = useState<GatewayPhase>("idle");
+  const [gatewayMessage, setGatewayMessage] = useState("");
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const hasQr = Boolean(paymentQrUrl?.trim());
   const amountReady = billTotal != null && Number.isFinite(billTotal) && billTotal > 0;
   const hasVpa = isValidUpiVpa(upiVpa);
+  const useRazorpay = automaticUpiEnabled && !consolidated && Boolean(orderId && tableToken);
   const intents = useMemo(() => {
-    if (!amountReady || consolidated || !hasVpa || !upiVpa || billTotal == null) return null;
+    if (useRazorpay || !amountReady || consolidated || !hasVpa || !upiVpa || billTotal == null) {
+      return null;
+    }
     return buildUpiIntents({
       vpa: upiVpa,
       payeeName: upiMerchantName || "Restaurant",
@@ -49,7 +103,116 @@ export function PaymentModal({
       transactionRef: (paymentReference ?? `BILL${orderNumber}`).slice(0, 35),
       note: `Order ${orderNumber}`,
     });
-  }, [amountReady, consolidated, hasVpa, upiVpa, upiMerchantName, billTotal, paymentReference, orderNumber]);
+  }, [useRazorpay, amountReady, consolidated, hasVpa, upiVpa, upiMerchantName, billTotal, paymentReference, orderNumber]);
+
+  const pollStatus = async (publicToken: string) => {
+    for (let i = 0; i < 8; i += 1) {
+      const res = await fetch(`/api/payments/gateway/${publicToken}`);
+      const json = await res.json().catch(() => ({}));
+      if (json.status?.paid) {
+        setPhase("success");
+        setGatewayMessage("Payment successful.");
+        setReceiptUrl(json.status.receiptUrl ?? null);
+        onPaid?.(json.status.receiptUrl ?? null);
+        return;
+      }
+      if (json.status?.retryable) {
+        setPhase("failed");
+        setGatewayMessage(json.status.message || "Payment could not be completed. You can retry.");
+        return;
+      }
+      setPhase("processing");
+      setGatewayMessage("Payment is being verified. Please don't pay again yet.");
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    setPhase("processing");
+    setGatewayMessage("Payment is being verified. Please don't pay again yet.");
+  };
+
+  const startRazorpay = async () => {
+    if (!orderId || !tableToken || !amountReady) return;
+    setPhase("preparing");
+    setGatewayMessage("Preparing payment");
+    try {
+      const res = await fetch("/api/payments/gateway/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, tableToken }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.checkout?.orderId) {
+        setPhase("failed");
+        setGatewayMessage(json.error || "Payment could not be completed. You can retry.");
+        return;
+      }
+      await loadRazorpayScript();
+      if (!window.Razorpay) {
+        setPhase("failed");
+        setGatewayMessage("Payment could not be completed. You can retry.");
+        return;
+      }
+      setPhase("waiting");
+      setGatewayMessage("Waiting for payment");
+      const checkout = json.checkout;
+      const rzp = new window.Razorpay({
+        key: checkout.keyId,
+        amount: checkout.amountPaise,
+        currency: checkout.currency,
+        name: checkout.name,
+        order_id: checkout.orderId,
+        handler: async (response: {
+          razorpay_payment_id?: string;
+          razorpay_signature?: string;
+        }) => {
+          setPhase("verifying");
+          setGatewayMessage("Payment is being verified. Please don't pay again yet.");
+          try {
+            const verifyRes = await fetch("/api/payments/gateway/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                publicToken: checkout.publicToken,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+            const verifyJson = await verifyRes.json().catch(() => ({}));
+            if (verifyRes.ok && verifyJson.paid) {
+              await pollStatus(checkout.publicToken);
+              return;
+            }
+            if (verifyRes.status >= 500) {
+              setPhase("processing");
+              setGatewayMessage("Payment is being verified. Please don't pay again yet.");
+              await pollStatus(checkout.publicToken);
+              return;
+            }
+            setPhase("failed");
+            setGatewayMessage(verifyJson.error || "Payment could not be completed. You can retry.");
+          } catch {
+            setPhase("processing");
+            setGatewayMessage("Payment is being verified. Please don't pay again yet.");
+            await pollStatus(checkout.publicToken);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            void fetch(`/api/payments/gateway/${checkout.publicToken}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "cancel" }),
+            });
+            setPhase("cancelled");
+            setGatewayMessage("Payment cancelled. You have not been charged by TableTap.");
+          },
+        },
+      });
+      rzp.open();
+    } catch {
+      setPhase("processing");
+      setGatewayMessage("Payment is being verified. Please don't pay again yet.");
+    }
+  };
 
   return (
     <motion.div
@@ -68,7 +231,11 @@ export function PaymentModal({
               {consolidated ? "Combined table bill" : `Order #${orderNumber}`}
             </p>
             <h3 className="text-xl font-bold text-white mt-1">
-              {amountReady ? `Pay ${formatCurrency(billTotal!)}` : "Refreshing bill…"}
+              {amountReady
+                ? useRazorpay
+                  ? `Pay securely ${formatCurrency(billTotal!)}`
+                  : `Pay ${formatCurrency(billTotal!)}`
+                : "Refreshing bill total…"}
             </h3>
           </div>
           <button
@@ -83,9 +250,23 @@ export function PaymentModal({
 
         {consolidated && amountReady ? (
           <p className="text-xs text-amber-200 mb-4">
-            This table has more than one order. Staff will confirm the full table amount
-            {" "}{formatCurrency(billTotal!)}. Do not pay a single-order UPI amount.
+            Please ask staff to settle the combined table bill.
           </p>
+        ) : null}
+
+        {useRazorpay && gatewayMessage ? (
+          <p className={`text-sm mb-4 ${phase === "success" ? "text-emerald-300" : phase === "failed" || phase === "cancelled" ? "text-amber-200" : "text-zinc-300"}`}>
+            {gatewayMessage}
+          </p>
+        ) : null}
+
+        {phase === "success" && receiptUrl ? (
+          <a
+            href={receiptUrl}
+            className="block w-full mb-4 rounded-xl bg-emerald-600 px-3 py-3 text-center text-sm font-medium text-white"
+          >
+            View receipt
+          </a>
         ) : null}
 
         {intents ? (
@@ -105,19 +286,11 @@ export function PaymentModal({
                 Other UPI app
               </a>
             </div>
-            {automaticUpiEnabled ? (
-              <p className="text-xs text-emerald-300">
-                After you pay, wait here. Payment is confirmed by the bank, not by this screen.
-              </p>
-            ) : (
-              <p className="text-xs text-amber-200">
-                Opening a UPI app does not mark this bill paid. Staff must verify the payment.
-              </p>
-            )}
+            <p className="text-xs text-amber-200">Staff must verify the payment.</p>
           </div>
         ) : null}
 
-        {(hasQr || !intents) && (
+        {(hasQr || !intents) && !useRazorpay && (
           <>
             {hasQr && (showQr || !intents) ? (
               <>
@@ -146,7 +319,7 @@ export function PaymentModal({
               >
                 <QrCode className="w-4 h-4" /> Show QR for another phone
               </button>
-            ) : !intents ? (
+            ) : !intents && !consolidated ? (
               <div className="p-4 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-100 text-sm mb-4">
                 <p className="font-medium">Pay cash at the table</p>
                 <p className="text-amber-200/80 text-xs mt-1">
@@ -157,25 +330,47 @@ export function PaymentModal({
           </>
         )}
 
-        <Button
-          variant="success"
-          className="w-full bg-emerald-600 hover:bg-emerald-500 mb-2"
-          disabled={confirming || (!amountReady && !onRefreshAmount)}
-          onClick={amountReady ? onConfirm : onRefreshAmount}
-        >
-          <CircleDollarSign className="w-4 h-4" />
-          {confirming
-            ? "Notifying staff..."
-            : !amountReady
-              ? "Refresh bill total"
-              : intents
-                ? "I've paid — staff will verify"
-                : `Pay ${formatCurrency(billTotal!)} — alert server`}
-        </Button>
+        {phase !== "success" ? (
+          <Button
+            variant="success"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 mb-2"
+            disabled={
+              confirming ||
+              phase === "preparing" ||
+              phase === "waiting" ||
+              phase === "verifying" ||
+              (!amountReady && !onRefreshAmount)
+            }
+            onClick={
+              !amountReady
+                ? onRefreshAmount
+                : useRazorpay
+                  ? () => void startRazorpay()
+                  : onConfirm
+            }
+          >
+            <CircleDollarSign className="w-4 h-4" />
+            {confirming || phase === "preparing" || phase === "verifying"
+              ? phase === "verifying"
+                ? "Verifying payment…"
+                : useRazorpay
+                  ? "Preparing payment…"
+                  : "Notifying staff..."
+              : !amountReady
+                ? "Refresh bill total"
+                : useRazorpay
+                  ? `Pay securely ${formatCurrency(billTotal!)}`
+                  : intents
+                    ? "I've paid — staff will verify"
+                    : `Pay ${formatCurrency(billTotal!)} — alert server`}
+          </Button>
+        ) : null}
         <p className="text-xs text-zinc-500 text-center">
-          This screen never marks payment successful by itself.
+          {useRazorpay
+            ? "This screen never marks payment successful by itself."
+            : "This screen never marks payment successful by itself."}
         </p>
-      </motion.div>
+      </div>
     </motion.div>
   );
 }

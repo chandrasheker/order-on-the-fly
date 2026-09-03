@@ -5,6 +5,7 @@ import { buildBillSnapshot, parseBillSnapshot, receiptFromBillSnapshot } from "@
 import { financialsForOrder } from "@/lib/order-financials";
 import { logInfo, logWarn } from "@/lib/logger";
 import { enqueueIdempotentPrintJob } from "@/domains/printing/print-job-service";
+import { generatePublicToken } from "@/lib/public-token";
 
 const BILL_RESTAURANT_SELECT = {
   name: true,
@@ -155,6 +156,7 @@ export async function finalizeOrderBillInTx(
           branchId: order.branchId,
           orderId: order.id,
           billNumber,
+          publicToken: generatePublicToken(),
           status: "FINALIZED",
           snapshot: JSON.stringify(snapshot),
           itemSubtotal: financials.itemSubtotal,

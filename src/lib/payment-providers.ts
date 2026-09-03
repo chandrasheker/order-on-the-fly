@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import { verifyRazorpayWebhookSignature } from "@/lib/razorpay-client";
 
 export type PaymentProviderName = "cash" | "manual_upi" | "razorpay" | "phonepe" | "paytm";
 
@@ -10,12 +10,6 @@ export type ProviderWebhookResult = {
 export interface PaymentProvider {
   name: PaymentProviderName;
   verifyWebhook(rawBody: string, headers: Headers, secret: string): ProviderWebhookResult;
-}
-
-function verifyRazorpaySignature(body: string, signature: string, secret: string) {
-  const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
-  if (expected.length !== signature.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
 
 export const cashPaymentProvider: PaymentProvider = {
@@ -36,7 +30,7 @@ export const razorpayPaymentProvider: PaymentProvider = {
   name: "razorpay",
   verifyWebhook(rawBody, headers, secret) {
     const sig = headers.get("x-razorpay-signature");
-    if (!sig || !verifyRazorpaySignature(rawBody, sig, secret)) {
+    if (!sig || !verifyRazorpayWebhookSignature(rawBody, sig, secret)) {
       return { ok: false, error: "Invalid signature" };
     }
     return { ok: true };
