@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
+import Database from "better-sqlite3";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { computeOrderFinancials } from "@/lib/order-financials";
 import { todayDateString } from "@/lib/utils";
@@ -267,7 +268,7 @@ describe("M1 financial correctness", () => {
     assert.ok(capturedTotal <= 400.01);
     assert.ok(captured.length >= 1);
     const summary = await getOrderPaymentSummary(order.id);
-    assert.equal(summary?.amountDue ?? summary?.remaining, 0);
+    assert.equal(summary?.remaining, 0);
   });
 
   it("failed webhook replay captures exactly once", async () => {
@@ -496,7 +497,6 @@ describe("fresh financial migration FK", () => {
           stdio: "pipe",
         },
       );
-      const Database = require("better-sqlite3") as typeof import("better-sqlite3");
       const db = new Database(migrateDb);
       const rows = db.prepare(`PRAGMA foreign_key_list('Payment')`).all() as Array<{
         table: string;

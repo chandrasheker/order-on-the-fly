@@ -72,7 +72,7 @@ export function OrderTracker({
   onRefresh: () => void;
   onPaymentRequested?: () => void;
 }) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   const [alarmSent, setAlarmSent] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [payingId, setPayingId] = useState<string | null>(null);
@@ -80,7 +80,9 @@ export function OrderTracker({
   const [dismissingOosId, setDismissingOosId] = useState<string | null>(null);
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
+    const tick = () => setNow(Date.now());
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -454,9 +456,11 @@ export function OrderTracker({
                       void onRefresh();
                       return;
                     }
-                    paymentQrUrl || upiVpa
-                      ? openPayModal(anchorOrder)
-                      : requestPaymentOffline(anchorOrder);
+                    if (paymentQrUrl || upiVpa) {
+                      openPayModal(anchorOrder);
+                      return;
+                    }
+                    requestPaymentOffline(anchorOrder);
                   }}
                 >
                   <CircleDollarSign className="w-4 h-4" />
