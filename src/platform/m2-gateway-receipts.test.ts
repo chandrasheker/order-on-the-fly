@@ -25,7 +25,6 @@ let refundAutomaticPayment: typeof import("@/lib/gateway-payment-service").refun
 let getGatewayAttemptPublicStatus: typeof import("@/lib/gateway-payment-service").getGatewayAttemptPublicStatus;
 let recordOrderPayment: typeof import("@/lib/payment-allocation-service").recordOrderPayment;
 let initiateManualUpiPayment: typeof import("@/lib/payment-allocation-service").initiateManualUpiPayment;
-let getOrderPaymentSummary: typeof import("@/lib/payment-allocation-service").getOrderPaymentSummary;
 let processPaymentWebhook: typeof import("@/lib/payment-webhook-service").processPaymentWebhook;
 let getPaymentGatewaySettings: typeof import("@/lib/payment-webhook-service").getPaymentGatewaySettings;
 let updatePaymentGatewaySettings: typeof import("@/lib/payment-webhook-service").updatePaymentGatewaySettings;
@@ -122,7 +121,7 @@ function createFakeRazorpay() {
   };
 }
 
-let fake = createFakeRazorpay();
+const fake = createFakeRazorpay();
 
 before(async () => {
   execFileSync(
@@ -150,7 +149,7 @@ before(async () => {
     refundAutomaticPayment,
     getGatewayAttemptPublicStatus,
   } = await import("@/lib/gateway-payment-service"));
-  ({ recordOrderPayment, initiateManualUpiPayment, getOrderPaymentSummary } = await import(
+  ({ recordOrderPayment, initiateManualUpiPayment } = await import(
     "@/lib/payment-allocation-service"
   ));
   ({ processPaymentWebhook, getPaymentGatewaySettings, updatePaymentGatewaySettings } = await import(

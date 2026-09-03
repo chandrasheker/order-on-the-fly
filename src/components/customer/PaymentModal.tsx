@@ -366,11 +366,9 @@ export function PaymentModal({
           </Button>
         ) : null}
         <p className="text-xs text-zinc-500 text-center">
-          {useRazorpay
-            ? "This screen never marks payment successful by itself."
-            : "This screen never marks payment successful by itself."}
+          This screen never marks payment successful by itself.
         </p>
-      </div>
+      </motion.div>
     </motion.div>
   );
 }

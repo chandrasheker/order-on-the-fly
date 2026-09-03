@@ -38,7 +38,7 @@ export async function getPublicReceiptByToken(params: {
       gstin: receipt.restaurant.gstin,
       footer: receipt.restaurant.footer,
     },
-    branch: snapshot.branch ?? null,
+    branch: snapshot?.branch ?? null,
     order: {
       orderNumber: receipt.order.orderNumber,
       tableNumber: receipt.order.tableNumber,
