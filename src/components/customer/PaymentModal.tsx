@@ -9,7 +9,7 @@ import { CircleDollarSign, QrCode, Smartphone, X } from "lucide-react";
 
 interface PaymentModalProps {
   orderNumber: number;
-  billTotal: number;
+  billTotal: number | null;
   consolidated?: boolean;
   paymentQrUrl?: string | null;
   upiVpa?: string | null;
@@ -19,6 +19,7 @@ interface PaymentModalProps {
   onClose: () => void;
   onConfirm: () => void;
   confirming: boolean;
+  onRefreshAmount?: () => void;
 }
 
 export function PaymentModal({
@@ -33,20 +34,22 @@ export function PaymentModal({
   onClose,
   onConfirm,
   confirming,
+  onRefreshAmount,
 }: PaymentModalProps) {
   const [showQr, setShowQr] = useState(false);
   const hasQr = Boolean(paymentQrUrl?.trim());
+  const amountReady = billTotal != null && Number.isFinite(billTotal) && billTotal > 0;
   const hasVpa = isValidUpiVpa(upiVpa);
   const intents = useMemo(() => {
-    if (!hasVpa || !upiVpa) return null;
+    if (!amountReady || consolidated || !hasVpa || !upiVpa || billTotal == null) return null;
     return buildUpiIntents({
       vpa: upiVpa,
       payeeName: upiMerchantName || "Restaurant",
       amount: billTotal,
       transactionRef: (paymentReference ?? `BILL${orderNumber}`).slice(0, 35),
-      note: consolidated ? "Table bill" : `Order ${orderNumber}`,
+      note: `Order ${orderNumber}`,
     });
-  }, [hasVpa, upiVpa, upiMerchantName, billTotal, paymentReference, orderNumber, consolidated]);
+  }, [amountReady, consolidated, hasVpa, upiVpa, upiMerchantName, billTotal, paymentReference, orderNumber]);
 
   return (
     <motion.div
@@ -65,7 +68,7 @@ export function PaymentModal({
               {consolidated ? "Combined table bill" : `Order #${orderNumber}`}
             </p>
             <h3 className="text-xl font-bold text-white mt-1">
-              Pay {formatCurrency(billTotal)}
+              {amountReady ? `Pay ${formatCurrency(billTotal!)}` : "Refreshing bill…"}
             </h3>
           </div>
           <button
@@ -77,6 +80,13 @@ export function PaymentModal({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {consolidated && amountReady ? (
+          <p className="text-xs text-amber-200 mb-4">
+            This table has more than one order. Staff will confirm the full table amount
+            {" "}{formatCurrency(billTotal!)}. Do not pay a single-order UPI amount.
+          </p>
+        ) : null}
 
         {intents ? (
           <div className="space-y-3 mb-4">
@@ -122,7 +132,9 @@ export function PaymentModal({
                   <Smartphone className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <p>
                     Scan this QR from another phone and pay{" "}
-                    <strong className="text-emerald-400">{formatCurrency(billTotal)}</strong>
+                    <strong className="text-emerald-400">
+                      {amountReady ? formatCurrency(billTotal!) : "the billed amount"}
+                    </strong>
                   </p>
                 </div>
               </>
@@ -148,15 +160,17 @@ export function PaymentModal({
         <Button
           variant="success"
           className="w-full bg-emerald-600 hover:bg-emerald-500 mb-2"
-          disabled={confirming}
-          onClick={onConfirm}
+          disabled={confirming || (!amountReady && !onRefreshAmount)}
+          onClick={amountReady ? onConfirm : onRefreshAmount}
         >
           <CircleDollarSign className="w-4 h-4" />
           {confirming
             ? "Notifying staff..."
-            : intents
-              ? "I've paid — staff will verify"
-              : `Pay ${formatCurrency(billTotal)} — alert server`}
+            : !amountReady
+              ? "Refresh bill total"
+              : intents
+                ? "I've paid — staff will verify"
+                : `Pay ${formatCurrency(billTotal!)} — alert server`}
         </Button>
         <p className="text-xs text-zinc-500 text-center">
           This screen never marks payment successful by itself.

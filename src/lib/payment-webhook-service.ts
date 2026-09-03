@@ -7,6 +7,7 @@ import { todayDateString, formatCurrency } from "@/lib/utils";
 import { getOrderPaymentSummary, recordOrderPayment } from "@/lib/payment-allocation-service";
 import { getPaymentProvider } from "@/lib/payment-providers";
 import { FINANCIAL_PAID_EPSILON, PAYMENT_STATUS } from "@/lib/order-financials";
+import { isUniqueConstraintError } from "@/lib/bill-service";
 import { logInfo, logWarn } from "@/lib/logger";
 import type { PaymentGatewayProvider } from "@/generated/prisma/client";
 
@@ -123,19 +124,31 @@ export async function processPaymentWebhook(params: {
     return { ok: true as const, status: 200, message: "Already processed" };
   }
 
-  const event =
-    existing ??
-    (await prisma.paymentWebhookEvent.create({
-      data: {
-        restaurantId: restaurant.id,
-        provider: params.provider,
-        externalId: parsed.externalId,
-        amount: parsed.amount,
-        tableId: parsed.tableId,
-        orderId: parsed.orderId,
-        payload: params.rawBody,
-      },
-    }));
+  let event = existing;
+  if (!event) {
+    try {
+      event = await prisma.paymentWebhookEvent.create({
+        data: {
+          restaurantId: restaurant.id,
+          provider: params.provider,
+          externalId: parsed.externalId,
+          amount: parsed.amount,
+          tableId: parsed.tableId,
+          orderId: parsed.orderId,
+          payload: params.rawBody,
+        },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      event = await prisma.paymentWebhookEvent.findUnique({
+        where: { provider_externalId: { provider: params.provider, externalId: parsed.externalId } },
+      });
+      if (!event) throw error;
+      if (event.processedAt) {
+        return { ok: true as const, status: 200, message: "Already processed" };
+      }
+    }
+  }
 
   logInfo("payments:webhook", "Webhook accepted", {
     restaurantId: restaurant.id,
@@ -145,18 +158,21 @@ export async function processPaymentWebhook(params: {
     orderId: parsed.orderId,
   });
 
-  const result = await applyAutoPayment(restaurant.id, parsed, params.provider);
-  await prisma.paymentWebhookEvent.update({
-    where: { id: event.id },
-    data: {
-      status: result.ok ? "PROCESSED" : "FAILED",
-      processedAt: new Date(),
-      tableId: parsed.tableId ?? result.tableId,
-      orderId: parsed.orderId ?? result.orderId,
-    },
-  });
+  if (!event) {
+    return { ok: false as const, status: 503, error: "Webhook event could not be recorded" };
+  }
 
+  const result = await applyAutoPayment(restaurant.id, parsed, params.provider);
   if (result.ok) {
+    await prisma.paymentWebhookEvent.update({
+      where: { id: event.id },
+      data: {
+        status: "PROCESSED",
+        processedAt: new Date(),
+        tableId: parsed.tableId ?? result.tableId,
+        orderId: parsed.orderId ?? result.orderId,
+      },
+    });
     void dispatchRealtimeNotifications({
       restaurantId: restaurant.id,
       type: "PAYMENT_RECEIVED",
@@ -165,9 +181,31 @@ export async function processPaymentWebhook(params: {
       tableNumber: result.tableNumber,
       urgent: true,
     });
+    return { ok: true as const, status: 200, message: result.message ?? "Processed" };
   }
 
-  return { ok: true as const, status: 200, message: result.message ?? "Processed" };
+  await prisma.paymentWebhookEvent.update({
+    where: { id: event.id },
+    data: {
+      status: "FAILED",
+      processedAt: null,
+      tableId: parsed.tableId ?? result.tableId,
+      orderId: parsed.orderId ?? result.orderId,
+    },
+  });
+
+  logWarn("payments:webhook", "Application failed; leaving retryable", {
+    restaurantId: restaurant.id,
+    provider: params.provider,
+    externalId: parsed.externalId,
+    message: result.message,
+  });
+
+  return {
+    ok: false as const,
+    status: result.retryable === false ? 409 : 503,
+    error: result.message ?? "Payment application failed",
+  };
 }
 
 function parseWebhookPayload(provider: string, payload: Record<string, unknown>) {
@@ -248,12 +286,15 @@ async function applyAutoPayment(
       where: { id: orderId, restaurantId, date: today },
       include: { table: true },
     });
-    if (!order || order.paidAt) {
-      return { ok: false as const, message: "Order not found or already paid" };
+    if (!order) {
+      return { ok: false as const, message: "Order not found or already paid", retryable: false };
+    }
+    if (order.paidAt) {
+      return { ok: true as const, message: "Already paid", orderId: order.id, tableId: order.tableId, tableNumber: order.table.number };
     }
     const summary = await getOrderPaymentSummary(order.id);
     if (!summary || summary.remaining <= 0) {
-      return { ok: false as const, message: "Nothing to pay" };
+      return { ok: false as const, message: "Nothing to pay", retryable: false };
     }
     if (parsed.amount > summary.remaining + FINANCIAL_PAID_EPSILON) {
       logWarn("payments:webhook", "Amount exceeds remaining", {
@@ -262,7 +303,7 @@ async function applyAutoPayment(
         amount: parsed.amount,
         remaining: summary.remaining,
       });
-      return { ok: false as const, message: "Amount does not match bill remaining" };
+      return { ok: false as const, message: "Amount does not match bill remaining", retryable: false };
     }
     const result = await recordOrderPayment({
       orderId: order.id,
@@ -277,7 +318,10 @@ async function applyAutoPayment(
       status: PAYMENT_STATUS.CAPTURED,
     });
     if (!result.ok) {
-      return { ok: false as const, message: result.error };
+      const retryable =
+        result.status >= 500 ||
+        result.error === "Order must be fully served before payment";
+      return { ok: false as const, message: result.error, retryable };
     }
     return {
       ok: true as const,
@@ -300,40 +344,31 @@ async function applyAutoPayment(
       include: { table: true },
       orderBy: { orderNumber: "asc" },
     });
-    let remaining = parsed.amount;
-    for (const order of orders) {
-      const summary = await getOrderPaymentSummary(order.id);
-      if (!summary || summary.remaining <= 0) continue;
-      const pay = Math.min(remaining, summary.remaining);
-      if (pay <= 0) break;
-      const result = await recordOrderPayment({
-        orderId: order.id,
-        amount: pay,
-        method: "UPI",
-        note: "Auto-confirmed via payment webhook",
-        collectedByName: "Payment Gateway",
-        provider,
-        providerPaymentId: parsed.externalId,
-        idempotencyKey: parsed.externalId ? `webhook:${provider}:${parsed.externalId}:${order.id}` : undefined,
-        capture: true,
-        status: PAYMENT_STATUS.CAPTURED,
-      });
-      if (!result.ok) continue;
-      remaining -= pay;
-    }
-    if (orders[0]) {
-      const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
-      await maybeAutoCloseTableAfterPayment(tableId);
-      return {
-        ok: true as const,
+    if (orders.length > 1) {
+      logWarn("payments:webhook", "Refusing multi-order table automatic payment", {
+        restaurantId,
         tableId,
-        tableNumber: orders[0].table.number,
-        message: "Table payment applied",
+        orderCount: orders.length,
+        externalId: parsed.externalId,
+      });
+      return {
+        ok: false as const,
+        message: "Automatic table payment cannot be split across multiple unpaid orders",
+        retryable: false,
+        tableId,
+        tableNumber: orders[0]?.table.number,
       };
+    }
+    if (orders.length === 1) {
+      return applyAutoPayment(
+        restaurantId,
+        { ...parsed, orderId: orders[0]!.id, tableId },
+        provider,
+      );
     }
   }
 
-  return { ok: false as const, message: "Could not match payment to order/table" };
+  return { ok: false as const, message: "Could not match payment to order/table", retryable: false };
 }
 
 export function buildPaymentReference(tableId: string, orderId: string) {

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import { recordAuditLog } from "@/lib/audit-service";
 import { buildBillSnapshot, parseBillSnapshot, receiptFromBillSnapshot } from "@/lib/bill-snapshot";
 import { financialsForOrder } from "@/lib/order-financials";
@@ -17,6 +18,10 @@ const BILL_RESTAURANT_SELECT = {
   tenantId: true,
 } as const;
 
+const BILL_NUMBER_ATTEMPTS = 8;
+
+type BillingDb = Prisma.TransactionClient | typeof prisma;
+
 function billDateStamp(timeZone = "Asia/Kolkata") {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -32,8 +37,39 @@ function formatBillNumber(dateStamp: string, sequence: number) {
   return `${dateStamp}-${String(sequence).padStart(4, "0")}`;
 }
 
-async function nextBillNumber(restaurantId: string, dateStamp: string) {
-  const latest = await prisma.bill.findFirst({
+export function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  if ("code" in error && error.code === "P2002") return true;
+  const message = "message" in error ? String(error.message) : "";
+  if (/UNIQUE constraint failed/i.test(message)) return true;
+  if ("cause" in error) return isUniqueConstraintError(error.cause);
+  return false;
+}
+
+export async function runWithUniqueConstraintRetry<T>(
+  work: () => Promise<T>,
+  attempts = BILL_NUMBER_ATTEMPTS,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      lastError = error;
+      if (isUniqueConstraintError(error) && attempt < attempts - 1) {
+        logWarn("billing", "Unique constraint collision, retrying transaction", {
+          attempt: attempt + 1,
+        });
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
+async function nextBillNumber(db: BillingDb, restaurantId: string, dateStamp: string) {
+  const latest = await db.bill.findFirst({
     where: { restaurantId, billNumber: { startsWith: `${dateStamp}-` } },
     orderBy: { billNumber: "desc" },
     select: { billNumber: true },
@@ -48,13 +84,16 @@ export async function getBillForOrder(orderId: string, restaurantId: string) {
   });
 }
 
-export async function finalizeOrderBill(params: {
-  orderId: string;
-  restaurantId: string;
-  actorUserId?: string;
-  actorName?: string;
-}) {
-  const existing = await prisma.bill.findFirst({
+export async function finalizeOrderBillInTx(
+  tx: BillingDb,
+  params: {
+    orderId: string;
+    restaurantId: string;
+    actorUserId?: string;
+    actorName?: string;
+  },
+) {
+  const existing = await tx.bill.findFirst({
     where: { orderId: params.orderId, restaurantId: params.restaurantId },
   });
   if (existing) {
@@ -64,7 +103,7 @@ export async function finalizeOrderBill(params: {
     return { ok: true as const, bill: existing, created: false };
   }
 
-  const order = await prisma.order.findFirst({
+  const order = await tx.order.findFirst({
     where: { id: params.orderId, restaurantId: params.restaurantId },
     include: {
       items: true,
@@ -85,87 +124,141 @@ export async function finalizeOrderBill(params: {
   });
 
   const dateStamp = billDateStamp(order.branch?.timezone ?? "Asia/Kolkata");
-  let billNumber = await nextBillNumber(order.restaurantId, dateStamp);
   const finalizedAt = new Date();
-  const snapshot = buildBillSnapshot({
-    billNumber,
-    restaurant: order.restaurant,
-    branch: order.branch,
-    order,
-    financials,
-    finalizedAt,
-  });
 
-  try {
-    const bill = await prisma.bill.create({
-      data: {
-        tenantId: order.tenantId ?? order.restaurant.tenantId,
-        restaurantId: order.restaurantId,
-        branchId: order.branchId,
-        orderId: order.id,
-        billNumber,
-        status: "FINALIZED",
-        snapshot: JSON.stringify(snapshot),
-        itemSubtotal: financials.itemSubtotal,
-        orderDiscount: financials.orderDiscount,
-        gstAmount: financials.gstAmount,
-        cgstAmount: financials.cgstAmount,
-        sgstAmount: financials.sgstAmount,
-        grandTotal: financials.grandTotal,
-        finalizedAt,
-        finalizedByUserId: params.actorUserId,
-        finalizedByName: params.actorName,
-      },
-    });
-
-    logInfo("billing", "Bill finalized", {
-      tenantId: bill.tenantId,
-      restaurantId: bill.restaurantId,
-      orderId: bill.orderId,
-      billId: bill.id,
-      billNumber: bill.billNumber,
-    });
-
-    await recordAuditLog({
-      restaurantId: bill.restaurantId,
-      actionType: "BILL_FINALIZED",
-      entityId: bill.id,
-      payload: { orderId: bill.orderId, billNumber: bill.billNumber, grandTotal: bill.grandTotal },
-      actorUserId: params.actorUserId,
-      actorName: params.actorName,
-      branchId: bill.branchId,
-    });
-
-    void enqueueIdempotentPrintJob({
-      restaurantId: bill.restaurantId,
-      tenantId: bill.tenantId,
-      branchId: bill.branchId,
-      orderId: bill.orderId,
-      kind: "customer_bill",
-      idempotencyKey: `bill:${bill.id}:customer_bill`,
-      payload: snapshot,
-    }).catch(() => undefined);
-
-    return { ok: true as const, bill, created: true };
-  } catch (error) {
-    const raced = await prisma.bill.findFirst({
+  for (let attempt = 0; attempt < BILL_NUMBER_ATTEMPTS; attempt += 1) {
+    const raced = await tx.bill.findFirst({
       where: { orderId: params.orderId, restaurantId: params.restaurantId },
     });
-    if (raced) return { ok: true as const, bill: raced, created: false };
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "P2002"
-    ) {
-      billNumber = await nextBillNumber(order.restaurantId, dateStamp);
-      logWarn("billing", "Bill number collision, retrying", {
-        restaurantId: order.restaurantId,
-        billNumber,
-      });
+    if (raced) {
+      if (raced.status === "VOIDED") {
+        return { ok: false as const, error: "Bill is voided", status: 409, bill: raced };
+      }
+      return { ok: true as const, bill: raced, created: false };
     }
-    throw error;
+
+    const billNumber = await nextBillNumber(tx, order.restaurantId, dateStamp);
+    const snapshot = buildBillSnapshot({
+      billNumber,
+      restaurant: order.restaurant,
+      branch: order.branch,
+      order,
+      financials,
+      finalizedAt,
+    });
+
+    try {
+      const bill = await tx.bill.create({
+        data: {
+          tenantId: order.tenantId ?? order.restaurant.tenantId,
+          restaurantId: order.restaurantId,
+          branchId: order.branchId,
+          orderId: order.id,
+          billNumber,
+          status: "FINALIZED",
+          snapshot: JSON.stringify(snapshot),
+          itemSubtotal: financials.itemSubtotal,
+          orderDiscount: financials.orderDiscount,
+          gstAmount: financials.gstAmount,
+          cgstAmount: financials.cgstAmount,
+          sgstAmount: financials.sgstAmount,
+          grandTotal: financials.grandTotal,
+          finalizedAt,
+          finalizedByUserId: params.actorUserId,
+          finalizedByName: params.actorName,
+        },
+      });
+
+      logInfo("billing", "Bill finalized", {
+        tenantId: bill.tenantId,
+        restaurantId: bill.restaurantId,
+        orderId: bill.orderId,
+        billId: bill.id,
+        billNumber: bill.billNumber,
+      });
+
+      return { ok: true as const, bill, created: true };
+    } catch (error) {
+      const existingAfter = await tx.bill.findFirst({
+        where: { orderId: params.orderId, restaurantId: params.restaurantId },
+      });
+      if (existingAfter) {
+        return { ok: true as const, bill: existingAfter, created: false };
+      }
+      if (isUniqueConstraintError(error) && attempt < BILL_NUMBER_ATTEMPTS - 1) {
+        logWarn("billing", "Bill number collision, retrying", {
+          restaurantId: order.restaurantId,
+          attempt: attempt + 1,
+        });
+        continue;
+      }
+      throw error;
+    }
   }
+
+  return { ok: false as const, error: "Could not allocate a bill number", status: 500 };
+}
+
+export async function publishBillFinalized(params: {
+  bill: {
+    id: string;
+    tenantId: string | null;
+    restaurantId: string;
+    branchId: string | null;
+    orderId: string;
+    billNumber: string;
+    grandTotal: number;
+    snapshot: string;
+  };
+  created: boolean;
+  actorUserId?: string;
+  actorName?: string;
+}) {
+  if (!params.created) return;
+  await recordAuditLog({
+    restaurantId: params.bill.restaurantId,
+    actionType: "BILL_FINALIZED",
+    entityId: params.bill.id,
+    payload: {
+      orderId: params.bill.orderId,
+      billNumber: params.bill.billNumber,
+      grandTotal: params.bill.grandTotal,
+    },
+    actorUserId: params.actorUserId,
+    actorName: params.actorName,
+    branchId: params.bill.branchId,
+  });
+
+  const snapshot = parseBillSnapshot(params.bill.snapshot);
+  void enqueueIdempotentPrintJob({
+    restaurantId: params.bill.restaurantId,
+    tenantId: params.bill.tenantId,
+    branchId: params.bill.branchId,
+    orderId: params.bill.orderId,
+    kind: "customer_bill",
+    idempotencyKey: `bill:${params.bill.id}:customer_bill`,
+    payload: snapshot ?? { billId: params.bill.id, billNumber: params.bill.billNumber },
+  }).catch(() => undefined);
+}
+
+export async function finalizeOrderBill(params: {
+  orderId: string;
+  restaurantId: string;
+  actorUserId?: string;
+  actorName?: string;
+}) {
+  const result = await runWithUniqueConstraintRetry(() =>
+    prisma.$transaction((tx) => finalizeOrderBillInTx(tx, params)),
+  );
+  if (result.ok) {
+    await publishBillFinalized({
+      bill: result.bill,
+      created: result.created,
+      actorUserId: params.actorUserId,
+      actorName: params.actorName,
+    });
+  }
+  return result;
 }
 
 export async function voidOrderBill(params: {

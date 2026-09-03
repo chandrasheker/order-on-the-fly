@@ -11,7 +11,11 @@ import {
   isCapturedPayment,
   type OrderFinancialSummary,
 } from "@/lib/order-financials";
-import { finalizeOrderBill } from "@/lib/bill-service";
+import {
+  finalizeOrderBillInTx,
+  publishBillFinalized,
+  runWithUniqueConstraintRetry,
+} from "@/lib/bill-service";
 import { logInfo } from "@/lib/logger";
 import { recordAuditLog } from "@/lib/audit-service";
 
@@ -342,7 +346,8 @@ export async function recordOrderPayment(params: {
   capture?: boolean;
 }) {
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await runWithUniqueConstraintRetry(() =>
+      prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: params.orderId },
         include: {
@@ -440,6 +445,30 @@ export async function recordOrderPayment(params: {
         return { ok: false as const, error: built.error, status: 400 };
       }
 
+      const billResult = await finalizeOrderBillInTx(tx, {
+        orderId: order.id,
+        restaurantId: order.restaurantId,
+        actorUserId: params.collectedByUserId,
+        actorName: params.collectedByName,
+      });
+      if (!billResult.ok) {
+        throw Object.assign(new Error(billResult.error), { billFinalizeFailed: true, status: billResult.status });
+      }
+
+      if (status === PAYMENT_STATUS.CAPTURED) {
+        await tx.payment.updateMany({
+          where: {
+            orderId: order.id,
+            method: "MANUAL_UPI",
+            status: { in: [PAYMENT_STATUS.PENDING, PAYMENT_STATUS.INITIATED] },
+          },
+          data: {
+            status: PAYMENT_STATUS.CANCELLED,
+            verificationStatus: MANUAL_UPI_VERIFICATION.REJECTED,
+          },
+        });
+      }
+
       const payment = await tx.payment.create({
         data: {
           tenantId: order.tenantId,
@@ -447,6 +476,7 @@ export async function recordOrderPayment(params: {
           branchId: order.branchId,
           tableId: order.tableId,
           orderId: order.id,
+          billId: billResult.bill.id,
           amount: built.applied,
           method,
           status,
@@ -500,28 +530,23 @@ export async function recordOrderPayment(params: {
         fullyPaid: updated.fullyPaid,
         tableId: order.tableId,
         orderId: order.id,
+        billCreated: billResult.created,
       };
-    });
+    }),
+    );
 
     if (!result.ok) return result;
 
-    const orderRow = await prisma.order.findUnique({
-      where: { id: result.orderId },
-      select: { restaurantId: true },
-    });
-    const billResult = orderRow
-      ? await finalizeOrderBill({
-          orderId: result.orderId,
-          restaurantId: orderRow.restaurantId,
+    if (result.payment?.billId && result.billCreated) {
+      const bill = await prisma.bill.findUnique({ where: { id: result.payment.billId } });
+      if (bill) {
+        await publishBillFinalized({
+          bill,
+          created: true,
           actorUserId: params.collectedByUserId,
           actorName: params.collectedByName,
-        })
-      : { ok: false as const };
-    if (billResult.ok && result.payment) {
-      await prisma.payment.update({
-        where: { id: result.payment.id },
-        data: { billId: billResult.bill.id },
-      });
+        });
+      }
     }
 
     if (result.payment && result.payment.status === PAYMENT_STATUS.CAPTURED) {
@@ -529,7 +554,7 @@ export async function recordOrderPayment(params: {
         paymentId: result.payment.id,
         orderId: result.orderId,
         restaurantId: result.payment.restaurantId,
-        billId: billResult.ok ? billResult.bill.id : null,
+        billId: result.payment.billId,
         amount: result.payment.amount,
         method: result.payment.method,
       });
@@ -564,6 +589,13 @@ export async function recordOrderPayment(params: {
       fullyPaid: result.fullyPaid,
     };
   } catch (error) {
+    if (error && typeof error === "object" && "billFinalizeFailed" in error) {
+      return {
+        ok: false as const,
+        error: error instanceof Error ? error.message : "Bill could not be finalized",
+        status: 500,
+      };
+    }
     if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
       return { ok: false as const, error: "Duplicate payment request", status: 409 };
     }
@@ -639,69 +671,231 @@ export async function recordTableTabFullPayment(params: {
   };
 }
 
+export async function initiateManualUpiPayment(params: {
+  orderId: string;
+  tableId?: string;
+  actorUserId?: string;
+  actorName?: string;
+}) {
+  const order = await prisma.order.findUnique({
+    where: { id: params.orderId },
+    select: { id: true, tableId: true, restaurantId: true },
+  });
+  if (!order) return { ok: false as const, error: "Order not found", status: 404 };
+
+  const { getTableTabPaymentSummary } = await import("@/lib/table-tab-service");
+  const tab = await getTableTabPaymentSummary(params.tableId ?? order.tableId);
+  if (tab.unpaidOrderIds.length > 1) {
+    return {
+      ok: false as const,
+      error: "Ask staff to confirm this table bill. Multi-order UPI cannot be recorded against one order.",
+      status: 409,
+    };
+  }
+
+  const active = await prisma.payment.findFirst({
+    where: {
+      orderId: params.orderId,
+      method: "MANUAL_UPI",
+      status: { in: [PAYMENT_STATUS.PENDING, PAYMENT_STATUS.INITIATED] },
+    },
+    include: { allocations: true },
+  });
+  if (active) {
+    const summary = await getOrderPaymentSummary(params.orderId);
+    return {
+      ok: true as const,
+      payment: active,
+      summary,
+      fullyPaid: Boolean(summary?.fullyPaid),
+      idempotent: true as const,
+    };
+  }
+
+  const summary = await getOrderPaymentSummary(params.orderId);
+  if (!summary || summary.remaining <= FINANCIAL_PAID_EPSILON) {
+    return { ok: false as const, error: "Nothing to pay", status: 400 };
+  }
+
+  return recordOrderPayment({
+    orderId: params.orderId,
+    amount: summary.remaining,
+    method: "MANUAL_UPI",
+    status: PAYMENT_STATUS.PENDING,
+    verificationStatus: MANUAL_UPI_VERIFICATION.PENDING_VERIFICATION,
+    capture: false,
+    note: "Customer opened UPI — awaiting staff verification",
+    idempotencyKey: `manual-upi-pending:${params.orderId}:${crypto.randomUUID()}`,
+    collectedByUserId: params.actorUserId,
+    collectedByName: params.actorName,
+  });
+}
+
 export async function confirmManualUpiPayment(params: {
   paymentId: string;
   restaurantId: string;
   actorUserId?: string;
   actorName?: string;
 }) {
-  const payment = await prisma.payment.findFirst({
-    where: { id: params.paymentId, restaurantId: params.restaurantId },
-  });
-  if (!payment) return { ok: false as const, error: "Payment not found", status: 404 };
-  if (payment.method !== "MANUAL_UPI") {
-    return { ok: false as const, error: "Not a manual UPI payment", status: 400 };
-  }
-  if (payment.status === PAYMENT_STATUS.CAPTURED) {
-    const summary = payment.orderId ? await getOrderPaymentSummary(payment.orderId) : null;
-    return { ok: true as const, payment, summary, fullyPaid: Boolean(summary?.fullyPaid) };
-  }
-  if (payment.status !== PAYMENT_STATUS.PENDING && payment.status !== PAYMENT_STATUS.INITIATED) {
-    return { ok: false as const, error: "Payment cannot be confirmed", status: 409 };
-  }
+  try {
+    const result = await runWithUniqueConstraintRetry(() =>
+      prisma.$transaction(async (tx) => {
+      const payment = await tx.payment.findFirst({
+        where: { id: params.paymentId, restaurantId: params.restaurantId },
+      });
+      if (!payment) return { ok: false as const, error: "Payment not found", status: 404 };
+      if (payment.method !== "MANUAL_UPI") {
+        return { ok: false as const, error: "Not a manual UPI payment", status: 400 };
+      }
+      if (payment.status === PAYMENT_STATUS.CAPTURED) {
+        return {
+          ok: true as const,
+          payment,
+          alreadyCaptured: true,
+          billCreated: false,
+          fullyPaid: Boolean(payment.orderId),
+          tableId: payment.tableId,
+          orderId: payment.orderId,
+        };
+      }
+      if (payment.status !== PAYMENT_STATUS.PENDING && payment.status !== PAYMENT_STATUS.INITIATED) {
+        return { ok: false as const, error: "Payment cannot be confirmed", status: 409 };
+      }
+      if (!payment.orderId) {
+        return { ok: false as const, error: "Payment is not linked to an order", status: 409 };
+      }
 
-  const updated = await prisma.payment.update({
-    where: { id: payment.id },
-    data: {
-      status: PAYMENT_STATUS.CAPTURED,
-      verificationStatus: MANUAL_UPI_VERIFICATION.CONFIRMED,
-      capturedAt: new Date(),
-      collectedByUserId: params.actorUserId ?? payment.collectedByUserId,
-      collectedByName: params.actorName ?? payment.collectedByName,
-    },
-  });
+      const order = await tx.order.findUnique({
+        where: { id: payment.orderId },
+        include: {
+          items: true,
+          payments: { include: { allocations: true } },
+          restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+          bills: true,
+        },
+      });
+      if (!order || order.restaurantId !== params.restaurantId) {
+        return { ok: false as const, error: "Order not found", status: 404 };
+      }
 
-  logInfo("payments", "Manual UPI confirmed", {
-    paymentId: updated.id,
-    orderId: updated.orderId,
-    restaurantId: updated.restaurantId,
-    billId: updated.billId,
-  });
+      const summary = computeSummaryFromOrder(order, paidByItemFromPayments(order));
+      if (toPaise(payment.amount) > toPaise(summary.remaining)) {
+        return {
+          ok: false as const,
+          error: "Amount is no longer due",
+          status: 409,
+        };
+      }
 
-  await recordAuditLog({
-    restaurantId: updated.restaurantId,
-    actionType: "PAYMENT_CAPTURED",
-    entityId: updated.id,
-    payload: { method: "MANUAL_UPI", amount: updated.amount, orderId: updated.orderId },
-    actorUserId: params.actorUserId,
-    actorName: params.actorName,
-  });
+      const billResult = await finalizeOrderBillInTx(tx, {
+        orderId: order.id,
+        restaurantId: order.restaurantId,
+        actorUserId: params.actorUserId,
+        actorName: params.actorName,
+      });
+      if (!billResult.ok) {
+        throw Object.assign(new Error(billResult.error), { billFinalizeFailed: true });
+      }
 
-  if (updated.orderId) {
-    await finalizeOrderBill({
-      orderId: updated.orderId,
-      restaurantId: updated.restaurantId,
-      actorUserId: params.actorUserId,
-      actorName: params.actorName,
-    });
-    await finalizeOrderIfSettled(updated.orderId, {
-      userId: params.actorUserId,
-      name: params.actorName,
-    });
-    const summary = await getOrderPaymentSummary(updated.orderId);
-    return { ok: true as const, payment: updated, summary, fullyPaid: Boolean(summary?.fullyPaid) };
+      const updated = await tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: PAYMENT_STATUS.CAPTURED,
+          verificationStatus: MANUAL_UPI_VERIFICATION.CONFIRMED,
+          capturedAt: new Date(),
+          billId: payment.billId ?? billResult.bill.id,
+          collectedByUserId: params.actorUserId ?? payment.collectedByUserId,
+          collectedByName: params.actorName ?? payment.collectedByName,
+        },
+      });
+
+      const refreshed = await tx.order.findUnique({
+        where: { id: order.id },
+        include: {
+          items: true,
+          payments: { include: { allocations: true } },
+          restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+          bills: true,
+        },
+      });
+      const after = refreshed
+        ? computeSummaryFromOrder(refreshed, paidByItemFromPayments(refreshed))
+        : summary;
+      if (after.fullyPaid) {
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            paidAt: new Date(),
+            paidByUserId: params.actorUserId ?? null,
+            paidByName: params.actorName ?? null,
+          },
+        });
+      }
+
+      return {
+        ok: true as const,
+        payment: updated,
+        alreadyCaptured: false as const,
+        billCreated: billResult.created,
+        fullyPaid: after.fullyPaid,
+        tableId: order.tableId,
+        orderId: order.id,
+      };
+    }),
+    );
+
+    if (!result.ok) return result;
+
+    if (result.payment.billId && result.billCreated) {
+      const bill = await prisma.bill.findUnique({ where: { id: result.payment.billId } });
+      if (bill) {
+        await publishBillFinalized({
+          bill,
+          created: true,
+          actorUserId: params.actorUserId,
+          actorName: params.actorName,
+        });
+      }
+    }
+
+    if (!result.alreadyCaptured) {
+      logInfo("payments", "Manual UPI confirmed", {
+        paymentId: result.payment.id,
+        orderId: result.payment.orderId,
+        restaurantId: result.payment.restaurantId,
+        billId: result.payment.billId,
+      });
+      await recordAuditLog({
+        restaurantId: result.payment.restaurantId,
+        actionType: "PAYMENT_CAPTURED",
+        entityId: result.payment.id,
+        payload: { method: "MANUAL_UPI", amount: result.payment.amount, orderId: result.payment.orderId },
+        actorUserId: params.actorUserId,
+        actorName: params.actorName,
+      });
+    }
+
+    if (result.fullyPaid && result.orderId && result.tableId) {
+      await clearPaymentAlerts(result.orderId);
+      const { onTabPaymentProgress } = await import("@/lib/payment-service");
+      await onTabPaymentProgress(result.tableId);
+      const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
+      await maybeAutoCloseTableAfterPayment(result.tableId);
+    }
+
+    const summary = result.orderId ? await getOrderPaymentSummary(result.orderId) : null;
+    return {
+      ok: true as const,
+      payment: result.payment,
+      summary,
+      fullyPaid: Boolean(summary?.fullyPaid ?? result.fullyPaid),
+    };
+  } catch (error) {
+    if (error && typeof error === "object" && "billFinalizeFailed" in error) {
+      return { ok: false as const, error: "Bill could not be finalized", status: 500 };
+    }
+    return { ok: false as const, error: "Payment could not be confirmed", status: 500 };
   }
-  return { ok: true as const, payment: updated, summary: null, fullyPaid: false };
 }
 
 export async function rejectManualUpiPayment(params: {
@@ -736,67 +930,104 @@ export async function refundCapturedPayment(params: {
   actorName?: string;
   idempotencyKey?: string;
 }) {
-  const original = await prisma.payment.findFirst({
-    where: { id: params.paymentId, restaurantId: params.restaurantId },
-  });
-  if (!original) return { ok: false as const, error: "Payment not found", status: 404 };
-  if (!isCapturedPayment(original)) {
-    return { ok: false as const, error: "Only captured payments can be refunded", status: 400 };
-  }
+  try {
+    const result = await runWithUniqueConstraintRetry(() =>
+      prisma.$transaction(async (tx) => {
+        const original = await tx.payment.findFirst({
+          where: { id: params.paymentId, restaurantId: params.restaurantId },
+        });
+        if (!original) return { ok: false as const, error: "Payment not found", status: 404 };
+        if (!isCapturedPayment(original)) {
+          return { ok: false as const, error: "Only captured payments can be refunded", status: 400 };
+        }
 
-  const already = await prisma.payment.findFirst({
-    where: { restaurantId: params.restaurantId, refundOfPaymentId: original.id },
-  });
-  if (already) return { ok: true as const, payment: already, idempotent: true };
+        const idempotencyKey = params.idempotencyKey?.trim() || null;
+        if (idempotencyKey) {
+          const existing = await tx.payment.findUnique({
+            where: {
+              restaurantId_idempotencyKey: {
+                restaurantId: params.restaurantId,
+                idempotencyKey,
+              },
+            },
+          });
+          if (existing?.refundOfPaymentId === original.id) {
+            return { ok: true as const, payment: existing, idempotent: true as const };
+          }
+          if (existing) {
+            return { ok: false as const, error: "Idempotency key already used", status: 409 };
+          }
+        }
 
-  const refundAmount = params.amount == null ? original.amount : params.amount;
-  if (toPaise(refundAmount) <= 0 || toPaise(refundAmount) > toPaise(original.amount)) {
-    return { ok: false as const, error: "Invalid refund amount", status: 400 };
-  }
+        const priorRefunds = await tx.payment.findMany({
+          where: { restaurantId: params.restaurantId, refundOfPaymentId: original.id },
+        });
+        const alreadyRefundedPaise = priorRefunds.reduce((sum, row) => sum + toPaise(row.amount), 0);
+        const refundAmount = params.amount == null ? original.amount : params.amount;
+        const refundPaise = toPaise(refundAmount);
+        if (refundPaise <= 0) {
+          return { ok: false as const, error: "Invalid refund amount", status: 400 };
+        }
+        if (alreadyRefundedPaise + refundPaise > toPaise(original.amount)) {
+          return { ok: false as const, error: "Refund exceeds captured amount", status: 400 };
+        }
 
-  const refund = await prisma.payment.create({
-    data: {
-      tenantId: original.tenantId,
-      restaurantId: original.restaurantId,
-      branchId: original.branchId,
-      tableId: original.tableId,
-      orderId: original.orderId,
-      billId: original.billId,
-      amount: fromPaise(toPaise(refundAmount)),
-      method: original.method,
-      status: PAYMENT_STATUS.REFUNDED,
-      refundOfPaymentId: original.id,
-      idempotencyKey: params.idempotencyKey ?? `refund:${original.id}`,
-      note: `Refund of ${original.id}`,
-      collectedByUserId: params.actorUserId,
-      collectedByName: params.actorName,
-    },
-  });
+        const refund = await tx.payment.create({
+          data: {
+            tenantId: original.tenantId,
+            restaurantId: original.restaurantId,
+            branchId: original.branchId,
+            tableId: original.tableId,
+            orderId: original.orderId,
+            billId: original.billId,
+            amount: fromPaise(refundPaise),
+            method: original.method,
+            status: PAYMENT_STATUS.REFUNDED,
+            refundOfPaymentId: original.id,
+            idempotencyKey: idempotencyKey ?? `refund:${original.id}:${crypto.randomUUID()}`,
+            note: `Refund of ${original.id}`,
+            collectedByUserId: params.actorUserId,
+            collectedByName: params.actorName,
+          },
+        });
 
-  if (original.orderId) {
-    await prisma.order.update({
-      where: { id: original.orderId },
-      data: { paidAt: null, paidByUserId: null, paidByName: null },
+        if (original.orderId) {
+          await tx.order.update({
+            where: { id: original.orderId },
+            data: { paidAt: null, paidByUserId: null, paidByName: null },
+          });
+        }
+
+        return { ok: true as const, payment: refund, idempotent: false as const, original };
+      }),
+    );
+
+    if (!result.ok) return result;
+    if (result.idempotent) return { ok: true as const, payment: result.payment, idempotent: true as const };
+
+    logInfo("payments", "Refund recorded", {
+      paymentId: result.payment.id,
+      refundOfPaymentId: result.original.id,
+      restaurantId: result.original.restaurantId,
+      orderId: result.original.orderId,
+      billId: result.original.billId,
+      amount: result.payment.amount,
     });
+
+    await recordAuditLog({
+      restaurantId: result.original.restaurantId,
+      actionType: "PAYMENT_REFUNDED",
+      entityId: result.payment.id,
+      payload: { refundOfPaymentId: result.original.id, amount: result.payment.amount },
+      actorUserId: params.actorUserId,
+      actorName: params.actorName,
+    });
+
+    return { ok: true as const, payment: result.payment, idempotent: false as const };
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+      return { ok: false as const, error: "Duplicate refund request", status: 409 };
+    }
+    return { ok: false as const, error: "Refund could not be recorded", status: 500 };
   }
-
-  logInfo("payments", "Refund recorded", {
-    paymentId: refund.id,
-    refundOfPaymentId: original.id,
-    restaurantId: original.restaurantId,
-    orderId: original.orderId,
-    billId: original.billId,
-    amount: refund.amount,
-  });
-
-  await recordAuditLog({
-    restaurantId: original.restaurantId,
-    actionType: "PAYMENT_REFUNDED",
-    entityId: refund.id,
-    payload: { refundOfPaymentId: original.id, amount: refund.amount },
-    actorUserId: params.actorUserId,
-    actorName: params.actorName,
-  });
-
-  return { ok: true as const, payment: refund, idempotent: false };
 }

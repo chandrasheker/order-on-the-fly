@@ -44,7 +44,7 @@ export async function runDailyReconciliation(restaurantId: string, date?: string
     },
   });
 
-  let receivedPaise = 0;
+  let capturedPaise = 0;
   let cashPaise = 0;
   let manualUpiPaise = 0;
   let automaticUpiPaise = 0;
@@ -54,15 +54,20 @@ export async function runDailyReconciliation(restaurantId: string, date?: string
     const paise = toPaise(payment.amount);
     if (isRefundPayment(payment)) {
       refundsPaise += paise;
+      capturedPaise -= paise;
+      if (payment.method === "CASH") cashPaise -= paise;
+      else if (payment.method === "MANUAL_UPI") manualUpiPaise -= paise;
+      else if (payment.method === "UPI" || payment.provider) automaticUpiPaise -= paise;
       continue;
     }
     if (!isCapturedPayment(payment)) continue;
-    receivedPaise += paise;
+    capturedPaise += paise;
     if (payment.method === "CASH") cashPaise += paise;
     else if (payment.method === "MANUAL_UPI") manualUpiPaise += paise;
     else if (payment.method === "UPI" || payment.provider) automaticUpiPaise += paise;
   }
 
+  const receivedPaise = capturedPaise;
   const expectedTotal = fromPaise(expectedPaise);
   const receivedTotal = fromPaise(receivedPaise);
   const variance = fromPaise(receivedPaise - expectedPaise);

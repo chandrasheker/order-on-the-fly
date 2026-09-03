@@ -9,7 +9,7 @@ import {
 } from "@/lib/order-service";
 import { transitionOrderItemDirect, InvalidOrderTransitionError } from "@/domains/orders/transitions";
 import { requestOrderPayment } from "@/lib/payment-service";
-import { recordFullOrderPayment, recordOrderPayment, recordTableTabFullPayment, orderItemHasPayment } from "@/lib/payment-allocation-service";
+import { recordFullOrderPayment, recordOrderPayment, recordTableTabFullPayment, orderItemHasPayment, initiateManualUpiPayment } from "@/lib/payment-allocation-service";
 import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
@@ -110,21 +110,7 @@ export async function PATCH(
     if (!dining.ok) {
       return NextResponse.json({ error: dining.error, code: dining.code }, { status: dining.status });
     }
-    const { PAYMENT_STATUS, MANUAL_UPI_VERIFICATION } = await import("@/lib/order-financials");
-    const summary = await (await import("@/lib/payment-allocation-service")).getOrderPaymentSummary(id);
-    if (!summary || summary.remaining <= 0.01) {
-      return NextResponse.json({ error: "Nothing to pay" }, { status: 400 });
-    }
-    const result = await recordOrderPayment({
-      orderId: id,
-      amount: summary.remaining,
-      method: "MANUAL_UPI",
-      status: PAYMENT_STATUS.PENDING,
-      verificationStatus: MANUAL_UPI_VERIFICATION.PENDING_VERIFICATION,
-      capture: false,
-      note: "Customer opened UPI — awaiting staff verification",
-      idempotencyKey: `manual-upi-pending:${id}`,
-    });
+    const result = await initiateManualUpiPayment({ orderId: id, tableId: order.tableId });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }

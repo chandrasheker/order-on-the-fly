@@ -9,8 +9,12 @@ import {
   isOrderItemOpen,
   shouldShowCustomerOrder,
   shouldShowCustomerPaymentOrder,
-  customerOrderBillTotal,
 } from "@/lib/utils";
+import {
+  canStartCustomerPayment,
+  customerPaymentAction,
+  resolveCanonicalCustomerDue,
+} from "@/lib/customer-payment-amount";
 import { PaymentModal } from "@/components/customer/PaymentModal";
 import { Button, Badge } from "@/components/ui";
 import {
@@ -126,7 +130,10 @@ export function OrderTracker({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: upiVpa ? "initiate-manual-upi" : "request-payment",
+          action: customerPaymentAction({
+            unpaidOrderCount: paymentOrders.length,
+            upiVpa,
+          }),
           tableToken,
         }),
       });
@@ -350,11 +357,8 @@ export function OrderTracker({
       })}
 
       {paymentOrders.length > 0 && (() => {
-        const itemTotal = paymentOrders.reduce(
-          (sum, order) => sum + customerOrderBillTotal(order.items),
-          0,
-        );
-        const consolidatedTotal = tabRemaining != null ? tabRemaining : itemTotal;
+        const canonicalDue = resolveCanonicalCustomerDue(tabRemaining);
+        const amountReady = canStartCustomerPayment(canonicalDue);
         const paymentPending = paymentOrders.some((o) => Boolean(o.paymentRequestedAt));
         const anchorOrder = paymentOrders[0]!;
 
@@ -390,7 +394,7 @@ export function OrderTracker({
               <div className="text-right">
                 <p className="text-xs text-zinc-500">Bill total</p>
                 <p className="text-xl font-bold text-emerald-400">
-                  {formatCurrency(consolidatedTotal)}
+                  {canonicalDue == null ? "…" : formatCurrency(canonicalDue)}
                 </p>
               </div>
             </div>
@@ -444,13 +448,23 @@ export function OrderTracker({
                 <Button
                   variant="success"
                   className="w-full bg-emerald-600 hover:bg-emerald-500"
-                  disabled={Boolean(payingId)}
-                  onClick={() =>
-                    paymentQrUrl ? openPayModal(anchorOrder) : requestPaymentOffline(anchorOrder)
-                  }
+                  disabled={Boolean(payingId) || !amountReady}
+                  onClick={() => {
+                    if (!amountReady) {
+                      void onRefresh();
+                      return;
+                    }
+                    paymentQrUrl || upiVpa
+                      ? openPayModal(anchorOrder)
+                      : requestPaymentOffline(anchorOrder);
+                  }}
                 >
                   <CircleDollarSign className="w-4 h-4" />
-                  {payingId ? "Processing..." : `Pay ${formatCurrency(consolidatedTotal)}`}
+                  {payingId
+                    ? "Processing..."
+                    : amountReady
+                      ? `Pay ${formatCurrency(canonicalDue!)}`
+                      : "Refreshing bill…"}
                 </Button>
                 <p className="text-xs text-zinc-500 text-center mt-2">
                   {paymentOrders.length > 1
@@ -470,10 +484,7 @@ export function OrderTracker({
           orderNumber={
             paymentOrders.length > 1 ? 0 : payModalOrder.orderNumber
           }
-          billTotal={paymentOrders.reduce(
-            (sum, order) => sum + customerOrderBillTotal(order.items),
-            0,
-          )}
+          billTotal={resolveCanonicalCustomerDue(tabRemaining)}
           consolidated={paymentOrders.length > 1}
           paymentQrUrl={paymentQrUrl}
           upiVpa={upiVpa}
@@ -483,6 +494,7 @@ export function OrderTracker({
           confirming={Boolean(payingId)}
           onClose={() => setPayModalOrder(null)}
           onConfirm={confirmPaymentRequest}
+          onRefreshAmount={() => void onRefresh()}
         />
       )}
     </div>

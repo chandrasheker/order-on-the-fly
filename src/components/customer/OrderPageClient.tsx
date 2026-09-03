@@ -156,8 +156,10 @@ export function OrderPageClient({ slug, token }: Props) {
         if (json.tabPaymentPending !== undefined || json.paymentBlocked !== undefined) {
           setTabPaymentPending(Boolean(json.tabPaymentPending ?? json.paymentBlocked));
         }
-        if (typeof json.tabSummary?.remaining === "number") {
+        if (typeof json.tabSummary?.remaining === "number" && Number.isFinite(json.tabSummary.remaining)) {
           setTabRemaining(json.tabSummary.remaining);
+        } else {
+          setTabRemaining(null);
         }
       } else if (res.status === 403) {
         setOrders([]);
