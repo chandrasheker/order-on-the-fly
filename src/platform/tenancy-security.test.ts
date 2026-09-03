@@ -490,7 +490,8 @@ describe("public customer receipt and gateway hosts", () => {
     assert.equal(abcHost.kind, "restaurant");
     assert.equal(xyzHost.kind, "restaurant");
     assert.equal(tenantHub.kind, "restaurant");
-    if (abcHost.kind !== "restaurant" || xyzHost.kind !== "restaurant" || tenantHub.kind !== "restaurant") {
+    assert.equal(apex.kind, "reserved");
+    if (abcHost.kind !== "restaurant" || xyzHost.kind !== "restaurant" || tenantHub.kind !== "restaurant" || apex.kind !== "reserved") {
       return;
     }
 

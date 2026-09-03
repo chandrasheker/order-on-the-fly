@@ -1308,6 +1308,11 @@ describe("M2 gateway receipts", () => {
     const localhost = classifyHostname("localhost:3000", { nodeEnv: "development" });
     assert.equal(abcHost.kind, "restaurant");
     assert.equal(xyzHost.kind, "restaurant");
+    assert.equal(apex.kind, "reserved");
+    assert.equal(localhost.kind, "reserved");
+    if (abcHost.kind !== "restaurant" || xyzHost.kind !== "restaurant" || apex.kind !== "reserved" || localhost.kind !== "reserved") {
+      return;
+    }
     const abcScope = publicCustomerHostScope(
       {
         ok: true,
