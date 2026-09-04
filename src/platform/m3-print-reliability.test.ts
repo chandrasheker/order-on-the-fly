@@ -149,7 +149,7 @@ async function makeAgent(
     allowedTargets: extras?.targets,
   });
   assert.equal(created.ok, true);
-  if (!created.ok) throw new Error(created.error);
+  if (!created.ok) throw new Error("createPrinterAgent failed");
   const auth = await authenticatePrinterAgent(`Bearer ${created.token}`);
   assert.ok(auth);
   return { ...created, auth: auth! };
@@ -659,9 +659,10 @@ describe("M3 print reliability", () => {
     const previousMode = process.env.PRINT_DELIVERY_MODE;
     const previousSecret = process.env.PRINTER_AGENT_SECRET;
     const previousEnv = process.env.NODE_ENV;
-    process.env.PRINT_DELIVERY_MODE = "legacy-push";
-    delete process.env.PRINTER_AGENT_SECRET;
-    process.env.NODE_ENV = "production";
+    const env = process.env as { NODE_ENV?: string; PRINT_DELIVERY_MODE?: string; PRINTER_AGENT_SECRET?: string };
+    env.PRINT_DELIVERY_MODE = "legacy-push";
+    delete env.PRINTER_AGENT_SECRET;
+    env.NODE_ENV = "production";
     try {
       const req = new NextRequest("http://localhost/api/print/ack", {
         method: "POST",
@@ -671,10 +672,10 @@ describe("M3 print reliability", () => {
       const res = await ackPost(req);
       assert.equal(res.status, 401);
     } finally {
-      process.env.PRINT_DELIVERY_MODE = previousMode;
-      process.env.NODE_ENV = previousEnv;
-      if (previousSecret === undefined) delete process.env.PRINTER_AGENT_SECRET;
-      else process.env.PRINTER_AGENT_SECRET = previousSecret;
+      env.PRINT_DELIVERY_MODE = previousMode;
+      env.NODE_ENV = previousEnv;
+      if (previousSecret === undefined) delete env.PRINTER_AGENT_SECRET;
+      else env.PRINTER_AGENT_SECRET = previousSecret;
     }
   });
 });
