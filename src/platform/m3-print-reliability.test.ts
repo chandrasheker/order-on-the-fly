@@ -227,17 +227,26 @@ describe("M3 print reliability", () => {
 
   it("is idempotent for automatic enqueue and creates a new job on reprint", async () => {
     const suffix = `idemp-${Date.now()}`;
-    const { restaurant } = await seedRestaurant(suffix);
+    const { restaurant, table } = await seedRestaurant(suffix);
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: 1,
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
     const first = await enqueueKitchenChitForOrder({
       restaurantId: restaurant.id,
-      orderId: "order-a",
+      orderId: order.id,
       orderNumber: 1,
       tableNumber: 4,
       items: [{ name: "Tea", quantity: 1 }],
     });
     const second = await enqueueKitchenChitForOrder({
       restaurantId: restaurant.id,
-      orderId: "order-a",
+      orderId: order.id,
       orderNumber: 1,
       tableNumber: 4,
       items: [{ name: "Tea", quantity: 1 }],
@@ -256,10 +265,19 @@ describe("M3 print reliability", () => {
 
   it("lets only one concurrent claim own a job", async () => {
     const suffix = `race-${Date.now()}`;
-    const { restaurant } = await seedRestaurant(suffix);
+    const { restaurant, table } = await seedRestaurant(suffix);
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: 1,
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
     await enqueueKitchenChitForOrder({
       restaurantId: restaurant.id,
-      orderId: `order-${suffix}`,
+      orderId: order.id,
       orderNumber: 1,
       tableNumber: 1,
     });
@@ -281,15 +299,33 @@ describe("M3 print reliability", () => {
   it("isolates restaurants, branches, and logical targets", async () => {
     const abc = await seedRestaurant(`abc-${Date.now()}`);
     const xyz = await seedRestaurant(`xyz-${Date.now()}`);
+    const abcOrder = await prisma.order.create({
+      data: {
+        orderNumber: 1,
+        restaurantId: abc.restaurant.id,
+        tableId: abc.table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
+    const xyzOrder = await prisma.order.create({
+      data: {
+        orderNumber: 1,
+        restaurantId: xyz.restaurant.id,
+        tableId: xyz.table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
     const abcJob = await enqueueKitchenChitForOrder({
       restaurantId: abc.restaurant.id,
-      orderId: "abc-order",
+      orderId: abcOrder.id,
       orderNumber: 1,
       tableNumber: 1,
     });
     await enqueueKitchenChitForOrder({
       restaurantId: xyz.restaurant.id,
-      orderId: "xyz-order",
+      orderId: xyzOrder.id,
       orderNumber: 1,
       tableNumber: 1,
     });
@@ -312,13 +348,23 @@ describe("M3 print reliability", () => {
     const branchB = await prisma.branch.create({
       data: { restaurantId: abc.restaurant.id, name: "Hyd B", slug: `b-${Date.now()}` },
     });
+    const branchOrder = await prisma.order.create({
+      data: {
+        orderNumber: 9,
+        restaurantId: abc.restaurant.id,
+        tableId: abc.table.id,
+        branchId: branchB.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
     await enqueueIdempotentPrintJob({
       restaurantId: abc.restaurant.id,
       branchId: branchB.id,
-      orderId: "branch-b",
+      orderId: branchOrder.id,
       kind: "kitchen_chit",
       payload: { orderNumber: 9, tableNumber: 2 },
-      idempotencyKey: "kot:branch-b:kitchen_chit",
+      idempotencyKey: kitchenChitIdempotencyKey(branchOrder.id),
     });
     const branchAgent = await makeAgent(abc.restaurant.id, {
       name: "Branch A",
@@ -329,12 +375,21 @@ describe("M3 print reliability", () => {
     assert.equal(branchClaim.job, null);
 
     const billOnly = await makeAgent(abc.restaurant.id, { name: "Bill", targets: ["bill"] });
+    const billOrder = await prisma.order.create({
+      data: {
+        orderNumber: 12,
+        restaurantId: abc.restaurant.id,
+        tableId: abc.table.id,
+        status: "SERVED",
+        date: todayDateString(),
+      },
+    });
     await enqueueIdempotentPrintJob({
       restaurantId: abc.restaurant.id,
-      orderId: "bill-only",
+      orderId: billOrder.id,
       kind: "customer_bill",
       payload: { billNumber: "B-1" },
-      idempotencyKey: "bill:bill-only:customer_bill",
+      idempotencyKey: customerBillIdempotencyKey(billOrder.id),
     });
     const kitchenOnly = await makeAgent(abc.restaurant.id, { name: "Kitchen only", targets: ["kitchen"] });
     const kitchenSawBill = await claimNextPrintJob(kitchenOnly.auth);
@@ -346,10 +401,19 @@ describe("M3 print reliability", () => {
 
   it("leases, recovers expired claims, and rejects stale results", async () => {
     const suffix = `lease-${Date.now()}`;
-    const { restaurant } = await seedRestaurant(suffix);
+    const { restaurant, table } = await seedRestaurant(suffix);
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: 3,
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
     const job = await enqueueKitchenChitForOrder({
       restaurantId: restaurant.id,
-      orderId: `lease-${suffix}`,
+      orderId: order.id,
       orderNumber: 3,
       tableNumber: 8,
     });
@@ -383,10 +447,19 @@ describe("M3 print reliability", () => {
 
   it("treats duplicate ACK as idempotent and never auto-returns ACKED to PENDING", async () => {
     const suffix = `ack-${Date.now()}`;
-    const { restaurant } = await seedRestaurant(suffix);
+    const { restaurant, table } = await seedRestaurant(suffix);
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: 1,
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
     const job = await enqueueKitchenChitForOrder({
       restaurantId: restaurant.id,
-      orderId: `ack-${suffix}`,
+      orderId: order.id,
       orderNumber: 1,
       tableNumber: 1,
     });
@@ -413,10 +486,19 @@ describe("M3 print reliability", () => {
 
   it("applies backoff, exhausts retries, and allows manual retry of the same job", async () => {
     const suffix = `retry-${Date.now()}`;
-    const { restaurant } = await seedRestaurant(suffix);
+    const { restaurant, table } = await seedRestaurant(suffix);
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: 1,
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
     const job = await enqueueKitchenChitForOrder({
       restaurantId: restaurant.id,
-      orderId: `retry-${suffix}`,
+      orderId: order.id,
       orderNumber: 1,
       tableNumber: 1,
     });
