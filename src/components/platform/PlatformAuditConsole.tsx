@@ -56,6 +56,7 @@ const EMPTY_FILTERS = {
   clientIp: "",
   hostname: "",
   restaurantId: "",
+  tenantId: "",
   resourceType: "",
   resourceId: "",
   requestId: "",
@@ -84,6 +85,11 @@ export function PlatformAuditConsole({ admin }: { admin: { name: string; email: 
     }
     return params;
   }, [applied]);
+
+  const applyFilter = (patch: Partial<typeof EMPTY_FILTERS>) => {
+    setFilters((current) => ({ ...current, ...patch }));
+    setApplied((current) => ({ ...current, ...patch }));
+  };
 
   const load = useCallback(
     async (nextCursor?: string | null, reset = false) => {
@@ -127,6 +133,7 @@ export function PlatformAuditConsole({ admin }: { admin: { name: string; email: 
           <Input value={filters.actorRole} onChange={(e) => setFilters((f) => ({ ...f, actorRole: e.target.value }))} placeholder="Actor role" aria-label="Actor role" />
           <Input value={filters.clientIp} onChange={(e) => setFilters((f) => ({ ...f, clientIp: e.target.value }))} placeholder="Client IP" aria-label="Client IP" />
           <Input value={filters.hostname} onChange={(e) => setFilters((f) => ({ ...f, hostname: e.target.value }))} placeholder="Hostname" aria-label="Hostname" />
+          <Input value={filters.tenantId} onChange={(e) => setFilters((f) => ({ ...f, tenantId: e.target.value }))} placeholder="Tenant ID" aria-label="Tenant ID" />
           <Input value={filters.restaurantId} onChange={(e) => setFilters((f) => ({ ...f, restaurantId: e.target.value }))} placeholder="Restaurant ID" aria-label="Restaurant ID" />
           <Input value={filters.resourceType} onChange={(e) => setFilters((f) => ({ ...f, resourceType: e.target.value }))} placeholder="Resource type" aria-label="Resource type" />
           <Input value={filters.resourceId} onChange={(e) => setFilters((f) => ({ ...f, resourceId: e.target.value }))} placeholder="Resource ID" aria-label="Resource ID" />
@@ -219,14 +226,45 @@ export function PlatformAuditConsole({ admin }: { admin: { name: string; email: 
             <dl className="grid md:grid-cols-2 gap-2 text-sm">
               <div><dt className="text-zinc-500">Occurred (UTC)</dt><dd>{selected.occurredAt}</dd></div>
               <div><dt className="text-zinc-500">Recorded (UTC)</dt><dd>{selected.recordedAt}</dd></div>
-              <div><dt className="text-zinc-500">Actor</dt><dd>{selected.actorType} {selected.actorName} {selected.actorRole}</dd></div>
+              <div>
+                <dt className="text-zinc-500">Actor</dt>
+                <dd>
+                  <button className="text-violet-300" onClick={() => applyFilter({ actorName: selected.actorName ?? "", actorRole: selected.actorRole ?? "" })}>
+                    {selected.actorType} {selected.actorName} {selected.actorRole}
+                  </button>
+                </dd>
+              </div>
               <div><dt className="text-zinc-500">Session</dt><dd className="font-mono text-xs">{selected.actorSessionId ?? "—"}</dd></div>
-              <div><dt className="text-zinc-500">IP</dt><dd>{selected.clientIp ?? "—"} ({selected.clientIpSource ?? "—"})</dd></div>
+              <div>
+                <dt className="text-zinc-500">IP</dt>
+                <dd>
+                  <button className="text-violet-300" onClick={() => applyFilter({ clientIp: selected.clientIp ?? "" })}>
+                    {selected.clientIp ?? "—"}
+                  </button>
+                  {" "}({selected.clientIpSource ?? "—"})
+                </dd>
+              </div>
               <div><dt className="text-zinc-500">Host</dt><dd>{selected.hostname ?? "—"}</dd></div>
+              <div>
+                <dt className="text-zinc-500">Restaurant</dt>
+                <dd>
+                  <button className="font-mono text-xs text-violet-300" onClick={() => applyFilter({ restaurantId: selected.restaurantId ?? "", tenantId: selected.tenantId ?? "" })}>
+                    {selected.restaurantId ?? "—"}
+                  </button>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Resource</dt>
+                <dd>
+                  <button className="font-mono text-xs text-violet-300" onClick={() => applyFilter({ resourceType: selected.resourceType ?? "", resourceId: selected.resourceId ?? "" })}>
+                    {selected.resourceType ?? "—"} {selected.resourceId ?? ""}
+                  </button>
+                </dd>
+              </div>
               <div>
                 <dt className="text-zinc-500">Request ID</dt>
                 <dd>
-                  <button className="font-mono text-xs text-violet-300" onClick={() => { setFilters((f) => ({ ...f, requestId: selected.requestId ?? "" })); setApplied((f) => ({ ...f, requestId: selected.requestId ?? "" })); }}>
+                  <button className="font-mono text-xs text-violet-300" onClick={() => applyFilter({ requestId: selected.requestId ?? "" })}>
                     {selected.requestId ?? "—"}
                   </button>
                 </dd>
@@ -234,7 +272,7 @@ export function PlatformAuditConsole({ admin }: { admin: { name: string; email: 
               <div>
                 <dt className="text-zinc-500">Correlation ID</dt>
                 <dd>
-                  <button className="font-mono text-xs text-violet-300" onClick={() => { setFilters((f) => ({ ...f, correlationId: selected.correlationId ?? "" })); setApplied((f) => ({ ...f, correlationId: selected.correlationId ?? "" })); }}>
+                  <button className="font-mono text-xs text-violet-300" onClick={() => applyFilter({ correlationId: selected.correlationId ?? "" })}>
                     {selected.correlationId ?? "—"}
                   </button>
                 </dd>

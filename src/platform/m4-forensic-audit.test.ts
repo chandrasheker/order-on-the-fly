@@ -364,6 +364,9 @@ describe("M4 forensic audit", () => {
     });
     assert.ok(!line.includes(secret));
     assert.ok(line.includes("[REDACTED]"));
+    const leakedMessage = formatOperationalLogLine("error", "api:/api/orders/[id]", "GET failed: boom token=abc.def");
+    assert.ok(!leakedMessage.includes("token=abc.def"));
+    assert.ok(leakedMessage.includes("[REDACTED]"));
     const redacted = redactSecrets({ publicTokenPresent: true, token: secret });
     assert.equal((redacted as { publicTokenPresent: boolean }).publicTokenPresent, true);
     assert.equal((redacted as { token: string }).token, "[REDACTED]");

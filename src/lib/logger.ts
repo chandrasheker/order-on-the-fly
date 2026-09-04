@@ -32,9 +32,10 @@ function formatLine(
   meta?: Record<string, unknown>
 ) {
   const ts = new Date().toISOString();
+  const safeMessage = sanitizeErrorText(message, FORENSIC_LIMITS.errorMessage);
   const safeMeta = sanitizeMeta(meta);
   const metaStr = Object.keys(safeMeta).length ? ` ${JSON.stringify(safeMeta)}` : "";
-  return `[${ts}] [${level.toUpperCase()}] [${context}] ${message}${metaStr}`;
+  return `[${ts}] [${level.toUpperCase()}] [${context}] ${safeMessage}${metaStr}`;
 }
 
 function write(

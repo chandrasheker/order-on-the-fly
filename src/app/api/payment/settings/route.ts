@@ -29,6 +29,19 @@ async function handleGET() {
   const paymentQrUrl =
     hasPaymentQr && restaurant?.slug ? getPaymentQrPublicUrl(restaurant.slug) : "";
 
+  const { tryAppendPlatformAuditEvent } = await import("@/platform/forensics/platform-audit-service");
+  const { AUDIT_ACTION, AUDIT_CATEGORY } = await import("@/platform/forensics/constants");
+  const { setForensicResource } = await import("@/platform/forensics/request-context");
+  setForensicResource({ type: "Restaurant", id: session.restaurantId, label: "payment-settings" });
+  await tryAppendPlatformAuditEvent({
+    category: AUDIT_CATEGORY.CONFIG,
+    action: AUDIT_ACTION.GATEWAY_CONFIG_VIEWED,
+    restaurantId: session.restaurantId,
+    resourceType: "Restaurant",
+    resourceId: session.restaurantId,
+    metadata: { surface: "payment-settings" },
+  });
+
   return NextResponse.json({
     settings: {
       paymentQrUrl,
