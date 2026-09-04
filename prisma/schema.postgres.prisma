@@ -147,6 +147,13 @@ enum JobStatus {
   FAILED
 }
 
+enum PrintJobStatus {
+  PENDING
+  SENT
+  ACKED
+  FAILED
+}
+
 enum PlatformEventType {
   ORDER_CREATED
   ORDER_UPDATED
@@ -231,6 +238,8 @@ model Restaurant {
   bills                 Bill[]
   gatewayPaymentAttempts GatewayPaymentAttempt[]
   gatewayRefundAttempts  GatewayRefundAttempt[]
+  printJobs             PrintJob[]
+  printerAgents         PrinterAgent[]
   backgroundJobs        BackgroundJob[]
   platformEvents        PlatformEvent[]
   ingredients           Ingredient[]
@@ -411,6 +420,7 @@ model Order {
   date           String
   payments       Payment[]
   bills          Bill[]
+  printJobs      PrintJob[]
   gatewayPaymentAttempts GatewayPaymentAttempt[]
 
   @@index([restaurantId, date])
@@ -912,6 +922,71 @@ model GatewayRefundAttempt {
   @@index([paymentId])
 }
 
+model PrintJob {
+  id                  String         @id @default(cuid())
+  restaurantId        String
+  tenantId            String?
+  tenant              Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  branchId            String?
+  orderId             String?
+  order               Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  restaurant          Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  kind                String         @default("kitchen_chit")
+  target              String         @default("kitchen")
+  payloadVersion      Int            @default(1)
+  payload             String
+  status              PrintJobStatus @default(PENDING)
+  ackToken            String         @unique @default(cuid())
+  attempts            Int            @default(0)
+  maxAttempts         Int            @default(5)
+  lastError           String?
+  lastErrorCode       String?
+  sentAt              DateTime?
+  ackedAt             DateTime?
+  claimedByAgentId    String?
+  claimedByAgent      PrinterAgent?  @relation(fields: [claimedByAgentId], references: [id], onDelete: SetNull)
+  claimToken          String?
+  leaseExpiresAt      DateTime?
+  nextAttemptAt       DateTime?
+  lastAttemptAt       DateTime?
+  idempotencyKey      String?
+  reprintOfPrintJobId String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([restaurantId, idempotencyKey])
+  @@index([restaurantId, status])
+  @@index([restaurantId, status, target, createdAt])
+  @@index([status, createdAt])
+  @@index([claimToken])
+}
+
+model PrinterAgent {
+  id                 String     @id @default(cuid())
+  tenantId           String?
+  tenant             Tenant?    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  restaurantId       String
+  restaurant         Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  branchId           String?
+  name               String
+  tokenHash          String
+  tokenPrefix        String
+  enabled            Boolean    @default(true)
+  allowedTargetsJson String     @default("[\"kitchen\",\"bill\"]")
+  lastSeenAt         DateTime?
+  version            String?
+  lastError          String?
+  createdByUserId    String?
+  createdByName      String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  revokedAt          DateTime?
+  claimedJobs        PrintJob[]
+
+  @@index([restaurantId, enabled])
+  @@index([tokenPrefix])
+}
+
 model Tenant {
   id                 String             @id @default(cuid())
   name               String
@@ -924,6 +999,8 @@ model Tenant {
   updatedAt          DateTime           @updatedAt
   restaurants        Restaurant[]
   subscriptions      TenantSubscription[]
+  printJobs          PrintJob[]
+  printerAgents      PrinterAgent[]
 }
 
 model TenantSubscription {

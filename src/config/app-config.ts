@@ -12,6 +12,7 @@ const envSchema = z.object({
   REDIS_URL: z.string().url().optional().or(z.literal("")),
   PRINTER_AGENT_URL: z.string().url().optional().or(z.literal("")),
   PRINTER_AGENT_SECRET: z.string().optional(),
+  PRINT_DELIVERY_MODE: z.enum(["agent-pull", "legacy-push"]).optional(),
   JOB_CRON_SECRET: z.string().optional(),
   SMS_WEBHOOK_URL: z.string().url().optional().or(z.literal("")),
   VAPID_PUBLIC_KEY: z.string().optional(),

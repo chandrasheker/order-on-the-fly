@@ -28,6 +28,7 @@ import {
   Plug,
   ClipboardList,
   Radio,
+  Printer,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
@@ -670,14 +671,21 @@ export function StaffDashboard() {
                   features.kitchen_capacity ||
                   features.payment_webhooks ||
                   features.push_alerts) && (
-                  <Link
-                    href="/admin/realtime"
-                    className="p-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300"
-                    title="Promotions, modifiers, kitchen, payments, push alerts"
-                  >
-                    <Radio className="w-4 h-4" />
-                  </Link>
+                <Link
+                  href="/admin/realtime"
+                  className="p-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300"
+                  title="Promotions, modifiers, kitchen, payments, push alerts"
+                >
+                  <Radio className="w-4 h-4" />
+                </Link>
                 )}
+                <Link
+                  href="/admin/printing"
+                  className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300"
+                  title="Printer agents and print queue"
+                >
+                  <Printer className="w-4 h-4" />
+                </Link>
                 <Link
                   href="/admin/platform"
                   className="p-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300"

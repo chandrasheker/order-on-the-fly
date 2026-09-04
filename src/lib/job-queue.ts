@@ -57,6 +57,8 @@ async function handleJob(type: JobType, payload: Record<string, unknown>) {
       break;
     }
     case "print_job": {
+      const { isLegacyPrintPushEnabled } = await import("@/lib/print-constants");
+      if (!isLegacyPrintPushEnabled()) return;
       const agentUrl = process.env.PRINTER_AGENT_URL;
       if (!agentUrl) return;
       await fetch(`${agentUrl.replace(/\/$/, "")}/print`, {
