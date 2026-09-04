@@ -55,6 +55,10 @@ export function isLegacyPrintPushEnabled(env = process.env) {
   return printDeliveryMode(env) === PRINT_DELIVERY_MODE.LEGACY_PUSH;
 }
 
+export function isAgentPullEnabled(env = process.env) {
+  return printDeliveryMode(env) === PRINT_DELIVERY_MODE.AGENT_PULL;
+}
+
 export function targetFromKind(kind?: string | null) {
   return kind === PRINT_KIND.CUSTOMER_BILL ? PRINT_TARGET.BILL : PRINT_TARGET.KITCHEN;
 }

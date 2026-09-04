@@ -10,8 +10,10 @@ import {
   PRINT_LEASE_MS,
   PRINT_PAYLOAD_VERSION,
   customerBillIdempotencyKey,
+  isAgentPullEnabled,
   isLegacyPrintPushEnabled,
   isTerminalPrintError,
+  PRINT_ERROR,
   kitchenChitIdempotencyKey,
   nextPrintAttemptAt,
   publicPrintErrorMessage,
@@ -283,37 +285,73 @@ export async function acknowledgePrintJob(ackToken: string) {
   });
 }
 
+function expiredLeaseWhere(restaurantId?: string) {
+  return {
+    status: "SENT" as const,
+    ...(restaurantId ? { restaurantId } : {}),
+    OR: [{ leaseExpiresAt: { lte: new Date() } }, { leaseExpiresAt: null }],
+  };
+}
+
+export function isUncertainPrintDelivery(job: {
+  claimedByAgentId?: string | null;
+  lastErrorCode?: string | null;
+  status?: PrintJobStatus;
+}) {
+  if (!job.claimedByAgentId) return false;
+  if (job.lastErrorCode === PRINT_ERROR.AMBIGUOUS_DELIVERY) return true;
+  return job.status === "SENT";
+}
+
 export async function recoverExpiredPrintLeases(restaurantId?: string) {
-  const recovered = await prisma.printJob.updateMany({
-    where: {
-      status: "SENT",
-      ...(restaurantId ? { restaurantId } : {}),
-      OR: [{ leaseExpiresAt: { lte: new Date() } }, { leaseExpiresAt: null }],
-    },
+  const where = expiredLeaseWhere(restaurantId);
+  const pinned = await prisma.printJob.updateMany({
+    where: { ...where, claimedByAgentId: { not: null } },
     data: {
       status: "PENDING",
       claimToken: null,
-      claimedByAgentId: null,
+      leaseExpiresAt: null,
+      nextAttemptAt: new Date(),
+      lastErrorCode: PRINT_ERROR.AMBIGUOUS_DELIVERY,
+      lastError: publicPrintErrorMessage(PRINT_ERROR.AMBIGUOUS_DELIVERY),
+    },
+  });
+  const unscoped = await prisma.printJob.updateMany({
+    where: { ...where, claimedByAgentId: null },
+    data: {
+      status: "PENDING",
+      claimToken: null,
       leaseExpiresAt: null,
       nextAttemptAt: new Date(),
     },
   });
-  return recovered.count;
+  return pinned.count + unscoped.count;
+}
+
+function claimEligibility(agent: AuthenticatedPrinterAgent, now: Date) {
+  return {
+    restaurantId: agent.restaurantId,
+    status: "PENDING" as const,
+    target: { in: agent.allowedTargets },
+    ...(agent.branchId ? { branchId: agent.branchId } : {}),
+    AND: [
+      { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
+      { OR: [{ claimedByAgentId: null }, { claimedByAgentId: agent.id }] },
+    ],
+  };
 }
 
 export async function claimNextPrintJob(agent: AuthenticatedPrinterAgent, version?: string) {
+  if (!isAgentPullEnabled()) {
+    return { job: null, pollAfterMs: PRINT_IDLE_POLL_MS };
+  }
+
   await recoverExpiredPrintLeases(agent.restaurantId);
   await touchPrinterAgent({ agentId: agent.id, version: version ?? null });
 
   const now = new Date();
   const candidates = await prisma.printJob.findMany({
-    where: {
-      restaurantId: agent.restaurantId,
-      status: "PENDING",
-      target: { in: agent.allowedTargets },
-      ...(agent.branchId ? { branchId: agent.branchId } : {}),
-      OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
-    },
+    where: claimEligibility(agent, now),
     orderBy: { createdAt: "asc" },
     take: PRINT_CLAIM_CANDIDATES,
     select: { id: true },
@@ -325,9 +363,7 @@ export async function claimNextPrintJob(agent: AuthenticatedPrinterAgent, versio
     const claimed = await prisma.printJob.updateMany({
       where: {
         id: candidate.id,
-        restaurantId: agent.restaurantId,
-        status: "PENDING",
-        OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+        ...claimEligibility(agent, now),
       },
       data: {
         status: "SENT",
@@ -376,6 +412,10 @@ export async function reportPrintJobResult(params: {
   errorCode?: string | null;
   errorMessage?: string | null;
 }) {
+  if (!isAgentPullEnabled()) {
+    return { ok: false as const, error: "Agent pull is disabled", status: 409 };
+  }
+
   const job = await prisma.printJob.findFirst({
     where: { id: params.jobId, restaurantId: params.agent.restaurantId },
   });
@@ -408,9 +448,10 @@ export async function reportPrintJobResult(params: {
   }
 
   const errorCode =
-    params.outcome === "AMBIGUOUS" ? "AMBIGUOUS_DELIVERY" : params.errorCode ?? "PRINTER_OFFLINE";
+    params.outcome === "AMBIGUOUS" ? PRINT_ERROR.AMBIGUOUS_DELIVERY : params.errorCode ?? "PRINTER_OFFLINE";
   const lastError = publicPrintErrorMessage(errorCode, params.errorMessage);
-  const terminal = params.outcome === "AMBIGUOUS" || isTerminalPrintError(errorCode) || job.attempts >= job.maxAttempts;
+  const uncertain = params.outcome === "AMBIGUOUS" || errorCode === PRINT_ERROR.AMBIGUOUS_DELIVERY;
+  const terminal = uncertain || isTerminalPrintError(errorCode) || job.attempts >= job.maxAttempts;
   const updated = await prisma.printJob.update({
     where: { id: job.id },
     data: terminal
@@ -420,6 +461,7 @@ export async function reportPrintJobResult(params: {
           lastErrorCode: errorCode,
           claimToken: null,
           leaseExpiresAt: null,
+          claimedByAgentId: uncertain ? job.claimedByAgentId : null,
         }
       : {
           status: "PENDING",
@@ -518,7 +560,7 @@ export async function retryPrintJobForRestaurant(jobId: string, restaurantId: st
       attempts: 0,
       nextAttemptAt: new Date(),
       claimToken: null,
-      claimedByAgentId: null,
+      claimedByAgentId: isUncertainPrintDelivery(job) ? job.claimedByAgentId : null,
       leaseExpiresAt: null,
     },
   });

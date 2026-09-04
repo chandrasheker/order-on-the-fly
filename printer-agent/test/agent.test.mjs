@@ -177,10 +177,18 @@ describe("printer-agent processing", () => {
     assert.equal(JSON.stringify(spec).includes("lp -d"), false);
   });
 
-  it("requires HTTPS for non-local production URLs", () => {
-    assert.equal(assertServerUrl("https://abc.dvadtech.in", "production").startsWith("https://"), true);
-    assert.equal(assertServerUrl("http://localhost:3000", "production").includes("localhost"), true);
-    assert.throws(() => assertServerUrl("http://abc.dvadtech.in", "production"));
+  it("requires HTTPS for remote URLs even when NODE_ENV is unset", () => {
+    const previous = process.env.NODE_ENV;
+    delete process.env.NODE_ENV;
+    try {
+      assert.equal(assertServerUrl("https://abc.dvadtech.in").startsWith("https://"), true);
+      assert.equal(assertServerUrl("http://localhost:3000").includes("localhost"), true);
+      assert.equal(assertServerUrl("http://127.0.0.1:3000").includes("127.0.0.1"), true);
+      assert.throws(() => assertServerUrl("http://abc.dvadtech.in"));
+    } finally {
+      if (previous === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previous;
+    }
   });
 
   it("caps reconnect backoff", () => {

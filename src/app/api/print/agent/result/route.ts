@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticatePrinterAgent } from "@/lib/printer-agent-service";
 import { reportPrintJobResult } from "@/domains/printing/print-job-service";
 import { agentMatchesRestaurantHost } from "@/lib/print-agent-host";
+import { isAgentPullEnabled } from "@/lib/print-constants";
 import { opaqueNotFoundJson, resolveRequestRestaurant } from "@/platform/tenant-scope";
 
 export async function POST(req: NextRequest) {
+  if (!isAgentPullEnabled()) {
+    return NextResponse.json({ error: "Agent pull is disabled" }, { status: 409 });
+  }
   const agent = await authenticatePrinterAgent(req.headers.get("authorization"));
   if (!agent) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

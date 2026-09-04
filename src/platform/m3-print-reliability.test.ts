@@ -22,6 +22,7 @@ let enqueueIdempotentPrintJob: typeof import("@/domains/printing/print-job-servi
 let claimNextPrintJob: typeof import("@/domains/printing/print-job-service").claimNextPrintJob;
 let reportPrintJobResult: typeof import("@/domains/printing/print-job-service").reportPrintJobResult;
 let retryPrintJobForRestaurant: typeof import("@/domains/printing/print-job-service").retryPrintJobForRestaurant;
+let dispatchPrintJob: typeof import("@/domains/printing/print-job-service").dispatchPrintJob;
 let reprintPrintJobForRestaurant: typeof import("@/domains/printing/print-job-service").reprintPrintJobForRestaurant;
 let createPrinterAgent: typeof import("@/lib/printer-agent-service").createPrinterAgent;
 let updatePrinterAgent: typeof import("@/lib/printer-agent-service").updatePrinterAgent;
@@ -32,6 +33,7 @@ let createOrderForTable: typeof import("@/lib/order-service").createOrderForTabl
 let finalizeOrderBill: typeof import("@/lib/bill-service").finalizeOrderBill;
 let recordOrderPayment: typeof import("@/lib/payment-allocation-service").recordOrderPayment;
 let ackPost: typeof import("@/app/api/print/ack/route").POST;
+let claimPost: typeof import("@/app/api/print/agent/claim/route").POST;
 let kitchenChitIdempotencyKey: typeof import("@/lib/print-constants").kitchenChitIdempotencyKey;
 let customerBillIdempotencyKey: typeof import("@/lib/print-constants").customerBillIdempotencyKey;
 
@@ -61,6 +63,7 @@ before(async () => {
     reportPrintJobResult,
     retryPrintJobForRestaurant,
     reprintPrintJobForRestaurant,
+    dispatchPrintJob,
     kitchenChitIdempotencyKey,
     customerBillIdempotencyKey,
   } = await import("@/domains/printing/print-job-service"));
@@ -73,6 +76,7 @@ before(async () => {
   ({ finalizeOrderBill } = await import("@/lib/bill-service"));
   ({ recordOrderPayment } = await import("@/lib/payment-allocation-service"));
   ({ POST: ackPost } = await import("@/app/api/print/ack/route"));
+  ({ POST: claimPost } = await import("@/app/api/print/agent/claim/route"));
 });
 
 after(async () => {
@@ -428,8 +432,11 @@ describe("M3 print reliability", () => {
       where: { id: job.id },
       data: { leaseExpiresAt: new Date(Date.now() - 1000) },
     });
-    const reclaimed = await claimNextPrintJob(b.auth);
+    const other = await claimNextPrintJob(b.auth);
+    assert.equal(other.job, null);
+    const reclaimed = await claimNextPrintJob(a.auth);
     assert.equal(reclaimed.job?.id, job.id);
+    assert.equal(reclaimed.job?.deliveryKey, first.job?.deliveryKey);
     assert.ok(reclaimed.job?.claimToken);
     assert.notEqual(reclaimed.job?.claimToken, first.job?.claimToken);
 
@@ -442,7 +449,210 @@ describe("M3 print reliability", () => {
     assert.equal(stale.ok, false);
     const stillSent = await prisma.printJob.findUnique({ where: { id: job.id } });
     assert.equal(stillSent?.status, "SENT");
-    assert.equal(stillSent?.claimedByAgentId, b.auth.id);
+    assert.equal(stillSent?.claimedByAgentId, a.auth.id);
+  });
+
+  it("does not give a lost-ACK job to another agent and ACKs from the original local PRINTED state", async () => {
+    const suffix = `lostack-${Date.now()}`;
+    const { restaurant, table } = await seedRestaurant(suffix);
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: 4,
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
+    const job = await enqueueKitchenChitForOrder({
+      restaurantId: restaurant.id,
+      orderId: order.id,
+      orderNumber: 4,
+      tableNumber: 1,
+    });
+    const a = await makeAgent(restaurant.id, { name: "A" });
+    const b = await makeAgent(restaurant.id, { name: "B" });
+    const first = await claimNextPrintJob(a.auth);
+    assert.equal(first.job?.id, job.id);
+
+    const { processClaimedJob } = await import("../../printer-agent/lib/process-job.mjs");
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "tt-pa-lost-"));
+    let prints = 0;
+    const firstLocal = await processClaimedJob({
+      job: first.job,
+      mapping: { adapter: "fake" },
+      stateDir,
+      adapter: async () => {
+        prints += 1;
+        return { ok: true };
+      },
+    });
+    assert.equal(firstLocal.outcome, "ACKED");
+    assert.equal(firstLocal.printed, true);
+
+    await prisma.printJob.update({
+      where: { id: job.id },
+      data: { leaseExpiresAt: new Date(Date.now() - 1000) },
+    });
+    const stolen = await claimNextPrintJob(b.auth);
+    assert.equal(stolen.job, null);
+
+    const reclaimed = await claimNextPrintJob(a.auth);
+    assert.equal(reclaimed.job?.id, job.id);
+    assert.equal(reclaimed.job?.deliveryKey, first.job?.deliveryKey);
+    const secondLocal = await processClaimedJob({
+      job: reclaimed.job,
+      mapping: { adapter: "fake" },
+      stateDir,
+      adapter: async () => {
+        prints += 1;
+        return { ok: true };
+      },
+    });
+    assert.equal(secondLocal.outcome, "ACKED");
+    assert.equal(secondLocal.printed, false);
+    assert.equal(prints, 1);
+    const ack = await reportPrintJobResult({
+      agent: a.auth,
+      jobId: job.id,
+      claimToken: reclaimed.job!.claimToken,
+      outcome: "ACKED",
+    });
+    assert.equal(ack.ok, true);
+    fs.rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  it("lets another agent claim after a definite printer failure, but not after AMBIGUOUS retry", async () => {
+    const suffix = `failpin-${Date.now()}`;
+    const { restaurant, table } = await seedRestaurant(suffix);
+    const offlineOrder = await prisma.order.create({
+      data: {
+        orderNumber: 5,
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
+    const ambiguousOrder = await prisma.order.create({
+      data: {
+        orderNumber: 6,
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
+    const offlineJob = await enqueueKitchenChitForOrder({
+      restaurantId: restaurant.id,
+      orderId: offlineOrder.id,
+      orderNumber: 5,
+      tableNumber: 1,
+    });
+    const ambiguousJob = await enqueueKitchenChitForOrder({
+      restaurantId: restaurant.id,
+      orderId: ambiguousOrder.id,
+      orderNumber: 6,
+      tableNumber: 2,
+    });
+    const a = await makeAgent(restaurant.id, { name: "A" });
+    const b = await makeAgent(restaurant.id, { name: "B" });
+
+    const offlineClaim = await claimNextPrintJob(a.auth);
+    assert.equal(offlineClaim.job?.id, offlineJob.id);
+    const failed = await reportPrintJobResult({
+      agent: a.auth,
+      jobId: offlineJob.id,
+      claimToken: offlineClaim.job!.claimToken,
+      outcome: "FAILED",
+      errorCode: "PRINTER_OFFLINE",
+    });
+    assert.equal(failed.ok, true);
+    await prisma.printJob.update({
+      where: { id: offlineJob.id },
+      data: { nextAttemptAt: new Date(Date.now() - 1000) },
+    });
+    const otherOffline = await claimNextPrintJob(b.auth);
+    assert.equal(otherOffline.job?.id, offlineJob.id);
+
+    const ambiguousClaim = await claimNextPrintJob(a.auth);
+    assert.equal(ambiguousClaim.job?.id, ambiguousJob.id);
+    const ambiguous = await reportPrintJobResult({
+      agent: a.auth,
+      jobId: ambiguousJob.id,
+      claimToken: ambiguousClaim.job!.claimToken,
+      outcome: "AMBIGUOUS",
+    });
+    assert.equal(ambiguous.ok, true);
+    if (ambiguous.ok) assert.equal(ambiguous.job.status, "FAILED");
+    const retried = await retryPrintJobForRestaurant(ambiguousJob.id, restaurant.id);
+    assert.equal(retried?.id, ambiguousJob.id);
+    assert.equal(retried?.claimedByAgentId, a.auth.id);
+    const stolen = await claimNextPrintJob(b.auth);
+    assert.equal(stolen.job, null);
+    const sameAgent = await claimNextPrintJob(a.auth);
+    assert.equal(sameAgent.job?.id, ambiguousJob.id);
+  });
+
+  it("keeps agent-pull and legacy-push mutually exclusive", async () => {
+    const suffix = `mode-${Date.now()}`;
+    const { restaurant, table } = await seedRestaurant(suffix);
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: 8,
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
+    const job = await enqueueKitchenChitForOrder({
+      restaurantId: restaurant.id,
+      orderId: order.id,
+      orderNumber: 8,
+      tableNumber: 1,
+    });
+    const agent = await makeAgent(restaurant.id, { name: "Mode" });
+    const env = process.env as { PRINT_DELIVERY_MODE?: string; PRINTER_AGENT_URL?: string };
+    const previousMode = env.PRINT_DELIVERY_MODE;
+    const previousUrl = env.PRINTER_AGENT_URL;
+    try {
+      env.PRINT_DELIVERY_MODE = "legacy-push";
+      const pulled = await claimNextPrintJob(agent.auth);
+      assert.equal(pulled.job, null);
+      const claimRes = await claimPost(
+        new NextRequest("http://localhost/api/print/agent/claim", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${agent.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ version: "0.1.0" }),
+        }),
+      );
+      assert.equal(claimRes.status, 409);
+      const stillPending = await prisma.printJob.findUnique({ where: { id: job.id } });
+      assert.equal(stillPending?.status, "PENDING");
+
+      env.PRINT_DELIVERY_MODE = "agent-pull";
+      env.PRINTER_AGENT_URL = "http://127.0.0.1:9";
+      await dispatchPrintJob(job.id);
+      const afterDispatch = await prisma.printJob.findUnique({ where: { id: job.id } });
+      assert.equal(afterDispatch?.status, "PENDING");
+      assert.equal(afterDispatch?.attempts, 0);
+      const ackRes = await ackPost(
+        new NextRequest("http://localhost/api/print/ack", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ackToken: job.ackToken }),
+        }),
+      );
+      assert.equal(ackRes.status, 409);
+    } finally {
+      env.PRINT_DELIVERY_MODE = previousMode ?? "agent-pull";
+      if (previousUrl === undefined) delete env.PRINTER_AGENT_URL;
+      else env.PRINTER_AGENT_URL = previousUrl;
+    }
   });
 
   it("treats duplicate ACK as idempotent and never auto-returns ACKED to PENDING", async () => {

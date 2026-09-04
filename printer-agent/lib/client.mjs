@@ -5,16 +5,23 @@ export function nextBackoff(previous = 0) {
   return BACKOFF_MS[index === -1 ? BACKOFF_MS.length - 1 : index];
 }
 
-export function assertServerUrl(url, nodeEnv = process.env.NODE_ENV) {
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+export function isLocalPrinterAgentHost(hostname) {
+  const host = String(hostname ?? "").replace(/^\[|\]$/g, "");
+  return LOCAL_HOSTS.has(host);
+}
+
+export function assertServerUrl(url) {
   let parsed;
   try {
     parsed = new URL(url);
   } catch {
     throw new Error("TABLETAP_SERVER_URL is invalid");
   }
-  const local = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
-  if (nodeEnv === "production" && parsed.protocol !== "https:" && !local) {
-    throw new Error("Production printer agent requires HTTPS");
+  const local = isLocalPrinterAgentHost(parsed.hostname);
+  if (parsed.protocol !== "https:" && !local) {
+    throw new Error("Printer agent requires HTTPS for remote TableTap URLs");
   }
   return parsed.toString().replace(/\/$/, "");
 }

@@ -55,7 +55,7 @@ TABLETAP_PRINTER_DRY_RUN=0
 
 Never put the token in the systemd unit file.
 
-Production URLs must be HTTPS. `http://localhost` is allowed for development only. TLS certificates are validated. There is no `--insecure` default.
+Remote TableTap URLs must be HTTPS, even if `NODE_ENV` is unset (the systemd unit does not set it). `http://localhost` and `http://127.0.0.1` are allowed for development only. TLS certificates are validated. There is no `--insecure` flag.
 
 ## 5. Map logical targets to CUPS queues
 
