@@ -99,7 +99,7 @@ export async function transitionOrderItem(params: {
     if (previousOrder && previousOrder.status !== nextStatus) {
       await appendPlatformAuditEventInTx(tx, {
         category: AUDIT_CATEGORY.ORDER,
-        action: nextStatus === "CANCELLED" ? AUDIT_ACTION.ORDER_CANCELLED : AUDIT_ACTION.ORDER_STATUS_CHANGED,
+        action: AUDIT_ACTION.ORDER_STATUS_CHANGED,
         restaurantId: params.restaurantId,
         resourceType: "Order",
         resourceId: params.orderId,

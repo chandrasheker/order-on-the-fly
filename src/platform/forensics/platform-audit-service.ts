@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logError } from "@/lib/logger";
 import {
@@ -58,7 +59,7 @@ export type AuditWriteInput = {
 
 export type AuditTx = {
   platformAuditEvent: {
-    create: (args: { data: Record<string, unknown> }) => Promise<unknown>;
+    create: (args: { data: Prisma.PlatformAuditEventUncheckedCreateInput }) => Promise<unknown>;
   };
 };
 

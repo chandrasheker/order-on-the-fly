@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
 import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
 import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
-import { auditMenuCategorySnapshot } from "@/platform/forensics/snapshots";
+import { auditMenuCategorySnapshot, auditMenuItemSnapshot } from "@/platform/forensics/snapshots";
+import { setForensicResource } from "@/platform/forensics/request-context";
 
 export const MENU_CATEGORY_PRESETS = [
   { name: "Today's Special", slug: "todays-special", icon: "⭐" },
@@ -190,4 +191,74 @@ export async function addPresetCategories(restaurantId: string, slugs: string[])
   }
 
   return created;
+}
+
+export async function updateManagedMenuItemForRestaurant(params: {
+  restaurantId: string;
+  item: { id: string; name: string; price: number; isAvailable: boolean; categoryId: string; prepTimeMinutes: number };
+  nextPrice?: number;
+  isAvailable?: boolean;
+  prepTimeMinutes?: number;
+  name?: string;
+  swiggyItemId?: unknown;
+  zomatoItemId?: unknown;
+}) {
+  const { restaurantId, item, nextPrice, isAvailable, prepTimeMinutes, name, swiggyItemId, zomatoItemId } = params;
+  return prisma.$transaction(async (tx) => {
+    const next = await tx.menuItem.update({
+      where: { id: item.id },
+      data: {
+        ...(isAvailable !== undefined && { isAvailable }),
+        ...(prepTimeMinutes !== undefined && { prepTimeMinutes }),
+        ...(nextPrice !== undefined && { price: nextPrice }),
+        ...(name !== undefined && { name: name.trim() }),
+        ...(swiggyItemId !== undefined && {
+          swiggyItemId: swiggyItemId ? String(swiggyItemId).trim() : null,
+        }),
+        ...(zomatoItemId !== undefined && {
+          zomatoItemId: zomatoItemId ? String(zomatoItemId).trim() : null,
+        }),
+      },
+    });
+    const beforeSnap = auditMenuItemSnapshot(item);
+    const afterSnap = auditMenuItemSnapshot(next);
+    setForensicResource({ type: "MenuItem", id: next.id, label: next.name });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.MENU,
+      action: AUDIT_ACTION.MENU_ITEM_UPDATED,
+      restaurantId,
+      resourceType: "MenuItem",
+      resourceId: next.id,
+      resourceLabel: next.name,
+      before: beforeSnap,
+      after: afterSnap,
+    });
+    if (nextPrice !== undefined && nextPrice !== item.price) {
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MENU,
+        action: AUDIT_ACTION.MENU_ITEM_PRICE_CHANGED,
+        restaurantId,
+        resourceType: "MenuItem",
+        resourceId: next.id,
+        resourceLabel: next.name,
+        before: { price: item.price },
+        after: { price: next.price },
+        diff: { price: { from: item.price, to: next.price } },
+      });
+    }
+    if (isAvailable !== undefined && isAvailable !== item.isAvailable) {
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MENU,
+        action: AUDIT_ACTION.MENU_ITEM_AVAILABILITY_CHANGED,
+        restaurantId,
+        resourceType: "MenuItem",
+        resourceId: next.id,
+        resourceLabel: next.name,
+        before: { isAvailable: item.isAvailable },
+        after: { isAvailable: next.isAvailable },
+        diff: { isAvailable: { from: item.isAvailable, to: next.isAvailable } },
+      });
+    }
+    return next;
+  });
 }

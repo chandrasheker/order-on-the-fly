@@ -87,32 +87,43 @@ export function PlatformAuditConsole({ admin }: { admin: { name: string; email: 
   }, [applied]);
 
   const applyFilter = (patch: Partial<typeof EMPTY_FILTERS>) => {
+    setLoading(true);
     setFilters((current) => ({ ...current, ...patch }));
     setApplied((current) => ({ ...current, ...patch }));
   };
 
-  const load = useCallback(
-    async (nextCursor?: string | null, reset = false) => {
-      setLoading(true);
-      const params = new URLSearchParams(query);
-      if (nextCursor) params.set("cursor", nextCursor);
-      const res = await fetch(`/api/platform/audit?${params.toString()}`);
+  const loadMore = useCallback(async () => {
+    if (!cursor) return;
+    const params = new URLSearchParams(query);
+    params.set("cursor", cursor);
+    const res = await fetch(`/api/platform/audit?${params.toString()}`);
+    if (!res.ok) return;
+    const json = (await res.json()) as { events: AuditEvent[]; nextCursor: string | null };
+    setEvents((prev) => [...prev, ...json.events]);
+    setCursor(json.nextCursor);
+  }, [cursor, query]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(query);
+    let cancelled = false;
+    void fetch(`/api/platform/audit?${params.toString()}`).then(async (res) => {
+      if (cancelled) return;
       if (!res.ok) {
         setEvents([]);
+        setCursor(null);
         setLoading(false);
         return;
       }
       const json = (await res.json()) as { events: AuditEvent[]; nextCursor: string | null };
-      setEvents((prev) => (reset ? json.events : [...prev, ...json.events]));
+      if (cancelled) return;
+      setEvents(json.events);
       setCursor(json.nextCursor);
       setLoading(false);
-    },
-    [query],
-  );
-
-  useEffect(() => {
-    void load(null, true);
-  }, [load]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [query]);
 
   return (
     <PlatformShell
@@ -143,6 +154,7 @@ export function PlatformAuditConsole({ admin }: { admin: { name: string; email: 
           <div className="flex gap-2">
             <Button
               onClick={() => {
+                setLoading(true);
                 setApplied({ ...filters });
                 setSelected(null);
               }}
@@ -152,6 +164,7 @@ export function PlatformAuditConsole({ admin }: { admin: { name: string; email: 
             <Button
               variant="secondary"
               onClick={() => {
+                setLoading(true);
                 setFilters(EMPTY_FILTERS);
                 setApplied(EMPTY_FILTERS);
                 setSelected(null);
@@ -214,7 +227,7 @@ export function PlatformAuditConsole({ admin }: { admin: { name: string; email: 
         </div>
 
         {cursor && (
-          <Button variant="secondary" onClick={() => void load(cursor)}>Load more</Button>
+          <Button variant="secondary" onClick={() => void loadMore()}>Load more</Button>
         )}
 
         {selected && (

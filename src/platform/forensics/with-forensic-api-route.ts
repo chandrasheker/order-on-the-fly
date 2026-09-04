@@ -17,18 +17,18 @@ import {
 import { logApiError } from "@/lib/logger";
 import { sanitizeErrorText } from "@/platform/forensics/redactor";
 
-type RouteContext = { params?: Promise<Record<string, string>> | Record<string, string> };
+type AppRouteContext = { params: Promise<Record<string, string | string[] | undefined>> };
 
 export type ForensicRouteOptions = {
   suppressRequestEvent?: boolean;
   source?: string;
 };
 
-export function withForensicApiRoute<TContext extends RouteContext>(
-  handler: (request: NextRequest, context: TContext) => Promise<Response> | Response,
+export function withForensicApiRoute<C extends { params: Promise<unknown> } = AppRouteContext>(
+  handler: (request: NextRequest, context: C) => Promise<Response> | Response,
   options?: ForensicRouteOptions,
-) {
-  return async (request: NextRequest, context: TContext) => {
+): (request: NextRequest, context: C) => Promise<Response> {
+  return async (request: NextRequest, context: C) => {
     const requestId = generateRequestId();
     const startedAt = Date.now();
     const hostname = forensicHostname(request.headers);

@@ -33,8 +33,9 @@ export function normalizeClientIp(raw: string | null | undefined): string | null
   return null;
 }
 
-export function forensicTrustProxyEnabled(env = process.env) {
-  return env.FORENSIC_TRUST_PROXY === "1";
+export function forensicTrustProxyEnabled(env?: Record<string, string | undefined>) {
+  const source = env ?? (process.env as Record<string, string | undefined>);
+  return source.FORENSIC_TRUST_PROXY === "1";
 }
 
 function isLocalHost(hostname: string | null) {
@@ -44,9 +45,9 @@ function isLocalHost(hostname: string | null) {
 
 export function resolveClientIp(
   headers: Headers | { get(name: string): string | null },
-  options?: { hostname?: string | null; env?: NodeJS.ProcessEnv },
+  options?: { hostname?: string | null; env?: Record<string, string | undefined> },
 ): ResolvedClientIp {
-  const env = options?.env ?? process.env;
+  const env = options?.env ?? (process.env as Record<string, string | undefined>);
   const hostname = options?.hostname ?? getTrustedHostname(headers);
   const forwardedRaw = boundString(
     headers.get("x-forwarded-for") ?? headers.get("forwarded"),

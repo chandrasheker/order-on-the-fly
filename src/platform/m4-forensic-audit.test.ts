@@ -29,8 +29,8 @@ let resolveClientIp: typeof import("@/platform/forensics/client-ip").resolveClie
 let redactSecrets: typeof import("@/platform/forensics/redactor").redactSecrets;
 let formatOperationalLogLine: typeof import("@/lib/logger").formatOperationalLogLine;
 let withForensicApiRoute: typeof import("@/platform/forensics/with-forensic-api-route").withForensicApiRoute;
-let updateManagedMenuItemForRestaurant: typeof import("@/app/api/menu/manage/route").updateManagedMenuItemForRestaurant;
-let applyStaffUserMutationInTx: typeof import("@/app/api/platform/users/route").applyStaffUserMutationInTx;
+let updateManagedMenuItemForRestaurant: typeof import("@/lib/menu-setup-service").updateManagedMenuItemForRestaurant;
+let applyStaffUserMutationInTx: typeof import("@/lib/staff-user-mutation").applyStaffUserMutationInTx;
 let hashPassword: typeof import("@/lib/auth").hashPassword;
 let createPlatformAdminToken: typeof import("@/lib/auth").createPlatformAdminToken;
 let createTenantAdminToken: typeof import("@/lib/auth").createTenantAdminToken;
@@ -153,8 +153,8 @@ END;
   ({ redactSecrets } = await import("@/platform/forensics/redactor"));
   ({ formatOperationalLogLine } = await import("@/lib/logger"));
   ({ withForensicApiRoute } = await import("@/platform/forensics/with-forensic-api-route"));
-  ({ updateManagedMenuItemForRestaurant } = await import("@/app/api/menu/manage/route"));
-  ({ applyStaffUserMutationInTx } = await import("@/app/api/platform/users/route"));
+  ({ updateManagedMenuItemForRestaurant } = await import("@/lib/menu-setup-service"));
+  ({ applyStaffUserMutationInTx } = await import("@/lib/staff-user-mutation"));
   ({
     hashPassword,
     createPlatformAdminToken,
@@ -314,9 +314,12 @@ function checkoutSignature(orderId: string, paymentId: string, secret = "rzp_tes
   return createHmac("sha256", secret).update(`${orderId}|${paymentId}`).digest("hex");
 }
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 function setNodeEnv(value: string | undefined) {
-  if (value === undefined) delete process.env.NODE_ENV;
-  else process.env.NODE_ENV = value;
+  const env = process.env as { NODE_ENV?: string };
+  if (value === undefined) delete env.NODE_ENV;
+  else env.NODE_ENV = value;
 }
 
 function auditRequest(url: string, extras?: { host?: string; cookie?: string; method?: string }) {
@@ -406,27 +409,27 @@ describe("M4 forensic audit", () => {
   it("captures IPv4, IPv6, trusted proxy, and rejects spoofed X-Forwarded-For", () => {
     const trustedV4 = resolveClientIp(new Headers({ "x-forwarded-for": "49.37.120.82" }), {
       hostname: "abc.dvadtech.in",
-      env: { FORENSIC_TRUST_PROXY: "1" } as NodeJS.ProcessEnv,
+      env: { FORENSIC_TRUST_PROXY: "1" },
     });
     assert.equal(trustedV4.clientIp, "49.37.120.82");
     assert.equal(trustedV4.clientIpSource, "trusted-proxy");
 
     const trustedV6 = resolveClientIp(new Headers({ "x-forwarded-for": "2401:4900:1f3a:2::1" }), {
       hostname: "abc.dvadtech.in",
-      env: { FORENSIC_TRUST_PROXY: "1" } as NodeJS.ProcessEnv,
+      env: { FORENSIC_TRUST_PROXY: "1" },
     });
     assert.equal(trustedV6.clientIp, "2401:4900:1f3a:2::1");
 
     const spoofed = resolveClientIp(new Headers({ "x-forwarded-for": "8.8.8.8", "x-real-ip": "1.1.1.1" }), {
       hostname: "abc.dvadtech.in",
-      env: {} as NodeJS.ProcessEnv,
+      env: {},
     });
     assert.equal(spoofed.clientIp, null);
     assert.equal(spoofed.clientIpSource, "untrusted");
 
     const local = resolveClientIp(new Headers({ "x-forwarded-for": "8.8.8.8" }), {
       hostname: "localhost",
-      env: {} as NodeJS.ProcessEnv,
+      env: {},
     });
     assert.equal(local.clientIp, "127.0.0.1");
     assert.equal(local.clientIpSource, "local");
@@ -447,7 +450,7 @@ describe("M4 forensic audit", () => {
         "x-forwarded-for": "49.37.120.82",
       },
     });
-    const res = await handler(req, {});
+    const res = await handler(req, emptyRouteContext);
     assert.equal(res.status, 200);
     const requestId = res.headers.get("x-request-id");
     assert.ok(requestId);
@@ -476,7 +479,7 @@ describe("M4 forensic audit", () => {
     const req = new NextRequest("http://abc.dvadtech.in/api/orders/clfail", {
       headers: { host: "abc.dvadtech.in" },
     });
-    const res = await handler(req, {});
+    const res = await handler(req, emptyRouteContext);
     assert.equal(res.status, 500);
     const requestId = res.headers.get("x-request-id");
     const event = await prisma.platformAuditEvent.findFirst({
@@ -762,7 +765,7 @@ describe("M4 forensic audit", () => {
         host: "dvadtech.in",
         cookie: `${PLATFORM_ADMIN_COOKIE}=${token}`,
       }),
-      {},
+      emptyRouteContext,
     );
     setNodeEnv(previous);
     const body = await res.json();
@@ -890,7 +893,7 @@ describe("M4 forensic audit", () => {
       headers: { host: "no-such-restaurant.dvadtech.in", "content-type": "application/json" },
     });
     unknownReq.json = async () => ({ email: staff.email, password: "password-12" });
-    const unknownHost = await loginPost(unknownReq, {});
+    const unknownHost = await loginPost(unknownReq, emptyRouteContext);
     assert.equal(unknownHost.status, 404);
     const wrongHost = await prisma.platformAuditEvent.findFirst({
       where: { action: "WRONG_HOST_ACCESS_DENIED" },
@@ -903,7 +906,7 @@ describe("M4 forensic audit", () => {
       headers: { host: `r-${suffix}-b.dvadtech.in`, "content-type": "application/json" },
     });
     mismatchReq.json = async () => ({ email: staff.email, password: "password-12" });
-    const mismatch = await loginPost(mismatchReq, {});
+    const mismatch = await loginPost(mismatchReq, emptyRouteContext);
     assert.ok(mismatch.status === 401 || mismatch.status === 404);
 
     const req = new NextRequest(`http://r-${suffix}-a.dvadtech.in/api/orders/${orderB.id}`, {
@@ -977,7 +980,7 @@ describe("M4 forensic audit", () => {
       auditRequest("http://dvadtech.in/api/platform/audit?limit=5", {
         cookie: `${PLATFORM_ADMIN_COOKIE}=${token}`,
       }),
-      {},
+      emptyRouteContext,
     );
     assert.equal(allowed.status, 200);
 
@@ -986,7 +989,7 @@ describe("M4 forensic audit", () => {
         host: "abc.dvadtech.in",
         cookie: `${PLATFORM_ADMIN_COOKIE}=${token}`,
       }),
-      {},
+      emptyRouteContext,
     );
     assert.equal(restaurantHost.status, 404);
 
@@ -995,18 +998,18 @@ describe("M4 forensic audit", () => {
         host: "www.dvadtech.in",
         cookie: `${PLATFORM_ADMIN_COOKIE}=${token}`,
       }),
-      {},
+      emptyRouteContext,
     );
     assert.equal(www.status, 404);
 
-    const unauth = await auditGet(auditRequest("http://dvadtech.in/api/platform/audit"), {});
+    const unauth = await auditGet(auditRequest("http://dvadtech.in/api/platform/audit"), emptyRouteContext);
     assert.equal(unauth.status, 404);
 
     const tenant = await auditGet(
       auditRequest("http://dvadtech.in/api/platform/audit", {
         cookie: `${TENANT_ADMIN_COOKIE}=${tenantToken}`,
       }),
-      {},
+      emptyRouteContext,
     );
     assert.equal(tenant.status, 404);
 
@@ -1015,7 +1018,7 @@ describe("M4 forensic audit", () => {
         cookie: `${PLATFORM_ADMIN_COOKIE}=${token}`,
         method: "DELETE",
       }),
-      {},
+      emptyRouteContext,
     );
     assert.equal(tamper.status, 405);
     setNodeEnv("development");
@@ -1024,7 +1027,7 @@ describe("M4 forensic audit", () => {
         host: "localhost",
         cookie: `${PLATFORM_ADMIN_COOKIE}=${token}`,
       }),
-      {},
+      emptyRouteContext,
     );
     assert.equal(local.status, 200);
     setNodeEnv(previous);
@@ -1067,7 +1070,7 @@ describe("M4 forensic audit", () => {
         `http://dvadtech.in/api/platform/audit?category=MONEY&action=REFUND_COMPLETED&restaurantId=${restaurantId}&limit=2`,
         { cookie: `${PLATFORM_ADMIN_COOKIE}=${token}` },
       ),
-      {},
+      emptyRouteContext,
     );
     assert.equal(first.status, 200);
     const page1 = (await first.json()) as { events: Array<{ id: string; action: string }>; nextCursor: string | null };
@@ -1078,7 +1081,7 @@ describe("M4 forensic audit", () => {
         `http://dvadtech.in/api/platform/audit?category=MONEY&action=REFUND_COMPLETED&restaurantId=${restaurantId}&limit=2&cursor=${page1.nextCursor}`,
         { cookie: `${PLATFORM_ADMIN_COOKIE}=${token}` },
       ),
-      {},
+      emptyRouteContext,
     );
     const page2 = (await second.json()) as { events: Array<{ id: string }>; nextCursor: string | null };
     const ids = [...page1.events, ...page2.events].map((row) => row.id);
