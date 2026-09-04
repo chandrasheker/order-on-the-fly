@@ -95,6 +95,7 @@ export function sanitizeErrorText(value: unknown, max = 2048) {
   const redacted = raw
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
     .replace(/([?&](?:token|secret|key|sig|signature)=)[^&\s]+/gi, "$1[REDACTED]")
+    .replace(/\b(?:token|secret|password|api[_-]?key)=[^\s&]+/gi, "[REDACTED]")
     .replace(/tt_pa_[A-Za-z0-9_]+/g, "[REDACTED]");
   return redacted.length > max ? `${redacted.slice(0, max)}…` : redacted;
 }

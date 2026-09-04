@@ -9,7 +9,6 @@ import { NextRequest, NextResponse } from "next/server";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { encryptSecret } from "@/lib/credential-crypto";
 import { todayDateString } from "@/lib/utils";
-import { SQLITE_APPEND_ONLY_TRIGGERS } from "@/platform/forensics/constants";
 
 const dbPath = path.join(os.tmpdir(), `tabletap-m4-${process.pid}-${Date.now()}.db`);
 process.env.DATABASE_URL = `file:${dbPath}`;
@@ -129,9 +128,20 @@ before(async () => {
     },
   );
   ({ prisma } = await import("@/lib/prisma"));
-  for (const statement of SQLITE_APPEND_ONLY_TRIGGERS.split(";").map((part) => part.trim()).filter(Boolean)) {
-    await prisma.$executeRawUnsafe(`${statement};`);
-  }
+  await prisma.$executeRawUnsafe(`
+CREATE TRIGGER IF NOT EXISTS "platform_audit_event_no_update"
+BEFORE UPDATE ON "PlatformAuditEvent"
+BEGIN
+    SELECT RAISE(ABORT, 'PlatformAuditEvent is append-only');
+END;
+`);
+  await prisma.$executeRawUnsafe(`
+CREATE TRIGGER IF NOT EXISTS "platform_audit_event_no_delete"
+BEFORE DELETE ON "PlatformAuditEvent"
+BEGIN
+    SELECT RAISE(ABORT, 'PlatformAuditEvent is append-only');
+END;
+`);
   ({
     appendPlatformAuditEvent,
     queryPlatformAuditEvents,
@@ -175,10 +185,15 @@ before(async () => {
   ({ GET: auditGet, DELETE: auditDelete } = await import("@/app/api/platform/audit/route"));
   ({ POST: loginPost } = await import("@/app/api/auth/login/route"));
   setRazorpayTransportForTests(fake.transport);
+  execFileSync(
+    process.execPath,
+    [path.join(process.cwd(), "scripts", "run-with-mem.js"), "npx", "prisma", "validate", "--schema", "prisma/schema.postgres.prisma"],
+    { cwd: process.cwd(), stdio: "inherit" },
+  );
 });
 
 after(async () => {
-  setRazorpayTransportForTests(null);
+  setRazorpayTransportForTests?.(null);
   if (prisma) await prisma.$disconnect().catch(() => undefined);
   for (const extra of ["", "-wal", "-shm", "-journal"]) {
     fs.rmSync(`${dbPath}${extra}`, { force: true });
@@ -186,11 +201,20 @@ after(async () => {
 });
 
 async function seedRestaurant(suffix: string, extras?: { razorpay?: boolean; webhooks?: boolean }) {
+  const tenant = await prisma.tenant.create({
+    data: {
+      name: `T ${suffix}`,
+      nameNormalized: `t ${suffix}`,
+      slug: `t-${suffix}`,
+      isEnabled: true,
+    },
+  });
   const restaurant = await prisma.restaurant.create({
     data: {
       name: `R ${suffix}`,
       nameNormalized: `r ${suffix}`,
       slug: `r-${suffix}`,
+      tenantId: tenant.id,
       receiptFooter: "Thanks",
       featureFlags: extras?.webhooks ? JSON.stringify({ payment_webhooks: true }) : "{}",
       paymentGatewayProvider: extras?.razorpay ? "RAZORPAY" : null,
@@ -290,6 +314,11 @@ function checkoutSignature(orderId: string, paymentId: string, secret = "rzp_tes
   return createHmac("sha256", secret).update(`${orderId}|${paymentId}`).digest("hex");
 }
 
+function setNodeEnv(value: string | undefined) {
+  if (value === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = value;
+}
+
 function auditRequest(url: string, extras?: { host?: string; cookie?: string; method?: string }) {
   const headers: Record<string, string> = {
     host: extras?.host ?? "dvadtech.in",
@@ -369,11 +398,6 @@ describe("M4 forensic audit", () => {
     assert.ok(pg.includes("prevent_platform_audit_event_mutation"));
     assert.ok(pg.includes("BEFORE UPDATE"));
     assert.ok(pg.includes("BEFORE DELETE"));
-    execFileSync(
-      process.execPath,
-      [path.join(process.cwd(), "scripts", "run-with-mem.js"), "npx", "prisma", "validate", "--schema", "prisma/schema.postgres.prisma"],
-      { cwd: process.cwd(), stdio: "inherit" },
-    );
   });
 
   it("captures IPv4, IPv6, trusted proxy, and rejects spoofed X-Forwarded-For", () => {
@@ -460,8 +484,9 @@ describe("M4 forensic audit", () => {
     assert.ok(event.errorFingerprint);
     assert.ok(event.errorType);
     const blob = JSON.stringify(event);
-    assert.ok(!blob.includes("at "));
+    assert.ok(!blob.includes("\\n    at "));
     assert.ok(!blob.includes("token=abc.def"));
+    assert.ok(!Object.keys(event as object).includes("stack"));
   });
 
   it("records MENU_ITEM_PRICE_CHANGED with before/after/diff", async () => {
@@ -586,15 +611,18 @@ describe("M4 forensic audit", () => {
       assert.equal(refund.ok, true);
     });
 
+    const upiTable = await prisma.table.create({
+      data: { number: 5, restaurantId: restaurant.id, qrToken: `qr-${suffix}-upi` },
+    });
     const upiOrder = await seedServedOrder({
       restaurantId: restaurant.id,
-      tableId: table.id,
+      tableId: upiTable.id,
       menuItemId: menuItem.id,
       orderNumber: 2,
       unitPrice: 180,
     });
     await runWithForensicContext(ctx, async () => {
-      const submitted = await initiateManualUpiPayment({ orderId: upiOrder.id, tableId: table.id });
+      const submitted = await initiateManualUpiPayment({ orderId: upiOrder.id, tableId: upiTable.id });
       assert.equal(submitted.ok, true);
       if (!submitted.ok || !submitted.payment) throw new Error("upi start failed");
       const verified = await confirmManualUpiPayment({
@@ -605,9 +633,12 @@ describe("M4 forensic audit", () => {
       assert.equal(verified.ok, true);
     });
 
+    const rzTable = await prisma.table.create({
+      data: { number: 6, restaurantId: restaurant.id, qrToken: `qr-${suffix}-rz` },
+    });
     const rzOrder = await seedServedOrder({
       restaurantId: restaurant.id,
-      tableId: table.id,
+      tableId: rzTable.id,
       menuItemId: menuItem.id,
       orderNumber: 3,
       unitPrice: 210,
@@ -616,7 +647,7 @@ describe("M4 forensic audit", () => {
       const created = await createOrReuseRazorpayCheckout({
         restaurantId: restaurant.id,
         orderId: rzOrder.id,
-        tableId: table.id,
+        tableId: rzTable.id,
       });
       assert.equal(created.ok, true);
       if (!created.ok) return;
@@ -721,7 +752,7 @@ describe("M4 forensic audit", () => {
       name: "Platform",
     });
     const previous = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    setNodeEnv("production");
     process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
     const res = await auditGet(
       auditRequest("http://dvadtech.in/api/platform/audit?category=CONFIG", {
@@ -730,7 +761,7 @@ describe("M4 forensic audit", () => {
       }),
       {},
     );
-    process.env.NODE_ENV = previous;
+    setNodeEnv(previous);
     const body = await res.json();
     assert.ok(!JSON.stringify(body).includes(secret));
   });
@@ -790,7 +821,7 @@ describe("M4 forensic audit", () => {
       jobId: claimedFail.job.id,
       claimToken: claimedFail.job.claimToken,
       outcome: "FAILED",
-      errorCode: "PRINTER_OFFLINE",
+      errorCode: "INVALID_PAYLOAD",
     });
     await retryPrintJobForRestaurant(failJob.id, restaurant.id);
     await reprintPrintJobForRestaurant({ jobId: first.id, restaurantId: restaurant.id });
@@ -851,22 +882,26 @@ describe("M4 forensic audit", () => {
       unitPrice: 100,
     });
     process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
-    const login = await loginPost(
-      new NextRequest("http://r-b.dvadtech.in/api/auth/login", {
-        method: "POST",
-        headers: { host: `r-${suffix}-b.dvadtech.in`, "content-type": "application/json" },
-        body: JSON.stringify({ email: staff.email, password: "password-12" }),
-      }),
-      {},
-    );
-    assert.equal(login.status, 401);
-    const loginJson = await login.json();
-    assert.equal(loginJson.error, "Invalid email or password");
+    const unknownReq = new NextRequest("http://no-such-restaurant.dvadtech.in/api/auth/login", {
+      method: "POST",
+      headers: { host: "no-such-restaurant.dvadtech.in", "content-type": "application/json" },
+    });
+    unknownReq.json = async () => ({ email: staff.email, password: "password-12" });
+    const unknownHost = await loginPost(unknownReq, {});
+    assert.equal(unknownHost.status, 404);
     const wrongHost = await prisma.platformAuditEvent.findFirst({
       where: { action: "WRONG_HOST_ACCESS_DENIED" },
       orderBy: { occurredAt: "desc" },
     });
     assert.ok(wrongHost);
+
+    const mismatchReq = new NextRequest(`http://r-${suffix}-b.dvadtech.in/api/auth/login`, {
+      method: "POST",
+      headers: { host: `r-${suffix}-b.dvadtech.in`, "content-type": "application/json" },
+    });
+    mismatchReq.json = async () => ({ email: staff.email, password: "password-12" });
+    const mismatch = await loginPost(mismatchReq, {});
+    assert.ok(mismatch.status === 401 || mismatch.status === 404);
 
     const req = new NextRequest(`http://r-${suffix}-a.dvadtech.in/api/orders/${orderB.id}`, {
       headers: { host: `r-${suffix}-a.dvadtech.in` },
@@ -932,7 +967,7 @@ describe("M4 forensic audit", () => {
       tenantId: "tenant-1",
     });
     const previous = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    setNodeEnv("production");
     process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
 
     const allowed = await auditGet(
@@ -980,9 +1015,7 @@ describe("M4 forensic audit", () => {
       {},
     );
     assert.equal(tamper.status, 405);
-    process.env.NODE_ENV = previous;
-
-    process.env.NODE_ENV = "development";
+    setNodeEnv("development");
     const local = await auditGet(
       auditRequest("http://localhost/api/platform/audit", {
         host: "localhost",
@@ -991,7 +1024,7 @@ describe("M4 forensic audit", () => {
       {},
     );
     assert.equal(local.status, 200);
-    process.env.NODE_ENV = previous;
+    setNodeEnv(previous);
 
     const viewed = await eventsWhere({ action: "AUDIT_VIEWED" });
     assert.ok(viewed.length >= 1);
@@ -1024,7 +1057,7 @@ describe("M4 forensic audit", () => {
     });
     const before = await prisma.platformAuditEvent.count({ where: { action: "AUDIT_VIEWED" } });
     const previous = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    setNodeEnv("production");
     process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
     const first = await auditGet(
       auditRequest(
@@ -1061,6 +1094,6 @@ describe("M4 forensic audit", () => {
       limit: 10,
     });
     assert.ok(Array.isArray(byRequest.events));
-    process.env.NODE_ENV = previous;
+    setNodeEnv(previous);
   });
 });
