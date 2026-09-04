@@ -4,7 +4,8 @@ import { recordAuditLog } from "@/lib/audit-service";
 import { buildBillSnapshot, parseBillSnapshot, receiptFromBillSnapshot } from "@/lib/bill-snapshot";
 import { financialsForOrder } from "@/lib/order-financials";
 import { logInfo, logWarn } from "@/lib/logger";
-import { enqueueIdempotentPrintJob } from "@/domains/printing/print-job-service";
+import { enqueueCustomerBillPrintInTx, enqueueIdempotentPrintJob } from "@/domains/printing/print-job-service";
+import { customerBillIdempotencyKey, PRINT_KIND, targetFromKind } from "@/lib/print-constants";
 import { generatePublicToken } from "@/lib/public-token";
 
 const BILL_RESTAURANT_SELECT = {
@@ -179,6 +180,15 @@ export async function finalizeOrderBillInTx(
         billNumber: bill.billNumber,
       });
 
+      await enqueueCustomerBillPrintInTx(tx, {
+        restaurantId: bill.restaurantId,
+        tenantId: bill.tenantId,
+        branchId: bill.branchId,
+        orderId: bill.orderId,
+        billId: bill.id,
+        payload: snapshot,
+      });
+
       return { ok: true as const, bill, created: true };
     } catch (error) {
       const existingAfter = await tx.bill.findFirst({
@@ -237,8 +247,9 @@ export async function publishBillFinalized(params: {
     tenantId: params.bill.tenantId,
     branchId: params.bill.branchId,
     orderId: params.bill.orderId,
-    kind: "customer_bill",
-    idempotencyKey: `bill:${params.bill.id}:customer_bill`,
+    kind: PRINT_KIND.CUSTOMER_BILL,
+    target: targetFromKind(PRINT_KIND.CUSTOMER_BILL),
+    idempotencyKey: customerBillIdempotencyKey(params.bill.id),
     payload: snapshot ?? { billId: params.bill.id, billNumber: params.bill.billNumber },
   }).catch(() => undefined);
 }

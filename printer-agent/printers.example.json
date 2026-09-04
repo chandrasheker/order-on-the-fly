@@ -1,0 +1,10 @@
+{
+  "kitchen": {
+    "adapter": "cups",
+    "printer": "KITCHEN_PRINTER"
+  },
+  "bill": {
+    "adapter": "cups",
+    "printer": "BILL_PRINTER"
+  }
+}

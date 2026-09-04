@@ -249,6 +249,10 @@ export function canMutatePaymentGatewayCredentials(role: Role) {
   return role === "OWNER";
 }
 
+export function canMutatePrinterAgentCredentials(role: Role) {
+  return role === "OWNER";
+}
+
 export function canManageStaff(role: Role) {
   return role === "OWNER" || role === "MANAGER";
 }

@@ -77,6 +77,8 @@ function isPublicApi(pathname: string, request: NextRequest) {
     return true;
   }
   if (/^\/api\/receipts\/public\/[^/]+$/.test(pathname) && request.method === "GET") return true;
+  if (pathname.startsWith("/api/print/agent/") && request.method === "POST") return true;
+  if (pathname === "/api/print/ack" && request.method === "POST") return true;
   if (pathname === "/api/guest/service-request" && request.method === "POST") return true;
   if (pathname === "/api/push/vapid" && request.method === "GET") return true;
   if (/^\/api\/orders\/[^/]+$/.test(pathname) && request.method === "PATCH") {

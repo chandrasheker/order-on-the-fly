@@ -353,33 +353,51 @@ export async function createOrderForTable(params: {
 
   const hierarchy = await resolveHierarchyForTable(table.id);
 
-  const order = await prisma.order.create({
-    data: {
-      orderNumber,
-      customerName: customerName?.trim() || null,
-      customerPhone: customerPhone?.trim() || null,
-      orderChannel: resolvedChannel,
-      externalOrderId: externalOrderId?.trim() || null,
-      orderNotes: orderNotes?.trim() || null,
-      tableId: table.id,
-      tabId,
+  const { enqueueKitchenChitForOrderInTx } = await import("@/domains/printing/print-job-service");
+  const order = await prisma.$transaction(async (tx) => {
+    const created = await tx.order.create({
+      data: {
+        orderNumber,
+        customerName: customerName?.trim() || null,
+        customerPhone: customerPhone?.trim() || null,
+        orderChannel: resolvedChannel,
+        externalOrderId: externalOrderId?.trim() || null,
+        orderNotes: orderNotes?.trim() || null,
+        tableId: table.id,
+        tabId,
+        restaurantId: table.restaurantId,
+        tenantId: hierarchy.tenantId,
+        branchId: hierarchy.branchId,
+        floorId: hierarchy.floorId,
+        date: todayDateString(),
+        status: "PENDING",
+        placedByUserId: placedByUserId ?? null,
+        placedByName: placedByName ?? null,
+        promoCode: promo?.code ?? null,
+        promoDiscount,
+        discountAmount: promoDiscount,
+        items: { create: orderItemsData },
+      },
+      include: {
+        items: true,
+        table: true,
+      },
+    });
+    await enqueueKitchenChitForOrderInTx(tx, {
       restaurantId: table.restaurantId,
       tenantId: hierarchy.tenantId,
       branchId: hierarchy.branchId,
-      floorId: hierarchy.floorId,
-      date: todayDateString(),
-      status: "PENDING",
-      placedByUserId: placedByUserId ?? null,
-      placedByName: placedByName ?? null,
-      promoCode: promo?.code ?? null,
-      promoDiscount,
-      discountAmount: promoDiscount,
-      items: { create: orderItemsData },
-    },
-    include: {
-      items: true,
-      table: true,
-    },
+      orderId: created.id,
+      orderNumber: created.orderNumber,
+      tableNumber: table.number,
+      items: created.items.map((item) => ({
+        name: item.itemName,
+        quantity: item.quantity,
+        notes: item.notes ?? null,
+      })),
+      createdAt: created.createdAt,
+    });
+    return created;
   });
 
   const total = Math.max(

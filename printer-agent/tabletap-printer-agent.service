@@ -1,0 +1,18 @@
+[Unit]
+Description=TableTap Printer Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tabletap
+Group=tabletap
+EnvironmentFile=/etc/tabletap/printer-agent.env
+WorkingDirectory=/opt/tabletap-printer-agent
+ExecStart=/usr/bin/node /opt/tabletap-printer-agent/index.mjs
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

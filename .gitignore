@@ -58,6 +58,8 @@ prisma/dev.db
 /data/payments/
 /data/backgrounds/
 /.data/
+.printer-agent-state/
+printer-agent/.printer-agent-state/
 
 # runtime logs and crash dumps (kept locally for debugging)
 /logs/

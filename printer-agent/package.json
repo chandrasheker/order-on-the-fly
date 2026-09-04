@@ -1,0 +1,12 @@
+{
+  "name": "tabletap-printer-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Outbound TableTap restaurant printer agent",
+  "scripts": {
+    "start": "node index.mjs",
+    "dry-run": "TABLETAP_PRINTER_DRY_RUN=1 node index.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

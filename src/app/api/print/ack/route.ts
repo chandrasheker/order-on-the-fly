@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { acknowledgePrintJob } from "@/domains/printing/print-job-service";
+import { isLegacyPrintPushEnabled } from "@/lib/print-constants";
 
 export async function POST(req: NextRequest) {
+  const production = process.env.NODE_ENV === "production";
   const secret = process.env.PRINTER_AGENT_SECRET;
+
+  if (!isLegacyPrintPushEnabled()) {
+    return NextResponse.json({ error: "Legacy print ACK is disabled" }, { status: 409 });
+  }
+  if (production && !secret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   if (secret) {
     const auth = req.headers.get("authorization");
     if (auth !== `Bearer ${secret}`) {

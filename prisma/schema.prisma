@@ -254,6 +254,7 @@ model Restaurant {
   demandForecasts       DemandForecast[]
   floors                Floor[]
   printJobs             PrintJob[]
+  printerAgents         PrinterAgent[]
   paymentReconciliations PaymentReconciliation[]
   staffSessions          StaffSession[]
   hostSlugs              HostSlug[]
@@ -1051,6 +1052,7 @@ model Tenant {
   alerts             Alert[]
   platformEvents     PlatformEvent[]
   printJobs          PrintJob[]
+  printerAgents      PrinterAgent[]
   paymentReconciliations PaymentReconciliation[]
   admins             TenantAdmin[]
   hostSlugs          HostSlug[]
@@ -1195,14 +1197,23 @@ model PrintJob {
   order        Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
   restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   kind         String         @default("kitchen_chit")
+  target       String         @default("kitchen")
+  payloadVersion Int          @default(1)
   payload      String
   status       PrintJobStatus @default(PENDING)
   ackToken     String         @unique @default(cuid())
   attempts     Int            @default(0)
   maxAttempts  Int            @default(5)
   lastError    String?
+  lastErrorCode String?
   sentAt       DateTime?
   ackedAt      DateTime?
+  claimedByAgentId String?
+  claimedByAgent   PrinterAgent? @relation(fields: [claimedByAgentId], references: [id], onDelete: SetNull)
+  claimToken   String?
+  leaseExpiresAt DateTime?
+  nextAttemptAt DateTime?
+  lastAttemptAt DateTime?
   idempotencyKey String?
   reprintOfPrintJobId String?
   createdAt    DateTime       @default(now())
@@ -1210,7 +1221,35 @@ model PrintJob {
 
   @@unique([restaurantId, idempotencyKey])
   @@index([restaurantId, status])
+  @@index([restaurantId, status, target, createdAt])
   @@index([status, createdAt])
+  @@index([claimToken])
+}
+
+model PrinterAgent {
+  id                 String    @id @default(cuid())
+  tenantId           String?
+  tenant             Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  restaurantId       String
+  restaurant         Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  branchId           String?
+  name               String
+  tokenHash          String
+  tokenPrefix        String
+  enabled            Boolean   @default(true)
+  allowedTargetsJson String    @default("[\"kitchen\",\"bill\"]")
+  lastSeenAt         DateTime?
+  version            String?
+  lastError          String?
+  createdByUserId    String?
+  createdByName      String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  revokedAt          DateTime?
+  claimedJobs        PrintJob[]
+
+  @@index([restaurantId, enabled])
+  @@index([tokenPrefix])
 }
 
 model PaymentReconciliation {
