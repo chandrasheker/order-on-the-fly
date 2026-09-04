@@ -224,6 +224,13 @@ export async function dispatchPrintJob(jobId: string) {
 
   const job = await prisma.printJob.findUnique({ where: { id: jobId } });
   if (!job || job.status === "ACKED") return job;
+  if (isUncertainPrintDelivery(job)) {
+    logWarn("printing", "legacy dispatch skipped for uncertain pull delivery", {
+      jobId,
+      restaurantId: job.restaurantId,
+    });
+    return job;
+  }
 
   const agentUrl = process.env.PRINTER_AGENT_URL;
   if (!agentUrl) {
@@ -298,9 +305,7 @@ export function isUncertainPrintDelivery(job: {
   lastErrorCode?: string | null;
   status?: PrintJobStatus;
 }) {
-  if (!job.claimedByAgentId) return false;
-  if (job.lastErrorCode === PRINT_ERROR.AMBIGUOUS_DELIVERY) return true;
-  return job.status === "SENT";
+  return Boolean(job.claimedByAgentId) || job.lastErrorCode === PRINT_ERROR.AMBIGUOUS_DELIVERY;
 }
 
 export async function recoverExpiredPrintLeases(restaurantId?: string) {
@@ -486,12 +491,17 @@ export async function retryPendingPrintJobs(limit = 10) {
   if (!isLegacyPrintPushEnabled()) return 0;
 
   const pending = await prisma.printJob.findMany({
-    where: { status: { in: ["PENDING", "SENT"] } },
+    where: {
+      status: { in: ["PENDING", "SENT"] },
+      claimedByAgentId: null,
+      OR: [{ lastErrorCode: null }, { lastErrorCode: { not: PRINT_ERROR.AMBIGUOUS_DELIVERY } }],
+    },
     orderBy: { createdAt: "asc" },
     take: limit,
   });
 
   for (const job of pending) {
+    if (isUncertainPrintDelivery(job)) continue;
     if (job.status === "SENT" && job.sentAt) {
       const ageMs = Date.now() - job.sentAt.getTime();
       if (ageMs < 30_000) continue;
@@ -566,6 +576,9 @@ export async function retryPrintJobForRestaurant(jobId: string, restaurantId: st
   });
   logInfo("printing", "print_job_retry", { restaurantId, printJobId: job.id, manual: true });
   if (isLegacyPrintPushEnabled() && process.env.PRINTER_AGENT_URL) {
+    if (isUncertainPrintDelivery(job) || isUncertainPrintDelivery(reset)) {
+      return reset;
+    }
     return dispatchPrintJob(reset.id);
   }
   return reset;

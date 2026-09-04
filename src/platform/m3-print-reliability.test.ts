@@ -23,6 +23,8 @@ let claimNextPrintJob: typeof import("@/domains/printing/print-job-service").cla
 let reportPrintJobResult: typeof import("@/domains/printing/print-job-service").reportPrintJobResult;
 let retryPrintJobForRestaurant: typeof import("@/domains/printing/print-job-service").retryPrintJobForRestaurant;
 let dispatchPrintJob: typeof import("@/domains/printing/print-job-service").dispatchPrintJob;
+let retryPendingPrintJobs: typeof import("@/domains/printing/print-job-service").retryPendingPrintJobs;
+let recoverExpiredPrintLeases: typeof import("@/domains/printing/print-job-service").recoverExpiredPrintLeases;
 let reprintPrintJobForRestaurant: typeof import("@/domains/printing/print-job-service").reprintPrintJobForRestaurant;
 let createPrinterAgent: typeof import("@/lib/printer-agent-service").createPrinterAgent;
 let updatePrinterAgent: typeof import("@/lib/printer-agent-service").updatePrinterAgent;
@@ -64,6 +66,8 @@ before(async () => {
     retryPrintJobForRestaurant,
     reprintPrintJobForRestaurant,
     dispatchPrintJob,
+    retryPendingPrintJobs,
+    recoverExpiredPrintLeases,
     kitchenChitIdempotencyKey,
     customerBillIdempotencyKey,
   } = await import("@/domains/printing/print-job-service"));
@@ -649,6 +653,105 @@ describe("M3 print reliability", () => {
       );
       assert.equal(ackRes.status, 409);
     } finally {
+      env.PRINT_DELIVERY_MODE = previousMode ?? "agent-pull";
+      if (previousUrl === undefined) delete env.PRINTER_AGENT_URL;
+      else env.PRINTER_AGENT_URL = previousUrl;
+    }
+  });
+
+  it("does not let legacy-push dispatch an uncertain agent-pull job", async () => {
+    const suffix = `legacy-pin-${Date.now()}`;
+    const { restaurant, table } = await seedRestaurant(suffix);
+    const pinnedOrder = await prisma.order.create({
+      data: {
+        orderNumber: 20,
+        restaurantId: restaurant.id,
+        tableId: table.id,
+        status: "PENDING",
+        date: todayDateString(),
+      },
+    });
+    const pinnedJob = await enqueueKitchenChitForOrder({
+      restaurantId: restaurant.id,
+      orderId: pinnedOrder.id,
+      orderNumber: 20,
+      tableNumber: 1,
+    });
+    const agent = await makeAgent(restaurant.id, { name: "Pin A" });
+    const claimed = await claimNextPrintJob(agent.auth);
+    assert.equal(claimed.job?.id, pinnedJob.id);
+    await prisma.printJob.update({
+      where: { id: pinnedJob.id },
+      data: { leaseExpiresAt: new Date(Date.now() - 1000) },
+    });
+    await recoverExpiredPrintLeases(restaurant.id);
+    const pinned = await prisma.printJob.findUnique({ where: { id: pinnedJob.id } });
+    assert.equal(pinned?.claimedByAgentId, agent.auth.id);
+    assert.equal(pinned?.lastErrorCode, "AMBIGUOUS_DELIVERY");
+    assert.notEqual(pinned?.status, "ACKED");
+
+    const env = process.env as { PRINT_DELIVERY_MODE?: string; PRINTER_AGENT_URL?: string };
+    const previousMode = env.PRINT_DELIVERY_MODE;
+    const previousUrl = env.PRINTER_AGENT_URL;
+    const fetches: Array<{ url: string; body: string }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetches.push({ url: String(input), body: String(init?.body ?? "") });
+      return new Response("ok", { status: 200 });
+    }) as typeof fetch;
+    try {
+      env.PRINT_DELIVERY_MODE = "legacy-push";
+      env.PRINTER_AGENT_URL = "http://127.0.0.1:9876";
+      await retryPendingPrintJobs(50);
+      assert.equal(
+        fetches.some((item) => item.body.includes(pinnedJob.ackToken)),
+        false,
+      );
+      const afterRetryQueue = await prisma.printJob.findUnique({ where: { id: pinnedJob.id } });
+      assert.equal(afterRetryQueue?.claimedByAgentId, agent.auth.id);
+      assert.equal(afterRetryQueue?.lastErrorCode, "AMBIGUOUS_DELIVERY");
+      assert.notEqual(afterRetryQueue?.status, "ACKED");
+      assert.equal(afterRetryQueue?.attempts, pinned?.attempts);
+
+      fetches.length = 0;
+      const manual = await retryPrintJobForRestaurant(pinnedJob.id, restaurant.id);
+      assert.equal(
+        fetches.some((item) => item.body.includes(pinnedJob.ackToken)),
+        false,
+      );
+      assert.equal(manual?.claimedByAgentId, agent.auth.id);
+      assert.notEqual(manual?.status, "ACKED");
+
+      fetches.length = 0;
+      const legacyOrder = await prisma.order.create({
+        data: {
+          orderNumber: 21,
+          restaurantId: restaurant.id,
+          tableId: table.id,
+          status: "PENDING",
+          date: todayDateString(),
+        },
+      });
+      const legacyJob = await prisma.printJob.create({
+        data: {
+          restaurantId: restaurant.id,
+          orderId: legacyOrder.id,
+          kind: "kitchen_chit",
+          target: "kitchen",
+          payload: JSON.stringify({ orderNumber: 21, tableNumber: 2 }),
+          status: "PENDING",
+        },
+      });
+      await dispatchPrintJob(legacyJob.id);
+      assert.equal(
+        fetches.some((item) => item.url.includes("/print") && item.body.includes(legacyJob.ackToken)),
+        true,
+      );
+      const dispatched = await prisma.printJob.findUnique({ where: { id: legacyJob.id } });
+      assert.equal(dispatched?.status, "SENT");
+      assert.equal(dispatched?.claimedByAgentId, null);
+    } finally {
+      globalThis.fetch = originalFetch;
       env.PRINT_DELIVERY_MODE = previousMode ?? "agent-pull";
       if (previousUrl === undefined) delete env.PRINTER_AGENT_URL;
       else env.PRINTER_AGENT_URL = previousUrl;
