@@ -10,10 +10,11 @@ import { featureDisabledResponse } from "@/lib/feature-guard";
 import { buildKitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { ensureServiceTables } from "@/lib/service-tables";
 import type { OrderChannel } from "@/generated/prisma/client";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 const REMOTE_CHANNELS: OrderChannel[] = ["TAKEAWAY", "DELIVERY"];
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -84,7 +85,9 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   logApiRequest("orders/staff", "POST");
   try {
     const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
@@ -171,3 +174,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

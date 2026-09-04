@@ -3,8 +3,9 @@ import { requireSession } from "@/lib/auth";
 import { reprintPrintJobForRestaurant, retryPrintJobForRestaurant } from "@/domains/printing/print-job-service";
 import { opaqueNotFoundJson } from "@/platform/tenant-scope";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function PATCH(
+async function handlePATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -32,3 +33,5 @@ export async function PATCH(
   if (!retried) return opaqueNotFoundJson();
   return NextResponse.json({ success: true, job: { id: retried.id, status: retried.status } });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

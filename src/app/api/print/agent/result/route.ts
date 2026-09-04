@@ -4,8 +4,9 @@ import { reportPrintJobResult } from "@/domains/printing/print-job-service";
 import { agentMatchesRestaurantHost } from "@/lib/print-agent-host";
 import { isAgentPullEnabled } from "@/lib/print-constants";
 import { opaqueNotFoundJson, resolveRequestRestaurant } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   if (!isAgentPullEnabled()) {
     return NextResponse.json({ error: "Agent pull is disabled" }, { status: 409 });
   }
@@ -39,3 +40,5 @@ export async function POST(req: NextRequest) {
   }
   return NextResponse.json({ ok: true, status: result.job.status });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

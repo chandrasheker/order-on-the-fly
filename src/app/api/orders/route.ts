@@ -9,8 +9,9 @@ import { todayDateString } from "@/lib/utils";
 import { requireSession } from "@/lib/auth";
 import { loadTableByQrForRequest, opaqueNotFoundJson, trustedRestaurantId, hostRestaurantId } from "@/platform/tenant-scope";
 import { resolveTenantFromHost } from "@/platform/host-tenant";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   logApiRequest("orders", "POST");
   try {
     const { tableToken, customerName, items, comboMeals, promoCode, sessionKey } = await req.json();
@@ -94,7 +95,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
+export const POST = withForensicApiRoute(handlePOST);
+
+async function handleGET(req: NextRequest) {
   const tableToken = req.nextUrl.searchParams.get("tableToken");
   const restaurantId = req.nextUrl.searchParams.get("restaurantId");
   logApiRequest("orders", "GET", {
@@ -194,3 +197,5 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
 }
+
+export const GET = withForensicApiRoute(handleGET);

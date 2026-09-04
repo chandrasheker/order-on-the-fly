@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { Role } from "@/generated/prisma/client";
+import { forensicUserAgent, resolveClientIp } from "@/platform/forensics/client-ip";
 
 export type LoginAuditKind = "STAFF" | "PLATFORM_ADMIN";
 
@@ -18,12 +19,8 @@ export type RecordLoginAuditInput = {
 };
 
 export function requestClientMeta(req: { headers: Headers }) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    null;
-  const userAgent = req.headers.get("user-agent");
-  return { ipAddress: ip, userAgent: userAgent?.slice(0, 512) ?? null };
+  const ip = resolveClientIp(req.headers);
+  return { ipAddress: ip.clientIp, userAgent: forensicUserAgent(req.headers) };
 }
 
 export async function recordLoginAudit(input: RecordLoginAuditInput) {

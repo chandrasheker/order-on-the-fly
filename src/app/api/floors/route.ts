@@ -3,8 +3,9 @@ import { requireSession } from "@/lib/auth";
 import { listFloors, ensureDefaultFloor } from "@/domains/tables/floor-hierarchy";
 import { prisma } from "@/lib/prisma";
 import { tenantContextFromSession } from "@/platform/tenant-context";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -15,7 +16,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ hierarchy: ctx, floors });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -41,3 +44,5 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ floor }, { status: 201 });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

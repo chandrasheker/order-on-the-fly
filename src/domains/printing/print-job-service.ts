@@ -22,6 +22,10 @@ import {
 import { createClaimToken } from "@/lib/printer-agent-auth";
 import type { AuthenticatedPrinterAgent } from "@/lib/printer-agent-service";
 import { touchPrinterAgent } from "@/lib/printer-agent-service";
+import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx, tryAppendPlatformAuditEvent } from "@/platform/forensics/platform-audit-service";
+import { auditPrintJobSnapshot } from "@/platform/forensics/snapshots";
+import { setForensicCorrelationId, setForensicResource } from "@/platform/forensics/request-context";
 
 type PrintDb = Prisma.TransactionClient | typeof prisma;
 
@@ -104,6 +108,19 @@ export async function enqueueIdempotentPrintJobInTx(
       printJobId: job.id,
       kind: job.kind,
       target: job.target,
+    });
+    setForensicCorrelationId(job.id);
+    setForensicResource({ type: "PrintJob", id: job.id });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.PRINTING,
+      action: AUDIT_ACTION.PRINT_JOB_QUEUED,
+      restaurantId: job.restaurantId,
+      tenantId: job.tenantId,
+      branchId: job.branchId,
+      resourceType: "PrintJob",
+      resourceId: job.id,
+      correlationId: job.id,
+      after: auditPrintJobSnapshot(job),
     });
     return job;
   } catch (error) {
@@ -310,6 +327,21 @@ export function isUncertainPrintDelivery(job: {
 
 export async function recoverExpiredPrintLeases(restaurantId?: string) {
   const where = expiredLeaseWhere(restaurantId);
+  const ambiguousJobs = await prisma.printJob.findMany({
+    where: { ...where, claimedByAgentId: { not: null } },
+    select: {
+      id: true,
+      restaurantId: true,
+      tenantId: true,
+      branchId: true,
+      kind: true,
+      target: true,
+      status: true,
+      attempts: true,
+      claimedByAgentId: true,
+      reprintOfPrintJobId: true,
+    },
+  });
   const pinned = await prisma.printJob.updateMany({
     where: { ...where, claimedByAgentId: { not: null } },
     data: {
@@ -330,6 +362,20 @@ export async function recoverExpiredPrintLeases(restaurantId?: string) {
       nextAttemptAt: new Date(),
     },
   });
+  for (const job of ambiguousJobs) {
+    void tryAppendPlatformAuditEvent({
+      category: AUDIT_CATEGORY.PRINTING,
+      action: AUDIT_ACTION.PRINT_JOB_AMBIGUOUS,
+      restaurantId: job.restaurantId,
+      tenantId: job.tenantId,
+      branchId: job.branchId,
+      resourceType: "PrintJob",
+      resourceId: job.id,
+      correlationId: job.id,
+      after: auditPrintJobSnapshot({ ...job, lastErrorCode: PRINT_ERROR.AMBIGUOUS_DELIVERY }),
+      metadata: { agentId: job.claimedByAgentId },
+    });
+  }
   return pinned.count + unscoped.count;
 }
 
@@ -365,24 +411,41 @@ export async function claimNextPrintJob(agent: AuthenticatedPrinterAgent, versio
   for (const candidate of candidates) {
     const claimToken = createClaimToken();
     const leaseExpiresAt = new Date(Date.now() + PRINT_LEASE_MS);
-    const claimed = await prisma.printJob.updateMany({
-      where: {
-        id: candidate.id,
-        ...claimEligibility(agent, now),
-      },
-      data: {
-        status: "SENT",
-        claimedByAgentId: agent.id,
-        claimToken,
-        leaseExpiresAt,
-        sentAt: now,
-        lastAttemptAt: now,
-        attempts: { increment: 1 },
-      },
+    const job = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.printJob.updateMany({
+        where: {
+          id: candidate.id,
+          ...claimEligibility(agent, now),
+        },
+        data: {
+          status: "SENT",
+          claimedByAgentId: agent.id,
+          claimToken,
+          leaseExpiresAt,
+          sentAt: now,
+          lastAttemptAt: now,
+          attempts: { increment: 1 },
+        },
+      });
+      if (claimed.count !== 1) return null;
+      const next = await tx.printJob.findUnique({ where: { id: candidate.id } });
+      if (!next) return null;
+      setForensicCorrelationId(next.id);
+      setForensicResource({ type: "PrintJob", id: next.id });
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.PRINTING,
+        action: AUDIT_ACTION.PRINT_JOB_CLAIMED,
+        restaurantId: agent.restaurantId,
+        tenantId: agent.tenantId,
+        branchId: agent.branchId,
+        resourceType: "PrintJob",
+        resourceId: next.id,
+        correlationId: next.id,
+        after: auditPrintJobSnapshot(next),
+        metadata: { agentId: agent.id, attempt: next.attempts },
+      });
+      return next;
     });
-    if (claimed.count !== 1) continue;
-
-    const job = await prisma.printJob.findUnique({ where: { id: candidate.id } });
     if (!job) continue;
     logInfo("printing", "print_job_claimed", {
       restaurantId: agent.restaurantId,
@@ -427,6 +490,16 @@ export async function reportPrintJobResult(params: {
   if (!job) return { ok: false as const, error: "Not found", status: 404 };
 
   if (job.status === "ACKED") {
+    void tryAppendPlatformAuditEvent({
+      category: AUDIT_CATEGORY.PRINTING,
+      action: AUDIT_ACTION.PRINT_JOB_ACK_REPLAYED,
+      restaurantId: job.restaurantId,
+      resourceType: "PrintJob",
+      resourceId: job.id,
+      correlationId: job.id,
+      after: auditPrintJobSnapshot(job),
+      metadata: { agentId: params.agent.id },
+    });
     return { ok: true as const, job, idempotent: true as const };
   }
 
@@ -435,14 +508,31 @@ export async function reportPrintJobResult(params: {
   }
 
   if (params.outcome === "ACKED") {
-    const updated = await prisma.printJob.update({
-      where: { id: job.id },
-      data: {
-        status: "ACKED",
-        ackedAt: new Date(),
-        lastError: null,
-        lastErrorCode: null,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const next = await tx.printJob.update({
+        where: { id: job.id },
+        data: {
+          status: "ACKED",
+          ackedAt: new Date(),
+          lastError: null,
+          lastErrorCode: null,
+        },
+      });
+      setForensicCorrelationId(next.id);
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.PRINTING,
+        action: AUDIT_ACTION.PRINT_JOB_ACKED,
+        restaurantId: job.restaurantId,
+        tenantId: job.tenantId,
+        branchId: job.branchId,
+        resourceType: "PrintJob",
+        resourceId: next.id,
+        correlationId: next.id,
+        before: auditPrintJobSnapshot(job),
+        after: auditPrintJobSnapshot(next),
+        metadata: { agentId: params.agent.id, attempt: next.attempts },
+      });
+      return next;
     });
     logInfo("printing", "print_job_acked", {
       restaurantId: job.restaurantId,
@@ -457,26 +547,47 @@ export async function reportPrintJobResult(params: {
   const lastError = publicPrintErrorMessage(errorCode, params.errorMessage);
   const uncertain = params.outcome === "AMBIGUOUS" || errorCode === PRINT_ERROR.AMBIGUOUS_DELIVERY;
   const terminal = uncertain || isTerminalPrintError(errorCode) || job.attempts >= job.maxAttempts;
-  const updated = await prisma.printJob.update({
-    where: { id: job.id },
-    data: terminal
-      ? {
-          status: "FAILED",
-          lastError,
-          lastErrorCode: errorCode,
-          claimToken: null,
-          leaseExpiresAt: null,
-          claimedByAgentId: uncertain ? job.claimedByAgentId : null,
-        }
-      : {
-          status: "PENDING",
-          lastError,
-          lastErrorCode: errorCode,
-          claimToken: null,
-          claimedByAgentId: null,
-          leaseExpiresAt: null,
-          nextAttemptAt: nextPrintAttemptAt(job.attempts),
-        },
+  const updated = await prisma.$transaction(async (tx) => {
+    const next = await tx.printJob.update({
+      where: { id: job.id },
+      data: terminal
+        ? {
+            status: "FAILED",
+            lastError,
+            lastErrorCode: errorCode,
+            claimToken: null,
+            leaseExpiresAt: null,
+            claimedByAgentId: uncertain ? job.claimedByAgentId : null,
+          }
+        : {
+            status: "PENDING",
+            lastError,
+            lastErrorCode: errorCode,
+            claimToken: null,
+            claimedByAgentId: null,
+            leaseExpiresAt: null,
+            nextAttemptAt: nextPrintAttemptAt(job.attempts),
+          },
+    });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.PRINTING,
+      action: uncertain
+        ? AUDIT_ACTION.PRINT_JOB_AMBIGUOUS
+        : terminal
+          ? AUDIT_ACTION.PRINT_JOB_FAILED
+          : AUDIT_ACTION.PRINT_JOB_RETRY_SCHEDULED,
+      restaurantId: job.restaurantId,
+      tenantId: job.tenantId,
+      branchId: job.branchId,
+      resourceType: "PrintJob",
+      resourceId: next.id,
+      correlationId: next.id,
+      before: auditPrintJobSnapshot(job),
+      after: auditPrintJobSnapshot(next),
+      errorCode,
+      metadata: { agentId: params.agent.id, attempt: next.attempts },
+    });
+    return next;
   });
   logInfo("printing", terminal ? "print_job_failed" : "print_job_retry", {
     restaurantId: job.restaurantId,
@@ -563,16 +674,29 @@ export async function retryPrintJobForRestaurant(jobId: string, restaurantId: st
   if (!job) return null;
   if (job.status === "ACKED") return job;
 
-  const reset = await prisma.printJob.update({
-    where: { id: job.id },
-    data: {
-      status: "PENDING",
-      attempts: 0,
-      nextAttemptAt: new Date(),
-      claimToken: null,
-      claimedByAgentId: isUncertainPrintDelivery(job) ? job.claimedByAgentId : null,
-      leaseExpiresAt: null,
-    },
+  const reset = await prisma.$transaction(async (tx) => {
+    const next = await tx.printJob.update({
+      where: { id: job.id },
+      data: {
+        status: "PENDING",
+        attempts: 0,
+        nextAttemptAt: new Date(),
+        claimToken: null,
+        claimedByAgentId: isUncertainPrintDelivery(job) ? job.claimedByAgentId : null,
+        leaseExpiresAt: null,
+      },
+    });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.PRINTING,
+      action: AUDIT_ACTION.PRINT_JOB_MANUAL_RETRY,
+      restaurantId,
+      resourceType: "PrintJob",
+      resourceId: next.id,
+      correlationId: next.id,
+      before: auditPrintJobSnapshot(job),
+      after: auditPrintJobSnapshot(next),
+    });
+    return next;
   });
   logInfo("printing", "print_job_retry", { restaurantId, printJobId: job.id, manual: true });
   if (isLegacyPrintPushEnabled() && process.env.PRINTER_AGENT_URL) {
@@ -616,6 +740,18 @@ export async function reprintPrintJobForRestaurant(params: {
     actorUserId: params.actorUserId,
     actorName: params.actorName,
     branchId: original.branchId,
+  });
+  void tryAppendPlatformAuditEvent({
+    category: AUDIT_CATEGORY.PRINTING,
+    action: AUDIT_ACTION.PRINT_JOB_REPRINTED,
+    restaurantId: original.restaurantId,
+    tenantId: original.tenantId,
+    branchId: original.branchId,
+    resourceType: "PrintJob",
+    resourceId: reprint.id,
+    correlationId: reprint.id,
+    after: auditPrintJobSnapshot(reprint),
+    metadata: { reprintOfPrintJobId: original.id, originalPrintJobId: original.id },
   });
 
   return reprint;

@@ -4,8 +4,9 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getTableOrderUrl } from "@/lib/server-app-url";
 import { dineInTablesWhere } from "@/lib/order-channel";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -38,7 +39,9 @@ export async function GET() {
   return NextResponse.json({ qrCodes, restaurantName: session.restaurantName });
 }
 
-export async function POST(req: Request) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: Request) {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -72,3 +75,5 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ tables }, { status: 201 });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

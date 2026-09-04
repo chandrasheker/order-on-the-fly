@@ -10,8 +10,9 @@ import {
   applyOrderComp,
 } from "@/lib/tip-pool-service";
 import { recordAuditLog } from "@/lib/audit-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canAccessAdminMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -31,7 +32,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ periodStart, periodEnd, pool, payouts });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canAccessAdminMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -80,3 +83,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

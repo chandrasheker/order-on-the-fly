@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { getAnalyticsSummary, listRecentEvents } from "@/lib/analytics-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -16,3 +17,5 @@ export async function GET(req: Request) {
 
   return NextResponse.json({ summary, events });
 }
+
+export const GET = withForensicApiRoute(handleGET);

@@ -8,8 +8,9 @@ import {
 } from "@/lib/feature-flags";
 import { ALL_FEATURE_KEYS, type FeatureKey } from "@/lib/feature-catalog";
 import { logApiRequest, logInfo } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -54,7 +55,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ restaurants: list });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -103,3 +106,5 @@ export async function PATCH(req: NextRequest) {
     features: serializeFeaturesForClient(flags),
   });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

@@ -79,12 +79,20 @@ export default function PlatformHomePage() {
       title="TableTap Super Admin"
       subtitle="Select a tenant to manage its restaurants"
       actions={
-        <Link
-          href="/platform/tenants/new"
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:text-white"
-        >
-          <Plus className="w-4 h-4" /> New tenant
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/platform/audit"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border bg-white/5 border-white/10 hover:text-white"
+          >
+            Forensic audit
+          </Link>
+          <Link
+            href="/platform/tenants/new"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:text-white"
+          >
+            <Plus className="w-4 h-4" /> New tenant
+          </Link>
+        </div>
       }
     >
       <div className="space-y-6">

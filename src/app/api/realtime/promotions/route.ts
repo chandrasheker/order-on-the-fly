@@ -4,8 +4,9 @@ import { featureDisabledResponse } from "@/lib/feature-guard";
 import { listPromotions, upsertPromotion } from "@/lib/promotion-service";
 import type { PromotionType } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -18,7 +19,9 @@ export async function GET() {
   return NextResponse.json({ promotions });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -55,7 +58,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function DELETE(req: NextRequest) {
+export const POST = withForensicApiRoute(handlePOST);
+
+async function handleDELETE(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -70,3 +75,5 @@ export async function DELETE(req: NextRequest) {
   await prisma.promotion.deleteMany({ where: { id, restaurantId: session.restaurantId } });
   return NextResponse.json({ ok: true });
 }
+
+export const DELETE = withForensicApiRoute(handleDELETE);

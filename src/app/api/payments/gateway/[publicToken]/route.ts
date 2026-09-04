@@ -9,8 +9,9 @@ import {
   resolveRequestRestaurant,
 } from "@/platform/tenant-scope";
 import { logApiRequest } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(
+async function handleGET(
   req: NextRequest,
   { params }: { params: Promise<{ publicToken: string }> },
 ) {
@@ -29,7 +30,7 @@ export async function GET(
   return NextResponse.json({ status });
 }
 
-export async function POST(
+async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ publicToken: string }> },
 ) {
@@ -49,3 +50,7 @@ export async function POST(
   if (!result.ok) return opaqueNotFoundJson();
   return NextResponse.json({ ok: true, status: result.status });
 }
+
+export const GET = withForensicApiRoute(handleGET);
+
+export const POST = withForensicApiRoute(handlePOST);

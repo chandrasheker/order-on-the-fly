@@ -28,6 +28,8 @@ import {
 import { getBillForOrder, isUniqueConstraintError } from "@/lib/bill-service";
 import { ensureBillPublicToken } from "@/lib/public-receipt-service";
 import { logInfo, logWarn } from "@/lib/logger";
+import { AUDIT_ACTION, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
 
 function customerStatus(status: string, paid: boolean) {
   if (paid || status === GATEWAY_ATTEMPT_STATUS.CAPTURED) return "Payment successful";
@@ -638,11 +640,46 @@ export async function verifyRazorpayCheckoutCallback(params: {
       restaurantId: attempt.restaurantId,
       attemptId: attempt.id,
     });
+    const { tryAppendPlatformAuditEvent } = await import("@/platform/forensics/platform-audit-service");
+    const { AUDIT_ACTION, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } = await import(
+      "@/platform/forensics/constants"
+    );
+    void tryAppendPlatformAuditEvent({
+      eventKind: AUDIT_EVENT_KIND.SECURITY,
+      severity: AUDIT_SEVERITY.WARN,
+      category: AUDIT_CATEGORY.SECURITY,
+      action: AUDIT_ACTION.RAZORPAY_SIGNATURE_INVALID,
+      outcome: "DENIED",
+      restaurantId: attempt.restaurantId,
+      resourceType: "GatewayPaymentAttempt",
+      resourceId: attempt.id,
+      correlationId: attempt.id,
+    });
+    void tryAppendPlatformAuditEvent({
+      category: AUDIT_CATEGORY.MONEY,
+      action: AUDIT_ACTION.RAZORPAY_CALLBACK_REJECTED,
+      outcome: "DENIED",
+      restaurantId: attempt.restaurantId,
+      resourceType: "GatewayPaymentAttempt",
+      resourceId: attempt.id,
+      correlationId: attempt.id,
+    });
     return { ok: false as const, error: "Invalid payment signature", status: 401 };
   }
   await prisma.gatewayPaymentAttempt.update({
     where: { id: attempt.id },
     data: { status: GATEWAY_ATTEMPT_STATUS.AUTHORIZED, verifiedAt: new Date() },
+  });
+  const { tryAppendPlatformAuditEvent } = await import("@/platform/forensics/platform-audit-service");
+  const { AUDIT_ACTION, AUDIT_CATEGORY } = await import("@/platform/forensics/constants");
+  void tryAppendPlatformAuditEvent({
+    category: AUDIT_CATEGORY.MONEY,
+    action: AUDIT_ACTION.RAZORPAY_CALLBACK_VERIFIED,
+    restaurantId: attempt.restaurantId,
+    resourceType: "GatewayPaymentAttempt",
+    resourceId: attempt.id,
+    correlationId: attempt.id,
+    metadata: { providerOrderId: attempt.providerOrderId, providerPaymentId: params.razorpayPaymentId },
   });
   return settleRazorpayCapture({
     restaurantId: attempt.restaurantId,
@@ -753,9 +790,24 @@ export async function refundAutomaticPayment(params: {
       idempotencyKey,
     });
     if (refund.status === "pending") {
-      await prisma.gatewayRefundAttempt.update({
-        where: { id: refundAttempt.id },
-        data: { status: GATEWAY_REFUND_STATUS.PENDING, providerRefundId: refund.id },
+      await prisma.$transaction(async (tx) => {
+        await tx.gatewayRefundAttempt.update({
+          where: { id: refundAttempt.id },
+          data: { status: GATEWAY_REFUND_STATUS.PENDING, providerRefundId: refund.id },
+        });
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.REFUND_PROVIDER_PENDING,
+          restaurantId: params.restaurantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          metadata: {
+            amountPaise,
+            providerRefundId: refund.id,
+            gatewayRefundAttemptId: refundAttempt.id,
+          },
+        });
       });
       return {
         ok: false as const,
@@ -765,13 +817,29 @@ export async function refundAutomaticPayment(params: {
       };
     }
     if (refund.status === "failed" || !providerRefundCompleted(refund.status)) {
-      await prisma.gatewayRefundAttempt.update({
-        where: { id: refundAttempt.id },
-        data: {
-          status: GATEWAY_REFUND_STATUS.FAILED,
-          failureMessage: "Provider refund failed",
-          providerRefundId: refund.id,
-        },
+      await prisma.$transaction(async (tx) => {
+        await tx.gatewayRefundAttempt.update({
+          where: { id: refundAttempt.id },
+          data: {
+            status: GATEWAY_REFUND_STATUS.FAILED,
+            failureMessage: "Provider refund failed",
+            providerRefundId: refund.id,
+          },
+        });
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.REFUND_FAILED,
+          outcome: "FAILED",
+          restaurantId: params.restaurantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          metadata: {
+            amountPaise,
+            providerRefundId: refund.id,
+            gatewayRefundAttemptId: refundAttempt.id,
+          },
+        });
       });
       return { ok: false as const, error: "Provider refund failed", status: 502 };
     }
@@ -789,12 +857,37 @@ export async function refundAutomaticPayment(params: {
     });
   } catch (error) {
     if (error instanceof RazorpayApiError && error.kind === "retryable") {
-      await prisma.gatewayRefundAttempt.update({
-        where: { id: refundAttempt.id },
-        data: {
-          status: GATEWAY_REFUND_STATUS.PENDING,
-          failureMessage: error.message,
-        },
+      await prisma.$transaction(async (tx) => {
+        await tx.gatewayRefundAttempt.update({
+          where: { id: refundAttempt.id },
+          data: {
+            status: GATEWAY_REFUND_STATUS.PENDING,
+            failureMessage: error.message,
+          },
+        });
+        await appendPlatformAuditEventInTx(tx, {
+          eventKind: AUDIT_EVENT_KIND.ERROR,
+          severity: AUDIT_SEVERITY.ERROR,
+          category: AUDIT_CATEGORY.SYSTEM,
+          action: AUDIT_ACTION.RAZORPAY_REFUND_API_FAILED,
+          outcome: "FAILED",
+          restaurantId: params.restaurantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          errorCode: "RAZORPAY_REFUND_RETRYABLE",
+          errorMessage: error.message,
+          metadata: { pending: true, gatewayRefundAttemptId: refundAttempt.id },
+        });
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.REFUND_PROVIDER_PENDING,
+          restaurantId: params.restaurantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          metadata: { gatewayRefundAttemptId: refundAttempt.id, amountPaise },
+        });
       });
       return {
         ok: false as const,
@@ -803,12 +896,37 @@ export async function refundAutomaticPayment(params: {
         pending: true as const,
       };
     }
-    await prisma.gatewayRefundAttempt.update({
-      where: { id: refundAttempt.id },
-      data: {
-        status: GATEWAY_REFUND_STATUS.FAILED,
-        failureMessage: error instanceof Error ? error.message : "Provider refund failed",
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.gatewayRefundAttempt.update({
+        where: { id: refundAttempt.id },
+        data: {
+          status: GATEWAY_REFUND_STATUS.FAILED,
+          failureMessage: error instanceof Error ? error.message : "Provider refund failed",
+        },
+      });
+      await appendPlatformAuditEventInTx(tx, {
+        eventKind: AUDIT_EVENT_KIND.ERROR,
+        severity: AUDIT_SEVERITY.ERROR,
+        category: AUDIT_CATEGORY.SYSTEM,
+        action: AUDIT_ACTION.RAZORPAY_REFUND_API_FAILED,
+        outcome: "FAILED",
+        restaurantId: params.restaurantId,
+        resourceType: "Payment",
+        resourceId: payment.id,
+        correlationId: payment.id,
+        errorMessage: error instanceof Error ? error.message : "Provider refund failed",
+        metadata: { gatewayRefundAttemptId: refundAttempt.id },
+      });
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MONEY,
+        action: AUDIT_ACTION.REFUND_FAILED,
+        outcome: "FAILED",
+        restaurantId: params.restaurantId,
+        resourceType: "Payment",
+        resourceId: payment.id,
+        correlationId: payment.id,
+        metadata: { amountPaise, gatewayRefundAttemptId: refundAttempt.id },
+      });
     });
     return { ok: false as const, error: "Provider refund failed", status: 502 };
   }

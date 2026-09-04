@@ -9,8 +9,9 @@ import {
 import { receiptFromBillRow } from "@/lib/bill-service";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
 import { featureDisabledResponse } from "@/lib/feature-guard";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(
+async function handleGET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -57,3 +58,5 @@ export async function GET(
     receipt: buildReceiptPayload(restaurant, order),
   });
 }
+
+export const GET = withForensicApiRoute(handleGET);

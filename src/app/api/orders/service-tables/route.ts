@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { ensureServiceTables } from "@/lib/service-tables";
 import { SERVICE_TABLE_DEFS } from "@/lib/order-channel";
 import { featureDisabledResponse } from "@/lib/feature-guard";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -45,3 +46,5 @@ export async function GET() {
     }),
   });
 }
+
+export const GET = withForensicApiRoute(handleGET);

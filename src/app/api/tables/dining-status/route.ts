@@ -7,8 +7,9 @@ import {
   validateTableSession,
 } from "@/lib/table-session-service";
 import { hasOpenTableWork } from "@/lib/table-ordering-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const tableToken = req.nextUrl.searchParams.get("tableToken");
   const sessionKey = req.nextUrl.searchParams.get("sessionKey");
 
@@ -62,3 +63,5 @@ export async function GET(req: NextRequest) {
     message,
   });
 }
+
+export const GET = withForensicApiRoute(handleGET);

@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
+import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
+import { auditMenuCategorySnapshot } from "@/platform/forensics/snapshots";
 
 export const MENU_CATEGORY_PRESETS = [
   { name: "Today's Special", slug: "todays-special", icon: "⭐" },
@@ -59,15 +62,27 @@ export async function createMenuCategory(
     (p) => p.slug === baseSlug || p.name.toLowerCase() === name.toLowerCase(),
   );
 
-  return prisma.menuCategory.create({
-    data: {
+  return prisma.$transaction(async (tx) => {
+    const created = await tx.menuCategory.create({
+      data: {
+        restaurantId,
+        name,
+        slug,
+        icon: input.icon?.trim() || preset?.icon || "🍽️",
+        sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
+      },
+      include: { items: { orderBy: { sortOrder: "asc" } } },
+    });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.MENU,
+      action: AUDIT_ACTION.MENU_CATEGORY_CREATED,
       restaurantId,
-      name,
-      slug,
-      icon: input.icon?.trim() || preset?.icon || "🍽️",
-      sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
-    },
-    include: { items: { orderBy: { sortOrder: "asc" } } },
+      resourceType: "MenuCategory",
+      resourceId: created.id,
+      resourceLabel: created.name,
+      after: auditMenuCategorySnapshot(created),
+    });
+    return created;
   });
 }
 
@@ -82,14 +97,27 @@ export async function updateMenuCategory(
   if (!category) throw new Error("Category not found");
 
   const name = input.name?.trim() || category.name;
-  return prisma.menuCategory.update({
-    where: { id: categoryId },
-    data: {
-      name,
-      ...(input.icon !== undefined && { icon: input.icon?.trim() || "🍽️" }),
-      ...(input.isEnabled !== undefined && { isEnabled: input.isEnabled }),
-    },
-    include: { items: { orderBy: { sortOrder: "asc" } } },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.menuCategory.update({
+      where: { id: categoryId },
+      data: {
+        name,
+        ...(input.icon !== undefined && { icon: input.icon?.trim() || "🍽️" }),
+        ...(input.isEnabled !== undefined && { isEnabled: input.isEnabled }),
+      },
+      include: { items: { orderBy: { sortOrder: "asc" } } },
+    });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.MENU,
+      action: AUDIT_ACTION.MENU_CATEGORY_UPDATED,
+      restaurantId,
+      resourceType: "MenuCategory",
+      resourceId: updated.id,
+      resourceLabel: updated.name,
+      before: auditMenuCategorySnapshot(category),
+      after: auditMenuCategorySnapshot(updated),
+    });
+    return updated;
   });
 }
 
@@ -104,7 +132,18 @@ export async function deleteMenuCategory(restaurantId: string, categoryId: strin
     throw new Error("Remove all items from this category before deleting it");
   }
 
-  await prisma.menuCategory.delete({ where: { id: categoryId } });
+  await prisma.$transaction(async (tx) => {
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.MENU,
+      action: AUDIT_ACTION.MENU_CATEGORY_DELETED,
+      restaurantId,
+      resourceType: "MenuCategory",
+      resourceId: category.id,
+      resourceLabel: category.name,
+      before: auditMenuCategorySnapshot(category),
+    });
+    await tx.menuCategory.delete({ where: { id: categoryId } });
+  });
 }
 
 export async function addPresetCategories(restaurantId: string, slugs: string[]) {
@@ -125,15 +164,27 @@ export async function addPresetCategories(restaurantId: string, slugs: string[])
 
   const created = [];
   for (const preset of toAdd) {
-    const row = await prisma.menuCategory.create({
-      data: {
+    const row = await prisma.$transaction(async (tx) => {
+      const createdRow = await tx.menuCategory.create({
+        data: {
+          restaurantId,
+          name: preset.name,
+          slug: preset.slug,
+          icon: preset.icon,
+          sortOrder: sortOrder++,
+        },
+        include: { items: { orderBy: { sortOrder: "asc" } } },
+      });
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MENU,
+        action: AUDIT_ACTION.MENU_CATEGORY_CREATED,
         restaurantId,
-        name: preset.name,
-        slug: preset.slug,
-        icon: preset.icon,
-        sortOrder: sortOrder++,
-      },
-      include: { items: { orderBy: { sortOrder: "asc" } } },
+        resourceType: "MenuCategory",
+        resourceId: createdRow.id,
+        resourceLabel: createdRow.name,
+        after: auditMenuCategorySnapshot(createdRow),
+      });
+      return createdRow;
     });
     created.push(row);
   }

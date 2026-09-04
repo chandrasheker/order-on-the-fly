@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { savePushSubscription } from "@/lib/push-notification-service";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -33,3 +34,5 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ subscription: sub });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

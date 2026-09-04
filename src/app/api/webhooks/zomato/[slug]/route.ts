@@ -8,6 +8,7 @@ import {
 import { OrderCreationError } from "@/lib/order-service";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { rejectIfSlugEscapesHost } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 async function handleWebhook(
   req: NextRequest,
@@ -101,10 +102,12 @@ async function handleWebhook(
   }
 }
 
-export async function POST(
+async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
   return handleWebhook(req, slug, "ZOMATO");
 }
+
+export const POST = withForensicApiRoute(handlePOST);

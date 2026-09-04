@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { requireTenantAdmin } from "@/lib/auth";
 import { getTenantOverview } from "@/lib/tenant-onboarding-service";
 import { getRestaurantPublicBaseUrl, getTenantHubPublicBaseUrl } from "@/lib/server-app-url";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const auth = await requireTenantAdmin();
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -24,3 +25,5 @@ export async function GET() {
     stats: overview.stats,
   });
 }
+
+export const GET = withForensicApiRoute(handleGET);

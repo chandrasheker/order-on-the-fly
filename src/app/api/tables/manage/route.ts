@@ -4,8 +4,9 @@ import { requireSession } from "@/lib/auth";
 import { canManageTableOrdering } from "@/lib/staff-permissions";
 import { closeTableOrdering, openTableOrdering } from "@/lib/table-ordering-service";
 import { countActiveTableSessions } from "@/lib/table-session-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -35,7 +36,9 @@ export async function GET() {
   });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -89,3 +92,5 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ error: "Invalid update" }, { status: 400 });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

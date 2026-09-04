@@ -3,8 +3,9 @@ import { logApiError, logApiRequest } from "@/lib/logger";
 import { issueDiningAccessResponse } from "@/lib/customer-dining-guard";
 import { validateCurrentTableAccessCode } from "@/lib/table-access-code";
 import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   logApiRequest("tables/check-in", "POST");
   try {
     const { tableToken, sessionKey, accessCode } = await req.json();
@@ -49,3 +50,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Check-in failed" }, { status: 500 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

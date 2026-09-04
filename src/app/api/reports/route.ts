@@ -4,8 +4,9 @@ import { todayDateString, sumPaidOrderRevenue, orderItemLineTotal, countsTowardR
 import { prisma } from "@/lib/prisma";
 import { getStaffPerformanceReport, getTableServiceLog } from "@/lib/staff-performance-service";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -154,3 +155,5 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(summary);
 }
+
+export const GET = withForensicApiRoute(handleGET);

@@ -1,10 +1,11 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 const MAX_BYTES = 512 * 1024;
 const ALLOWED_PREFIXES = ["http://", "https://", "/"];
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const rawUrl = req.nextUrl.searchParams.get("url");
   if (!rawUrl) {
     return NextResponse.json({ error: "url required" }, { status: 400 });
@@ -50,3 +51,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Logo fetch failed" }, { status: 502 });
   }
 }
+
+export const GET = withForensicApiRoute(handleGET);

@@ -13,6 +13,10 @@ import type { PaymentGatewayProvider } from "@/generated/prisma/client";
 import { isRazorpayAutomaticReady, readWebhookSecret } from "@/lib/automatic-gateway";
 import { RAZORPAY_PROVIDER } from "@/lib/gateway-constants";
 import { settleRazorpayCapture } from "@/lib/gateway-payment-service";
+import { AUDIT_ACTION, AUDIT_ACTOR_TYPE, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY, AUDIT_SOURCE } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx, tryAppendPlatformAuditEvent } from "@/platform/forensics/platform-audit-service";
+import { auditGatewaySettingsSnapshot } from "@/platform/forensics/snapshots";
+import { setForensicActor, setForensicCorrelationId, setForensicTenant } from "@/platform/forensics/request-context";
 
 function publicGatewaySettings(row: {
   paymentGatewayProvider: PaymentGatewayProvider | null;
@@ -72,9 +76,56 @@ export async function updatePaymentGatewaySettings(
     update.paymentGatewaySecretEnc = encryptSecret(data.secret.trim());
   }
 
-  await prisma.restaurant.update({
+  const beforeRow = await prisma.restaurant.findUnique({
     where: { id: restaurantId },
-    data: update,
+    select: {
+      paymentGatewayProvider: true,
+      paymentGatewayKeyId: true,
+      paymentGatewaySecretEnc: true,
+      paymentWebhookSecret: true,
+      paymentWebhookSecretEnc: true,
+      tenantId: true,
+    },
+  });
+  await prisma.$transaction(async (tx) => {
+    await tx.restaurant.update({
+      where: { id: restaurantId },
+      data: update,
+    });
+    const secretChanged = Boolean(update.paymentGatewaySecretEnc);
+    const webhookSecretChanged = Boolean(update.paymentWebhookSecretEnc);
+    const providerChanged =
+      data.provider !== undefined && data.provider !== beforeRow?.paymentGatewayProvider;
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.CONFIG,
+      action: secretChanged
+        ? AUDIT_ACTION.GATEWAY_CREDENTIAL_ROTATED
+        : webhookSecretChanged
+          ? AUDIT_ACTION.GATEWAY_WEBHOOK_SECRET_ROTATED
+          : providerChanged
+            ? AUDIT_ACTION.GATEWAY_PROVIDER_CHANGED
+            : AUDIT_ACTION.GATEWAY_CONFIGURATION_CHANGED,
+      restaurantId,
+      tenantId: beforeRow?.tenantId,
+      resourceType: "Restaurant",
+      resourceId: restaurantId,
+      before: auditGatewaySettingsSnapshot({
+        provider: beforeRow?.paymentGatewayProvider,
+        keyId: beforeRow?.paymentGatewayKeyId,
+        secretPresent: Boolean(beforeRow?.paymentGatewaySecretEnc),
+        webhookSecretPresent: Boolean(readWebhookSecret(beforeRow ?? {})),
+      }),
+      after: auditGatewaySettingsSnapshot({
+        provider: (update.paymentGatewayProvider as string | undefined) ?? beforeRow?.paymentGatewayProvider,
+        keyId: (update.paymentGatewayKeyId as string | null | undefined) ?? beforeRow?.paymentGatewayKeyId,
+        secretPresent: secretChanged || Boolean(beforeRow?.paymentGatewaySecretEnc),
+        webhookSecretPresent: webhookSecretChanged || Boolean(readWebhookSecret(beforeRow ?? {})),
+      }),
+      metadata: {
+        gatewaySecretChanged: secretChanged,
+        webhookSecretChanged,
+      },
+    });
   });
   return getPaymentGatewaySettings(restaurantId);
 }
@@ -87,6 +138,18 @@ export async function processPaymentWebhook(params: {
 }) {
   const restaurant = await prisma.restaurant.findUnique({ where: { slug: params.slug } });
   if (!restaurant) return { ok: false as const, status: 404, error: "Restaurant not found" };
+  setForensicActor({ type: AUDIT_ACTOR_TYPE.PAYMENT_PROVIDER, id: params.provider, name: params.provider });
+  setForensicTenant({ tenantId: restaurant.tenantId, restaurantId: restaurant.id });
+  void tryAppendPlatformAuditEvent({
+    eventKind: AUDIT_EVENT_KIND.ACTION,
+    source: AUDIT_SOURCE.WEBHOOK,
+    category: AUDIT_CATEGORY.MONEY,
+    action: AUDIT_ACTION.RAZORPAY_WEBHOOK_RECEIVED,
+    actorType: AUDIT_ACTOR_TYPE.PAYMENT_PROVIDER,
+    actorId: params.provider,
+    restaurantId: restaurant.id,
+    tenantId: restaurant.tenantId,
+  });
 
   if (!(await isFeatureEnabled(restaurant.id, "payment_webhooks"))) {
     return { ok: false as const, status: 403, error: "Payment webhooks disabled" };
@@ -126,6 +189,26 @@ export async function processPaymentWebhook(params: {
       restaurantId: restaurant.id,
       provider: params.provider,
     });
+    void tryAppendPlatformAuditEvent({
+      eventKind: AUDIT_EVENT_KIND.SECURITY,
+      severity: AUDIT_SEVERITY.WARN,
+      source: AUDIT_SOURCE.WEBHOOK,
+      category: AUDIT_CATEGORY.SECURITY,
+      action: AUDIT_ACTION.RAZORPAY_SIGNATURE_INVALID,
+      outcome: "DENIED",
+      actorType: AUDIT_ACTOR_TYPE.PAYMENT_PROVIDER,
+      actorId: params.provider,
+      restaurantId: restaurant.id,
+    });
+    void tryAppendPlatformAuditEvent({
+      source: AUDIT_SOURCE.WEBHOOK,
+      category: AUDIT_CATEGORY.MONEY,
+      action: AUDIT_ACTION.RAZORPAY_WEBHOOK_REJECTED,
+      outcome: "DENIED",
+      actorType: AUDIT_ACTOR_TYPE.PAYMENT_PROVIDER,
+      actorId: params.provider,
+      restaurantId: restaurant.id,
+    });
     return { ok: false as const, status: 401, error: verified.error ?? "Invalid signature" };
   }
 
@@ -161,6 +244,17 @@ export async function processPaymentWebhook(params: {
     return { ok: false as const, status: 409, error: "Webhook event restaurant mismatch" };
   }
   if (existing?.processedAt) {
+    setForensicCorrelationId(existing.externalId);
+    void tryAppendPlatformAuditEvent({
+      source: AUDIT_SOURCE.WEBHOOK,
+      category: AUDIT_CATEGORY.MONEY,
+      action: AUDIT_ACTION.RAZORPAY_WEBHOOK_REPLAYED,
+      actorType: AUDIT_ACTOR_TYPE.PAYMENT_PROVIDER,
+      actorId: params.provider,
+      restaurantId: restaurant.id,
+      correlationId: existing.externalId,
+      metadata: { providerEventId: existing.externalId, orderId: existing.orderId },
+    });
     return { ok: true as const, status: 200, message: "Already processed" };
   }
 
@@ -188,6 +282,16 @@ export async function processPaymentWebhook(params: {
         return { ok: false as const, status: 409, error: "Webhook event restaurant mismatch" };
       }
       if (event.processedAt) {
+        void tryAppendPlatformAuditEvent({
+          source: AUDIT_SOURCE.WEBHOOK,
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.RAZORPAY_WEBHOOK_REPLAYED,
+          actorType: AUDIT_ACTOR_TYPE.PAYMENT_PROVIDER,
+          actorId: params.provider,
+          restaurantId: restaurant.id,
+          correlationId: event.externalId,
+          metadata: { providerEventId: event.externalId },
+        });
         return { ok: true as const, status: 200, message: "Already processed" };
       }
     }
@@ -199,6 +303,23 @@ export async function processPaymentWebhook(params: {
     externalId: parsed.externalId,
     amount: parsed.amount,
     orderId: parsed.orderId,
+  });
+  setForensicCorrelationId(parsed.externalId);
+  void tryAppendPlatformAuditEvent({
+    source: AUDIT_SOURCE.WEBHOOK,
+    category: AUDIT_CATEGORY.MONEY,
+    action: AUDIT_ACTION.RAZORPAY_WEBHOOK_ACCEPTED,
+    actorType: AUDIT_ACTOR_TYPE.PAYMENT_PROVIDER,
+    actorId: params.provider,
+    restaurantId: restaurant.id,
+    correlationId: parsed.externalId,
+    metadata: {
+      providerEventId: parsed.externalId,
+      providerOrderId: parsed.providerOrderId,
+      amountPaise: parsed.amountPaise,
+      currency: parsed.currency,
+      orderId: parsed.orderId,
+    },
   });
 
   if (!event) {

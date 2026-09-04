@@ -3,6 +3,8 @@ import { todayDateString } from "@/lib/utils";
 import { fromPaise, toPaise } from "@/lib/money";
 import { financialsForOrder, isCapturedPayment, isRefundPayment } from "@/lib/order-financials";
 import type { ReconciliationStatus } from "@/generated/prisma/client";
+import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
 
 export async function runDailyReconciliation(restaurantId: string, date?: string) {
   const periodDate = date ?? todayDateString();
@@ -102,36 +104,54 @@ export async function runDailyReconciliation(restaurantId: string, date?: string
     anomalies,
   });
 
-  return prisma.paymentReconciliation.upsert({
-    where: { restaurantId_periodDate: { restaurantId, periodDate } },
-    create: {
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.paymentReconciliation.upsert({
+      where: { restaurantId_periodDate: { restaurantId, periodDate } },
+      create: {
+        restaurantId,
+        tenantId,
+        periodDate,
+        expectedTotal,
+        receivedTotal,
+        variance,
+        cashExpected,
+        refundsTotal,
+        outstandingTotal,
+        manualUpiTotal: fromPaise(manualUpiPaise),
+        automaticUpiTotal: fromPaise(automaticUpiPaise),
+        status,
+        details,
+      },
+      update: {
+        expectedTotal,
+        receivedTotal,
+        variance,
+        cashExpected,
+        refundsTotal,
+        outstandingTotal,
+        manualUpiTotal: fromPaise(manualUpiPaise),
+        automaticUpiTotal: fromPaise(automaticUpiPaise),
+        status,
+        details,
+        tenantId,
+      },
+    });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.MONEY,
+      action: AUDIT_ACTION.PAYMENT_RECONCILED,
       restaurantId,
       tenantId,
-      periodDate,
-      expectedTotal,
-      receivedTotal,
-      variance,
-      cashExpected,
-      refundsTotal,
-      outstandingTotal,
-      manualUpiTotal: fromPaise(manualUpiPaise),
-      automaticUpiTotal: fromPaise(automaticUpiPaise),
-      status,
-      details,
-    },
-    update: {
-      expectedTotal,
-      receivedTotal,
-      variance,
-      cashExpected,
-      refundsTotal,
-      outstandingTotal,
-      manualUpiTotal: fromPaise(manualUpiPaise),
-      automaticUpiTotal: fromPaise(automaticUpiPaise),
-      status,
-      details,
-      tenantId,
-    },
+      resourceType: "PaymentReconciliation",
+      resourceId: row.id,
+      after: {
+        periodDate,
+        status: row.status,
+        expectedTotal: row.expectedTotal,
+        receivedTotal: row.receivedTotal,
+        variance: row.variance,
+      },
+    });
+    return row;
   });
 }
 

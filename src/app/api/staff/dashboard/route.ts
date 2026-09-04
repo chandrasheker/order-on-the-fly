@@ -14,8 +14,9 @@ import { logApiRequest, logInfo } from "@/lib/logger";
 import { getOrderPaymentSummaries, finalizeOrderIfSettled } from "@/lib/payment-allocation-service";
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import { ensureServiceTables } from "@/lib/service-tables";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   logApiRequest("staff/dashboard", "GET");
   const session = await requireSession();
   if (!session) {
@@ -238,3 +239,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withForensicApiRoute(handleGET);

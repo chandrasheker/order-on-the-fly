@@ -3,8 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { todayDateString } from "@/lib/utils";
 import { closeTableOrdering, openTableOrdering } from "@/lib/table-ordering-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
 
-export async function PATCH(
+async function handlePATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -120,6 +123,17 @@ export async function PATCH(
         restaurantId: session.restaurantId,
       },
     });
+
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.ORDER,
+      action: AUDIT_ACTION.TABLE_SWITCHED,
+      restaurantId: session.restaurantId,
+      resourceType: "TableSwitchRequest",
+      resourceId: switchRequest.id,
+      before: { tableId: switchRequest.sourceTableId, tableNumber: switchRequest.sourceTableNumber },
+      after: { tableId: switchRequest.targetTableId, tableNumber: switchRequest.targetTableNumber },
+      metadata: { movedOrderIds: orderIds, movedOrderCount: movableOrders.length },
+    });
   });
 
   await openTableOrdering(switchRequest.targetTableId);
@@ -132,3 +146,5 @@ export async function PATCH(
     targetTableNumber: switchRequest.targetTableNumber,
   });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

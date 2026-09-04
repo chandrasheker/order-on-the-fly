@@ -9,8 +9,9 @@ import {
 } from "@/lib/aggregator-connection-service";
 import { syncRestaurantMenuToAggregators } from "@/lib/aggregator-sync-service";
 import type { AggregatorPlatform } from "@/generated/prisma/client";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session || !canAccessAdminMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,7 +43,9 @@ export async function GET() {
   });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session || !canAccessAdminMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -83,7 +86,9 @@ export async function PATCH(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
+export const PATCH = withForensicApiRoute(handlePATCH);
+
+async function handlePOST(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session || !canAccessAdminMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -117,3 +122,5 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json(result);
 }
+
+export const POST = withForensicApiRoute(handlePOST);

@@ -4,8 +4,9 @@ import { canAccessFloorPlan, canManageFloorLayout } from "@/lib/staff-permission
 import { getFloorSnapshot, updateTableFloor } from "@/lib/floor-service";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { logApiError } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession();
   if (!session || !canAccessFloorPlan(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -29,7 +30,9 @@ export async function GET() {
   }
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canAccessFloorPlan(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -77,3 +80,5 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ table: result.table });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

@@ -234,6 +234,9 @@ export async function middleware(request: NextRequest) {
     if (pathname === "/api/platform/auth/login" && request.method === "POST") {
       return nextWithHost(request);
     }
+    if (pathname === "/api/platform/audit" || pathname.startsWith("/api/platform/audit/")) {
+      return nextWithHost(request);
+    }
     if (!platformAdmin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

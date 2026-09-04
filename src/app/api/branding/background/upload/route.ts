@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { getUploadedImageFile } from "@/lib/image-upload";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 import {
   getBackgroundImagePublicUrl,
   saveBackgroundImageFile,
@@ -10,7 +11,7 @@ import {
   findBackgroundImageFile,
 } from "@/lib/background-image-storage";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   try {
     const session = await requireSession();
     if (!session || !canManageMenu(session.role)) {
@@ -51,3 +52,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

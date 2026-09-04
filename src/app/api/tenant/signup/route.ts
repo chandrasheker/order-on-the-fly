@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { signupTenantWithRestaurant } from "@/lib/tenant-onboarding-service";
 import { getTableCheckInUrl, publicRestaurantPayload } from "@/lib/server-app-url";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   try {
     const body = await req.json();
     const result = await signupTenantWithRestaurant({
@@ -35,3 +36,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

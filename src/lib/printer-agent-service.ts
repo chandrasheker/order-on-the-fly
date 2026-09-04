@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { logInfo, logWarn } from "@/lib/logger";
+import { AUDIT_ACTION, AUDIT_ACTOR_TYPE, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx, tryAppendPlatformAuditEvent } from "@/platform/forensics/platform-audit-service";
+import { auditPrinterAgentSnapshot } from "@/platform/forensics/snapshots";
+import { setForensicActor, setForensicResource, setForensicTenant } from "@/platform/forensics/request-context";
 import {
   PRINT_AGENT_ONLINE_MS,
   PRINT_TARGETS,
@@ -85,29 +89,47 @@ export async function createPrinterAgent(params: {
     return { ok: false as const, error: "Choose at least one print target", status: 400 };
   }
 
-  const agent = await prisma.printerAgent.create({
-    data: {
+  const created = await prisma.$transaction(async (tx) => {
+    const agent = await tx.printerAgent.create({
+      data: {
+        restaurantId: params.restaurantId,
+        tenantId: params.tenantId ?? null,
+        branchId: params.branchId ?? null,
+        name,
+        tokenHash: "pending",
+        tokenPrefix: "pending",
+        allowedTargetsJson: JSON.stringify(allowedTargets),
+        createdByUserId: params.createdByUserId,
+        createdByName: params.createdByName,
+      },
+    });
+    const token = createPrinterAgentToken(agent.id);
+    const updated = await tx.printerAgent.update({
+      where: { id: agent.id },
+      data: {
+        tokenHash: hashPrinterAgentToken(token),
+        tokenPrefix: printerAgentTokenPrefix(token),
+      },
+    });
+    setForensicResource({ type: "PrinterAgent", id: updated.id, label: updated.name });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.PRINTING,
+      action: AUDIT_ACTION.PRINTER_AGENT_CREATED,
       restaurantId: params.restaurantId,
-      tenantId: params.tenantId ?? null,
-      branchId: params.branchId ?? null,
-      name,
-      tokenHash: "pending",
-      tokenPrefix: "pending",
-      allowedTargetsJson: JSON.stringify(allowedTargets),
-      createdByUserId: params.createdByUserId,
-      createdByName: params.createdByName,
-    },
+      tenantId: params.tenantId,
+      branchId: params.branchId,
+      resourceType: "PrinterAgent",
+      resourceId: updated.id,
+      resourceLabel: updated.name,
+      after: auditPrinterAgentSnapshot({
+        ...updated,
+        allowedTargets,
+      }),
+    });
+    return { updated, token };
   });
-  const token = createPrinterAgentToken(agent.id);
-  const updated = await prisma.printerAgent.update({
-    where: { id: agent.id },
-    data: {
-      tokenHash: hashPrinterAgentToken(token),
-      tokenPrefix: printerAgentTokenPrefix(token),
-    },
-  });
-  logInfo("printing", "agent_created", { restaurantId: params.restaurantId, agentId: agent.id });
-  return { ok: true as const, agent: publicAgent(updated), token };
+  logInfo("printing", "agent_created", { restaurantId: params.restaurantId, agentId: created.updated.id });
+  return { ok: true as const, agent: publicAgent(created.updated), token: created.token };
 }
 
 export async function updatePrinterAgent(params: {
@@ -151,9 +173,34 @@ export async function updatePrinterAgent(params: {
     data.enabled = false;
   }
 
-  const updated = await prisma.printerAgent.update({
-    where: { id: existing.id },
-    data,
+  const updated = await prisma.$transaction(async (tx) => {
+    const next = await tx.printerAgent.update({
+      where: { id: existing.id },
+      data,
+    });
+    const action = params.revoke
+      ? AUDIT_ACTION.PRINTER_AGENT_REVOKED
+      : params.rotateToken
+        ? AUDIT_ACTION.PRINTER_AGENT_TOKEN_ROTATED
+        : AUDIT_ACTION.PRINTER_AGENT_UPDATED;
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.PRINTING,
+      action,
+      restaurantId: params.restaurantId,
+      resourceType: "PrinterAgent",
+      resourceId: next.id,
+      resourceLabel: next.name,
+      before: auditPrinterAgentSnapshot({
+        ...existing,
+        allowedTargets: parseAllowedTargets(existing.allowedTargetsJson),
+      }),
+      after: auditPrinterAgentSnapshot({
+        ...next,
+        allowedTargets: parseAllowedTargets(next.allowedTargetsJson),
+      }),
+      metadata: params.rotateToken ? { tokenRotated: true } : undefined,
+    });
+    return next;
   });
   logInfo("printing", params.revoke ? "agent_revoked" : params.rotateToken ? "agent_token_rotated" : "agent_updated", {
     restaurantId: params.restaurantId,
@@ -167,17 +214,54 @@ export async function authenticatePrinterAgent(authorization?: string | null) {
   const parsed = parsePrinterAgentToken(raw);
   if (!parsed) {
     logWarn("printing", "agent_auth_failed", { reason: "malformed" });
+    void tryAppendPlatformAuditEvent({
+      eventKind: AUDIT_EVENT_KIND.SECURITY,
+      severity: AUDIT_SEVERITY.WARN,
+      category: AUDIT_CATEGORY.SECURITY,
+      action: AUDIT_ACTION.INVALID_PRINTER_AGENT_TOKEN,
+      outcome: "DENIED",
+      actorType: AUDIT_ACTOR_TYPE.ANONYMOUS,
+    });
     return null;
   }
   const agent = await prisma.printerAgent.findUnique({ where: { id: parsed.agentId } });
   if (!agent || !tokensMatch(agent.tokenHash, parsed.token)) {
     logWarn("printing", "agent_auth_failed", { reason: "mismatch" });
+    void tryAppendPlatformAuditEvent({
+      eventKind: AUDIT_EVENT_KIND.SECURITY,
+      severity: AUDIT_SEVERITY.WARN,
+      category: AUDIT_CATEGORY.SECURITY,
+      action: AUDIT_ACTION.INVALID_PRINTER_AGENT_TOKEN,
+      outcome: "DENIED",
+      actorType: AUDIT_ACTOR_TYPE.ANONYMOUS,
+    });
     return null;
   }
   if (!agent.enabled || agent.revokedAt) {
     logWarn("printing", "agent_auth_failed", { reason: "revoked", agentId: agent.id });
+    void tryAppendPlatformAuditEvent({
+      eventKind: AUDIT_EVENT_KIND.SECURITY,
+      severity: AUDIT_SEVERITY.WARN,
+      category: AUDIT_CATEGORY.SECURITY,
+      action: AUDIT_ACTION.REVOKED_PRINTER_AGENT_TOKEN,
+      outcome: "DENIED",
+      actorType: AUDIT_ACTOR_TYPE.PRINTER_AGENT,
+      actorId: agent.id,
+      actorName: agent.name,
+      restaurantId: agent.restaurantId,
+    });
     return null;
   }
+  setForensicActor({
+    type: AUDIT_ACTOR_TYPE.PRINTER_AGENT,
+    id: agent.id,
+    name: agent.name,
+  });
+  setForensicTenant({
+    tenantId: agent.tenantId,
+    restaurantId: agent.restaurantId,
+    branchId: agent.branchId,
+  });
   return {
     id: agent.id,
     restaurantId: agent.restaurantId,

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { processPaymentWebhook } from "@/lib/payment-webhook-service";
 import { logApiError, logApiRequest } from "@/lib/logger";
 import { rejectIfSlugEscapesHost } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(
+async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
@@ -33,3 +34,5 @@ export async function POST(
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

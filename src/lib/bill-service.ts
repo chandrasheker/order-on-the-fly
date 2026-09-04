@@ -7,6 +7,9 @@ import { logInfo, logWarn } from "@/lib/logger";
 import { enqueueCustomerBillPrintInTx, enqueueIdempotentPrintJob } from "@/domains/printing/print-job-service";
 import { customerBillIdempotencyKey, PRINT_KIND, targetFromKind } from "@/lib/print-constants";
 import { generatePublicToken } from "@/lib/public-token";
+import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
+import { setForensicCorrelationId, setForensicResource } from "@/platform/forensics/request-context";
 
 const BILL_RESTAURANT_SELECT = {
   name: true,
@@ -187,6 +190,25 @@ export async function finalizeOrderBillInTx(
         orderId: bill.orderId,
         billId: bill.id,
         payload: snapshot,
+      });
+      setForensicCorrelationId(bill.id);
+      setForensicResource({ type: "Bill", id: bill.id, label: bill.billNumber });
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MONEY,
+        action: AUDIT_ACTION.BILL_FINALIZED,
+        restaurantId: bill.restaurantId,
+        tenantId: bill.tenantId,
+        branchId: bill.branchId,
+        resourceType: "Bill",
+        resourceId: bill.id,
+        resourceLabel: bill.billNumber,
+        correlationId: bill.id,
+        after: {
+          billNumber: bill.billNumber,
+          grandTotalPaise: Math.round(Number(bill.grandTotal) * 100),
+          currency: "INR",
+          orderId: bill.orderId,
+        },
       });
 
       return { ok: true as const, bill, created: true };

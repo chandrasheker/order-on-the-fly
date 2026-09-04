@@ -22,6 +22,16 @@ export async function setTenantEnabled(tenantId: string, isEnabled: boolean) {
       where: { id: tenantId },
       data: { isEnabled },
     });
+    const { appendPlatformAuditEventInTx } = await import("@/platform/forensics/platform-audit-service");
+    const { AUDIT_ACTION, AUDIT_CATEGORY } = await import("@/platform/forensics/constants");
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.PLATFORM,
+      action: isEnabled ? AUDIT_ACTION.TENANT_ENABLED : AUDIT_ACTION.TENANT_DISABLED,
+      tenantId,
+      resourceType: "Tenant",
+      resourceId: tenantId,
+      after: { isEnabled },
+    });
 
     // Disable cascades to every restaurant. Re-enable does not — operators turn
     // restaurants back on individually after reviewing each location.
@@ -54,10 +64,24 @@ export async function setRestaurantEnabled(restaurantId: string, isEnabled: bool
     throw new Error("Restaurant not found");
   }
 
-  const restaurant = await prisma.restaurant.update({
-    where: { id: restaurantId },
-    data: { isEnabled },
-    select: { id: true, slug: true },
+  const restaurant = await prisma.$transaction(async (tx) => {
+    const next = await tx.restaurant.update({
+      where: { id: restaurantId },
+      data: { isEnabled },
+      select: { id: true, slug: true, tenantId: true },
+    });
+    const { appendPlatformAuditEventInTx } = await import("@/platform/forensics/platform-audit-service");
+    const { AUDIT_ACTION, AUDIT_CATEGORY } = await import("@/platform/forensics/constants");
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.PLATFORM,
+      action: isEnabled ? AUDIT_ACTION.RESTAURANT_ENABLED : AUDIT_ACTION.RESTAURANT_DISABLED,
+      restaurantId,
+      tenantId: next.tenantId,
+      resourceType: "Restaurant",
+      resourceId: restaurantId,
+      after: { isEnabled },
+    });
+    return next;
   });
 
   if (!isEnabled) {

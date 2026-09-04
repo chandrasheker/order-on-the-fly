@@ -3,8 +3,9 @@ import fs from "node:fs/promises";
 import { prisma } from "@/lib/prisma";
 import { findPaymentQrFile } from "@/lib/payment-qr-storage";
 import { rejectIfSlugEscapesHost } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(
+async function handleGET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
@@ -35,3 +36,5 @@ export async function GET(
     },
   });
 }
+
+export const GET = withForensicApiRoute(handleGET);

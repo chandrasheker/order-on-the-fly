@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { canMutatePrinterAgentCredentials, requireSession } from "@/lib/auth";
 import { updatePrinterAgent } from "@/lib/printer-agent-service";
 import { opaqueNotFoundJson } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function PATCH(
+async function handlePATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -31,3 +32,5 @@ export async function PATCH(
   }
   return NextResponse.json({ agent: result.agent, token: result.token ?? null });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

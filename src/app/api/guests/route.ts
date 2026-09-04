@@ -4,8 +4,9 @@ import { canAccessAdminMenu } from "@/lib/staff-permissions";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { listGuestProfiles, lookupGuestByPhone } from "@/lib/guest-crm-service";
 import { prisma } from "@/lib/prisma";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canAccessAdminMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,7 +25,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ guests });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canAccessAdminMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -51,3 +54,5 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ guest: updated });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

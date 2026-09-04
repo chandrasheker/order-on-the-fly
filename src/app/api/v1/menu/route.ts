@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyApiKey, requireScope } from "@/lib/api-key-service";
 import { prisma } from "@/lib/prisma";
 import { hostRestaurantId, opaqueNotFoundJson, resolveRequestRestaurant, restaurantOpsAllowedOnResolution } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 async function assertApiKeyMatchesHost(req: NextRequest, restaurantId: string) {
   const resolution = await resolveRequestRestaurant(req);
@@ -18,7 +19,7 @@ async function authRequest(req: NextRequest) {
   return verifyApiKey(token);
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const auth = await authRequest(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!requireScope(auth.scopes, "menu:read")) {
@@ -50,3 +51,5 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ categories });
 }
+
+export const GET = withForensicApiRoute(handleGET);

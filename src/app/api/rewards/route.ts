@@ -10,8 +10,9 @@ import {
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { format } from "date-fns";
 import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -35,7 +36,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ rewards });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   logApiRequest("rewards", "POST");
   try {
     const {
@@ -150,3 +153,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to create reward" }, { status: 500 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

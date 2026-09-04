@@ -3,10 +3,77 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword, requirePlatformAdmin } from "@/lib/auth";
 import type { Role } from "@/generated/prisma/client";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx, type AuditTx } from "@/platform/forensics/platform-audit-service";
+import { auditStaffSnapshot } from "@/platform/forensics/snapshots";
+import { setForensicResource } from "@/platform/forensics/request-context";
+
+type StaffMutationResult = {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  restaurantId: string;
+  restaurant: { id: string; name: string; slug: string };
+};
+
+export async function applyStaffUserMutationInTx(
+  tx: AuditTx & {
+    user: {
+      update: (args: {
+        where: { id: string };
+        data: { name?: string; email?: string; passwordHash?: string; role?: Role };
+        include: { restaurant: { select: { id: true; name: true; slug: true } } };
+      }) => Promise<StaffMutationResult>;
+    };
+  },
+  params: {
+    userId: string;
+    existing: { id: string; name: string; email: string; role: Role; restaurantId: string };
+    data: { name?: string; email?: string; passwordHash?: string; role?: Role };
+  },
+) {
+  const user = await tx.user.update({
+    where: { id: params.userId },
+    data: params.data,
+    include: { restaurant: { select: { id: true, name: true, slug: true } } },
+  });
+  const before = auditStaffSnapshot(params.existing);
+  const after = auditStaffSnapshot(user);
+  setForensicResource({ type: "User", id: user.id, label: user.name });
+  await appendPlatformAuditEventInTx(tx, {
+    category: AUDIT_CATEGORY.STAFF,
+    action: AUDIT_ACTION.STAFF_UPDATED,
+    restaurantId: user.restaurantId,
+    resourceType: "User",
+    resourceId: user.id,
+    resourceLabel: user.name,
+    before,
+    after,
+    metadata: {
+      fields: Object.keys(params.data).map((key) => (key === "passwordHash" ? "passwordChanged" : key)),
+      passwordChanged: Boolean(params.data.passwordHash),
+    },
+  });
+  if (params.data.role && params.data.role !== params.existing.role) {
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.STAFF,
+      action: AUDIT_ACTION.STAFF_ROLE_CHANGED,
+      restaurantId: user.restaurantId,
+      resourceType: "User",
+      resourceId: user.id,
+      resourceLabel: user.name,
+      before: { role: params.existing.role },
+      after: { role: user.role },
+    });
+  }
+  return user;
+}
 
 const STAFF_ROLES: Role[] = ["OWNER", "MANAGER", "COOK", "SERVER"];
 
-export async function GET() {
+async function handleGET() {
   const admin = await requirePlatformAdmin();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -33,7 +100,9 @@ export async function GET() {
   });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   logApiRequest("platform/users", "PATCH");
   const admin = await requirePlatformAdmin();
   if (!admin) {
@@ -99,13 +168,9 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "No updates provided" }, { status: 400 });
     }
 
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data,
-      include: {
-        restaurant: { select: { id: true, name: true, slug: true } },
-      },
-    });
+    const user = await prisma.$transaction((tx) =>
+      applyStaffUserMutationInTx(tx, { userId, existing, data }),
+    );
 
     logInfo("platform/users", "Staff user updated by platform admin", {
       adminId: admin.id,
@@ -129,3 +194,5 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
   }
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

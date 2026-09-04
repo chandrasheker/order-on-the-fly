@@ -3,9 +3,10 @@ import { requireSession } from "@/lib/auth";
 import { canAccessAdminMenu } from "@/lib/staff-permissions";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { getAggregatorConnectionsForRestaurant } from "@/lib/aggregator-connection-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 /** Owner/manager: read Swiggy & Zomato connection status and webhook URLs. */
-export async function GET() {
+async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session || !canAccessAdminMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,3 +22,5 @@ export async function GET() {
 
   return NextResponse.json({ connections });
 }
+
+export const GET = withForensicApiRoute(handleGET);

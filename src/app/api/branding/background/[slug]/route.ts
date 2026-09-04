@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import { findBackgroundImageFile } from "@/lib/background-image-storage";
 import { rejectIfSlugEscapesHost } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(
+async function handleGET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
@@ -57,3 +58,5 @@ export async function GET(
     },
   });
 }
+
+export const GET = withForensicApiRoute(handleGET);

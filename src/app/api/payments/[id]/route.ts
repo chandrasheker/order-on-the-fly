@@ -10,8 +10,9 @@ import { refundAutomaticPayment } from "@/lib/gateway-payment-service";
 import { normalizeRazorpayRefundIdempotencyKey } from "@/lib/razorpay-client";
 import { canPerformOrderAction } from "@/lib/staff-permissions";
 import { opaqueNotFoundJson } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(
+async function handleGET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -26,6 +27,16 @@ export async function GET(
     }),
   );
   if (!payment) return opaqueNotFoundJson();
+  const { tryAppendPlatformAuditEvent } = await import("@/platform/forensics/platform-audit-service");
+  const { AUDIT_ACTION, AUDIT_CATEGORY } = await import("@/platform/forensics/constants");
+  void tryAppendPlatformAuditEvent({
+    category: AUDIT_CATEGORY.MONEY,
+    action: AUDIT_ACTION.PAYMENT_VIEWED,
+    restaurantId: session.restaurantId,
+    resourceType: "Payment",
+    resourceId: payment.id,
+    correlationId: payment.id,
+  });
 
   return NextResponse.json({
     payment: {
@@ -44,7 +55,7 @@ export async function GET(
   });
 }
 
-export async function PATCH(
+async function handlePATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -123,3 +134,7 @@ export async function PATCH(
 
   return NextResponse.json({ error: "Invalid action" }, { status: 400 });
 }
+
+export const GET = withForensicApiRoute(handleGET);
+
+export const PATCH = withForensicApiRoute(handlePATCH);
