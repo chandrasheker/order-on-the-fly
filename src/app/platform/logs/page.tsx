@@ -14,9 +14,6 @@ export default function PlatformLogsPage() {
   const [initialFingerprint, setInitialFingerprint] = useState<string | undefined>();
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setInitialPreset(params.get("preset") ?? "all");
-    setInitialFingerprint(params.get("errorFingerprint") ?? undefined);
     void fetch("/api/platform/auth/me")
       .then(async (res) => {
         if (!res.ok) {
@@ -24,6 +21,9 @@ export default function PlatformLogsPage() {
           return;
         }
         const json = await res.json();
+        const params = new URLSearchParams(window.location.search);
+        setInitialPreset(params.get("preset") ?? "all");
+        setInitialFingerprint(params.get("errorFingerprint") ?? undefined);
         setAdmin(json.admin);
       })
       .catch(swallowPollingFetchError);
