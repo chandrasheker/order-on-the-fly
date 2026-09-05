@@ -77,7 +77,7 @@ export function setForensicActor(actor: ForensicActor | null | undefined) {
   const current = storage.getStore();
   if (!current || !actor) return;
   const currentType = current.actor?.type;
-  if (actorRank(actor.type) < actorRank(currentType)) {
+  if (currentType && actorRank(actor.type) < actorRank(currentType)) {
     current.actor = { ...current.actor, ...actor, type: currentType };
     return;
   }
