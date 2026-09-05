@@ -41,6 +41,7 @@ interface MenuItem {
   isVeg: boolean;
   isSpicy: boolean;
   isAvailable: boolean;
+  imageUrl?: string | null;
   modifierGroups?: ModifierGroup[];
 }
 
@@ -95,6 +96,16 @@ function MenuItemCard({
       role={tapToSelect && !inCart ? "button" : undefined}
       tabIndex={tapToSelect && !inCart ? 0 : undefined}
     >
+      {item.imageUrl ? (
+        <div className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 overflow-hidden rounded-xl bg-white/5">
+          <img
+            src={item.imageUrl}
+            alt={item.name}
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        </div>
+      ) : null}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <h3 className="font-semibold text-white">{item.name}</h3>

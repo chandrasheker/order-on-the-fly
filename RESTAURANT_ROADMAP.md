@@ -2,6 +2,18 @@
 
 This document compares TableTap with leading restaurant software (Toast, TouchBistro, Lightspeed, SpotOn, Table Needs) and maps **real problems** to features — what exists today, what was just added, and what to build next.
 
+## Platform milestones
+
+| Milestone | Status | What it is |
+|-----------|--------|------------|
+| M0 | Shipped | Hostname tenancy |
+| M1 | Shipped | Financial core |
+| M2 | Shipped | Razorpay receipts |
+| M3 | Shipped | Production print reliability |
+| M4 | Shipped | Forensic audit |
+| M5 | Shipped | Platform command center |
+| **M6** | **This release** | **Menu Media & Assisted Menu Onboarding** — food-image upload plus PDF/JPG existing-menu import, reviewable draft, explicit/idempotent Apply, tenant isolation, M4 forensic evidence. Extraction is advisory; the restaurant remains authoritative. |
+
 ---
 
 ## What TableTap already solves (today)
