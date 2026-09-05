@@ -1,5 +1,5 @@
 const CURRENCY_PRICE =
-  /(?:₹|rs\.?|inr|rupees?)\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?/gi;
+  /(?:₹|rs\.?|inr|rupees?|\$)\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?/gi;
 
 export function rupeesStringToPaise(raw: string): number | null {
   const cleaned = String(raw ?? "").replace(/,/g, "").trim();
@@ -31,7 +31,7 @@ export type ParsedLinePrice = {
 export function parsePriceFromLine(line: string): ParsedLinePrice {
   const text = String(line ?? "");
   const range = text.match(
-    /(?:(?:₹|rs\.?|inr)\s*)?(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)\s*[\/–—-]\s*(?:(?:₹|rs\.?|inr)\s*)?(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)/i,
+    /(?:(?:₹|rs\.?|inr|\$)\s*)?(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)\s*[\/–—-]\s*(?:(?:₹|rs\.?|inr|\$)\s*)?(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)/i,
   );
   if (range && Number(range[1].replace(/,/g, "")) >= 10 && Number(range[2].replace(/,/g, "")) >= 10) {
     return { paise: null, ambiguous: true, matches: 2 };

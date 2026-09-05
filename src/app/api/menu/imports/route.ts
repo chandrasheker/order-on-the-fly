@@ -4,7 +4,11 @@ import { publicMenuImportConfig } from "@/lib/menu-import/config";
 import { MenuImportValidationError } from "@/lib/menu-import/errors";
 import { toPublicMenuImport } from "@/lib/menu-import/public";
 import { createMenuImportFromUpload, listRestaurantMenuImports } from "@/lib/menu-import/service";
+import { logApiError } from "@/lib/logger";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 async function handleGET() {
   const session = await requireSession();
@@ -33,15 +37,16 @@ async function handlePOST(req: NextRequest) {
     return NextResponse.json({ error: "Unsupported or unreadable menu file" }, { status: 400 });
   }
 
-  const uploaded = [
-    ...form.getAll("files"),
-    ...form.getAll("file"),
-  ].filter((value): value is File => typeof File !== "undefined" && value instanceof File);
-
   const files = [];
-  for (const file of uploaded) {
-    const bytes = Buffer.from(await file.arrayBuffer());
-    files.push({ originalName: file.name || "menu-file", bytes });
+  for (const value of [...form.getAll("files"), ...form.getAll("file")]) {
+    if (!value || typeof value === "string") continue;
+    const blob = value as Blob & { name?: string };
+    if (typeof blob.arrayBuffer !== "function") continue;
+    const bytes = Buffer.from(await blob.arrayBuffer());
+    files.push({
+      originalName: typeof blob.name === "string" && blob.name ? blob.name : "menu-file",
+      bytes,
+    });
   }
 
   try {
@@ -54,7 +59,8 @@ async function handlePOST(req: NextRequest) {
     if (error instanceof MenuImportValidationError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
-    return NextResponse.json({ error: "Unsupported or unreadable menu file" }, { status: 400 });
+    logApiError("api/menu/imports", "POST", error);
+    return NextResponse.json({ error: "Could not upload menu" }, { status: 400 });
   }
 }
 

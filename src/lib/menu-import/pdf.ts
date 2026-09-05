@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { PDFDocument } from "pdf-lib";
 import {
   MENU_IMPORT_PDF_MIN_TEXT_CHARS,
@@ -78,11 +80,25 @@ function usableText(text: string) {
   return (text.match(/[A-Za-z0-9]/g) ?? []).length >= MENU_IMPORT_PDF_MIN_TEXT_CHARS;
 }
 
+function sliceToPdfMagic(bytes: Buffer) {
+  if (!Buffer.isBuffer(bytes) || bytes.length < 5) return null;
+  if (bytes.subarray(0, 5).toString("latin1") === "%PDF-") return bytes;
+  const head = bytes.subarray(0, Math.min(bytes.length, 1024)).toString("latin1");
+  const offset = head.indexOf("%PDF-");
+  if (offset < 0) return null;
+  return bytes.subarray(offset);
+}
+
+function looksEncrypted(bytes: Buffer) {
+  const tail = bytes.subarray(Math.max(0, bytes.length - 4096)).toString("latin1");
+  return /\/Encrypt\s+(\d+\s+\d+\s+R|<)/.test(tail);
+}
+
 async function loadPdfjs(): Promise<PdfjsModule> {
   const mod = (await import(
     /* webpackIgnore: true */ "pdfjs-dist/legacy/build/pdf.mjs"
   )) as unknown as PdfjsModule;
-  mod.GlobalWorkerOptions.workerSrc = path.join(
+  const workerPath = path.join(
     process.cwd(),
     "node_modules",
     "pdfjs-dist",
@@ -90,21 +106,27 @@ async function loadPdfjs(): Promise<PdfjsModule> {
     "build",
     "pdf.worker.mjs",
   );
+  mod.GlobalWorkerOptions.workerSrc = fs.existsSync(workerPath) ? pathToFileURL(workerPath).href : "";
   return mod;
 }
 
+async function pageCountWithPdfLib(bytes: Buffer) {
+  const loaded = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  return { pageCount: loaded.getPageCount(), encrypted: Boolean(loaded.isEncrypted) };
+}
+
 export async function inspectPdf(bytes: Buffer): Promise<InspectedPdf> {
-  if (!Buffer.isBuffer(bytes) || bytes.length < 5 || bytes.subarray(0, 5).toString("latin1") !== "%PDF-") {
+  const pdfBytes = sliceToPdfMagic(bytes);
+  if (!pdfBytes) {
     throw new MenuImportValidationError("UNSUPPORTED_FILE", MENU_IMPORT_UNSUPPORTED_MESSAGE);
   }
 
-  const tail = bytes.subarray(Math.max(0, bytes.length - 4096)).toString("latin1");
-  if (/\/Encrypt\s+(\d+\s+\d+\s+R|<)/.test(tail)) {
+  if (looksEncrypted(pdfBytes)) {
     return { pageCount: 0, encrypted: true, pages: [] };
   }
 
   try {
-    const loaded = await PDFDocument.load(bytes, { ignoreEncryption: false, updateMetadata: false });
+    const loaded = await PDFDocument.load(pdfBytes, { ignoreEncryption: false, updateMetadata: false });
     if (loaded.isEncrypted) {
       return { pageCount: loaded.getPageCount(), encrypted: true, pages: [] };
     }
@@ -113,14 +135,13 @@ export async function inspectPdf(bytes: Buffer): Promise<InspectedPdf> {
     if (/password|encrypt/i.test(message)) {
       return { pageCount: 0, encrypted: true, pages: [] };
     }
-    throw new MenuImportValidationError("UNSUPPORTED_FILE", MENU_IMPORT_UNSUPPORTED_MESSAGE);
   }
 
   let pdf: PdfjsDocument | null = null;
   try {
     const pdfjs = await loadPdfjs();
     pdf = await pdfjs.getDocument({
-      data: new Uint8Array(bytes),
+      data: new Uint8Array(pdfBytes),
       disableFontFace: true,
       isEvalSupported: false,
       useSystemFonts: true,
@@ -143,6 +164,23 @@ export async function inspectPdf(bytes: Buffer): Promise<InspectedPdf> {
     return { pageCount: pdf.numPages, encrypted: false, pages };
   } catch (error) {
     if (error instanceof MenuImportValidationError) throw error;
+    try {
+      const fallback = await pageCountWithPdfLib(pdfBytes);
+      if (fallback.encrypted) return { pageCount: fallback.pageCount, encrypted: true, pages: [] };
+      if (fallback.pageCount >= 1) {
+        return {
+          pageCount: fallback.pageCount,
+          encrypted: false,
+          pages: Array.from({ length: fallback.pageCount }, (_, index) => ({
+            pageNumber: index + 1,
+            text: "",
+            usableText: false,
+          })),
+        };
+      }
+    } catch {
+      // keep the original pdfjs failure
+    }
     throw new MenuImportValidationError("UNSUPPORTED_FILE", MENU_IMPORT_UNSUPPORTED_MESSAGE);
   } finally {
     await pdf?.destroy?.().catch(() => undefined);

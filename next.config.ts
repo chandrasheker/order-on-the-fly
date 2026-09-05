@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
     webpackMemoryOptimizations: true,
     // Menu import allows up to 50 MiB of PDF/images plus multipart overhead.
     proxyClientMaxBodySize: "55mb",
+    serverActions: { bodySizeLimit: "55mb" },
     ...(lowMemory
       ? {
           webpackBuildWorker: false,

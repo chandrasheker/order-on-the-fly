@@ -35,7 +35,7 @@ export function parseTextMenuPages(pages: MenuImportExtractInput["pages"]): Menu
       const price = parsePriceFromLine(line);
       if (price.paise != null || price.ambiguous) {
         if (!current) ensureCategory("Imported", page.pageNumber);
-        let name = line.replace(/(?:₹|rs\.?|inr|rupees?)\s*\d[\d,]*(?:\.\d{1,2})?/gi, "").trim();
+        let name = line.replace(/(?:₹|rs\.?|inr|rupees?|\$)\s*\d[\d,]*(?:\.\d{1,2})?/gi, "").trim();
         if (price.paise != null) {
           const rupees = String(price.paise / 100).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const rupeesFixed = (price.paise / 100).toFixed(2).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

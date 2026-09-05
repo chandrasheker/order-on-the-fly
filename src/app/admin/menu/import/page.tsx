@@ -45,10 +45,26 @@ export default function MenuImportUploadPage() {
     const body = new FormData();
     for (const file of files) body.append("files", file);
     const res = await fetch("/api/menu/imports", { method: "POST", body });
-    const json = await res.json().catch(() => ({}));
+    const text = await res.text();
+    let json: { error?: string; import?: { id: string } } = {};
+    try {
+      json = JSON.parse(text) as { error?: string; import?: { id: string } };
+    } catch {
+      json = {};
+    }
     if (!res.ok) {
       setUploading(false);
-      setError(json.error || "Could not upload menu");
+      setError(
+        json.error ||
+          (res.status === 413
+            ? "This file is too large. Each file must be 10 MB or smaller."
+            : "Could not upload menu"),
+      );
+      return;
+    }
+    if (!json.import?.id) {
+      setUploading(false);
+      setError("Could not upload menu");
       return;
     }
     router.push(`/admin/menu/import/${json.import.id}`);

@@ -42,7 +42,9 @@ function hasZipMagic(bytes: Buffer) {
 }
 
 function hasPdfMagic(bytes: Buffer) {
-  return bytes.length >= 5 && bytes.subarray(0, 5).toString("latin1") === "%PDF-";
+  if (bytes.length >= 5 && bytes.subarray(0, 5).toString("latin1") === "%PDF-") return true;
+  const head = bytes.subarray(0, Math.min(bytes.length, 1024)).toString("latin1");
+  return head.includes("%PDF-");
 }
 
 async function decodeImportImage(bytes: Buffer): Promise<ValidatedImportImage["contentType"]> {

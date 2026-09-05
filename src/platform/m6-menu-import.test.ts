@@ -232,6 +232,10 @@ describe("M6-B source validation", () => {
       () => validateMenuImportFiles([{ originalName: "secret.pdf", bytes: encryptedPdfBytes() }]),
       (error: unknown) => error instanceof MenuImportValidationError && error.code === "ENCRYPTED_PDF",
     );
+    const prefixed = Buffer.concat([Buffer.from("\uFEFF\n"), await sampleMenuPdf()]);
+    const prefixedResult = await validateMenuImportFiles([{ originalName: "bom.pdf", bytes: prefixed }]);
+    assert.equal(prefixedResult.sourceType, "PDF");
+    assert.ok((prefixedResult.pageCount ?? 0) >= 1);
   });
 
   it("enforces file, page, and total size limits", async () => {
@@ -266,6 +270,7 @@ describe("M6-B source validation", () => {
     assert.equal(parsePriceFromLine("249 / 349").paise, null);
     assert.equal(parsePriceFromLine("Chicken 65           Rs. 249").paise, 24900);
     assert.equal(parsePriceFromLine("Chicken 65           Rs. 249").ambiguous, false);
+    assert.equal(parsePriceFromLine("Chicken Satay $7.00").paise, 700);
   });
 });
 

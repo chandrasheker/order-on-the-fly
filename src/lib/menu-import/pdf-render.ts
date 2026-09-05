@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   MENU_IMPORT_PDF_MAX_RENDER_EDGE,
 } from "@/lib/menu-import/constants";
@@ -34,7 +36,7 @@ async function loadPdfjs(): Promise<PdfjsModule> {
   const mod = (await import(
     /* webpackIgnore: true */ "pdfjs-dist/legacy/build/pdf.mjs"
   )) as unknown as PdfjsModule;
-  mod.GlobalWorkerOptions.workerSrc = path.join(
+  const workerPath = path.join(
     process.cwd(),
     "node_modules",
     "pdfjs-dist",
@@ -42,6 +44,7 @@ async function loadPdfjs(): Promise<PdfjsModule> {
     "build",
     "pdf.worker.mjs",
   );
+  mod.GlobalWorkerOptions.workerSrc = fs.existsSync(workerPath) ? pathToFileURL(workerPath).href : "";
   return mod;
 }
 
