@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import sharp from "sharp";
 import { MENU_MEDIA_MAX_INPUT_PIXELS } from "@/lib/menu-media/constants";
 
@@ -40,12 +42,18 @@ async function loadTesseractWorker() {
       const tes = (await import(
         /* webpackIgnore: true */ "tesseract.js"
       )) as unknown as {
-        createWorker: (lang?: string) => Promise<{
+        createWorker: (
+          lang?: string,
+          oem?: number,
+          options?: { cachePath?: string },
+        ) => Promise<{
           recognize: (image: Buffer) => Promise<{ data: { text: string } }>;
           terminate: () => Promise<void>;
         }>;
       };
-      return tes.createWorker("eng");
+      return tes.createWorker("eng", 1, {
+        cachePath: path.join(os.tmpdir(), "tabletap-tesseract"),
+      });
     })().catch((error) => {
       workerPromise = null;
       throw error;
