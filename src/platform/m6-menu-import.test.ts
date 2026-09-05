@@ -41,6 +41,8 @@ let resetMenuMediaStorageForTests: typeof import("@/lib/menu-media/storage").res
 let hashPassword: typeof import("@/lib/auth").hashPassword;
 let redactSecrets: typeof import("@/platform/forensics/redactor").redactSecrets;
 let resolveMenuImportConfig: typeof import("@/lib/menu-import/config").resolveMenuImportConfig;
+let setMenuImageOcrForTests: typeof import("@/lib/menu-import/ocr").setMenuImageOcrForTests;
+let resetMenuImageOcrForTests: typeof import("@/lib/menu-import/ocr").resetMenuImageOcrForTests;
 let rupeesStringToPaise: typeof import("@/lib/menu-import/prices").rupeesStringToPaise;
 let parsePriceFromLine: typeof import("@/lib/menu-import/prices").parsePriceFromLine;
 
@@ -125,6 +127,7 @@ before(async () => {
   ({ hashPassword } = await import("@/lib/auth"));
   ({ redactSecrets } = await import("@/platform/forensics/redactor"));
   ({ resolveMenuImportConfig } = await import("@/lib/menu-import/config"));
+  ({ setMenuImageOcrForTests, resetMenuImageOcrForTests } = await import("@/lib/menu-import/ocr"));
   ({ rupeesStringToPaise, parsePriceFromLine } = await import("@/lib/menu-import/prices"));
   resetMenuMediaStorageForTests();
   execFileSync(
@@ -484,9 +487,10 @@ describe("M6-B import workflow", () => {
     assert.equal(config.configured, false);
   });
 
-  it("extracts selectable text PDFs without a provider and rejects photo uploads", async () => {
+  it("extracts selectable text PDFs and photo pages without a cloud provider", async () => {
     const previous = process.env.MENU_IMPORT_PROVIDER;
     delete process.env.MENU_IMPORT_PROVIDER;
+    setMenuImageOcrForTests(async () => "STARTERS\nChicken 65           Rs. 249\n");
     try {
       const abc = await seedRestaurant("no-provider");
       const pdfImport = await createMenuImportFromUpload({
@@ -504,16 +508,22 @@ describe("M6-B import workflow", () => {
         ),
       );
 
-      await assert.rejects(
-        async () =>
-          createMenuImportFromUpload({
-            session: sessionFor(abc.owner, abc.restaurant),
-            files: [{ originalName: "page.jpg", bytes: await jpegBytes() }],
-          }),
-        (error: unknown) =>
-          error instanceof MenuImportValidationError && error.code === "IMAGE_EXTRACTION_NOT_CONFIGURED",
+      const photoImport = await createMenuImportFromUpload({
+        session: sessionFor(abc.owner, abc.restaurant),
+        files: [{ originalName: "page.jpg", bytes: await jpegBytes() }],
+      });
+      const photoProcessed = await processMenuImportById(photoImport.id);
+      assert.equal(photoProcessed?.status, "READY_FOR_REVIEW");
+      const photoDraft = JSON.parse(photoProcessed?.draftJson ?? "{}") as {
+        categories: Array<{ items: Array<{ name: string; pricePaise: number }> }>;
+      };
+      assert.ok(
+        photoDraft.categories.some((category) =>
+          category.items.some((item) => item.name.includes("Chicken 65") && item.pricePaise === 24900),
+        ),
       );
     } finally {
+      resetMenuImageOcrForTests();
       if (previous == null) delete process.env.MENU_IMPORT_PROVIDER;
       else process.env.MENU_IMPORT_PROVIDER = previous;
     }

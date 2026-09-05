@@ -1,4 +1,5 @@
 import { parseMenuImportDraft } from "@/lib/menu-import/draft";
+import { recognizeMenuImageText } from "@/lib/menu-import/ocr";
 import { parsePriceFromLine } from "@/lib/menu-import/prices";
 import type { MenuImportDraft, MenuImportExtractInput, MenuImportExtractor } from "@/lib/menu-import/types";
 
@@ -70,5 +71,26 @@ export function parseTextMenuPages(pages: MenuImportExtractInput["pages"]): Menu
 export class LocalTextMenuImportExtractor implements MenuImportExtractor {
   async extractMenu(input: MenuImportExtractInput): Promise<MenuImportDraft> {
     return parseTextMenuPages(input.pages.filter((page) => page.kind === "text" || page.text));
+  }
+}
+
+export class LocalMenuImportExtractor implements MenuImportExtractor {
+  async extractMenu(input: MenuImportExtractInput): Promise<MenuImportDraft> {
+    const pages: MenuImportExtractInput["pages"] = [];
+    for (const page of input.pages) {
+      if (page.kind === "text" && page.text) {
+        pages.push(page);
+        continue;
+      }
+      if (page.image) {
+        const text = await recognizeMenuImageText(page.image.bytes);
+        pages.push({ pageNumber: page.pageNumber, kind: "text", text });
+      }
+    }
+    const draft = parseTextMenuPages(pages);
+    if (draft.categories.length) return draft;
+    return parseMenuImportDraft({
+      categories: [{ name: "Imported", items: [] }],
+    });
   }
 }

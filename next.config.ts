@@ -40,6 +40,7 @@ const nextConfig: NextConfig = {
     "pdf-lib",
     "@napi-rs/canvas",
     "@napi-rs/canvas-linux-x64-gnu",
+    "tesseract.js",
   ],
 };
 

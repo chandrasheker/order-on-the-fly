@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { MENU_IMPORT_MAX_PROCESS_ATTEMPTS } from "@/lib/menu-import/constants";
 import { userFacingImportError } from "@/lib/menu-import/errors";
 import { getMenuImportExtractor } from "@/lib/menu-import/extractor";
-import { LocalTextMenuImportExtractor } from "@/lib/menu-import/providers/local-text";
+import { LocalMenuImportExtractor } from "@/lib/menu-import/providers/local-text";
 import { serializeDraft } from "@/lib/menu-import/draft";
 import { importAuditMetadata } from "@/lib/menu-import/public";
 import type { MenuImportDraft, MenuImportExtractPage, MenuImportSourceMeta } from "@/lib/menu-import/types";
@@ -133,22 +133,12 @@ export async function processMenuImportById(importId: string) {
     if (!pages.length) {
       return markFailed(row.id, row.restaurantId, "UNSUPPORTED_FILE");
     }
-    const textPages = pages.filter((page) => page.kind === "text");
-    const imagePages = pages.filter((page) => page.kind === "image");
-    let draft: MenuImportDraft;
-    if (extractor && config.configured) {
-      draft = await extractor.extractMenu({ pages });
-    } else if (textPages.length) {
-      draft = await new LocalTextMenuImportExtractor().extractMenu({ pages: textPages });
-      if (!draft.categories.length) {
-        return markFailed(
-          row.id,
-          row.restaurantId,
-          imagePages.length ? "IMAGE_EXTRACTION_NOT_CONFIGURED" : "PROVIDER_INVALID_OUTPUT",
-        );
-      }
-    } else {
-      return markFailed(row.id, row.restaurantId, "IMAGE_EXTRACTION_NOT_CONFIGURED");
+    const draft: MenuImportDraft =
+      extractor && config.configured
+        ? await extractor.extractMenu({ pages })
+        : await new LocalMenuImportExtractor().extractMenu({ pages });
+    if (!draft.categories.length) {
+      return markFailed(row.id, row.restaurantId, "PROVIDER_INVALID_OUTPUT");
     }
     const stillOurs = await prisma.menuImport.updateMany({
       where: { id: row.id, status: "PROCESSING" },

@@ -21,7 +21,7 @@ export default function MenuImportUploadPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
-  const [extractionConfigured, setExtractionConfigured] = useState<boolean | null>(null);
+  const [ready, setReady] = useState(false);
   const [recent, setRecent] = useState<ImportSummary[]>([]);
 
   useEffect(() => {
@@ -32,22 +32,14 @@ export default function MenuImportUploadPage() {
         return;
       }
       const json = await res.json();
-      setExtractionConfigured(Boolean(json.extraction?.configured));
       setRecent(json.imports ?? []);
+      setReady(true);
     })();
   }, [router]);
 
-  const imageOnly =
-    files.length > 0 &&
-    files.every((file) => {
-      const name = file.name.toLowerCase();
-      return !name.endsWith(".pdf") && file.type !== "application/pdf";
-    });
-  const photosBlocked = extractionConfigured === false && imageOnly;
-
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!files.length || uploading || photosBlocked) return;
+    if (!files.length || uploading) return;
     setUploading(true);
     setError("");
     const body = new FormData();
@@ -77,16 +69,6 @@ export default function MenuImportUploadPage() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-        {extractionConfigured === false && (
-          <div className="rounded-xl px-4 py-3 text-sm bg-amber-500/10 text-amber-200 border border-amber-500/30">
-            Photo and scanned-page extraction is not configured. A selectable text PDF can still be
-            imported. You can also{" "}
-            <Link href="/admin/menu" className="underline underline-offset-2">
-              enter the menu manually
-            </Link>
-            .
-          </div>
-        )}
         {error && (
           <div className="rounded-xl px-4 py-3 text-sm bg-red-500/10 text-red-300 border border-red-500/30">
             {error}
@@ -101,7 +83,7 @@ export default function MenuImportUploadPage() {
             </h2>
             <p className="text-sm text-zinc-400 mt-1">
               One PDF (including multi-page) or several photos of printed pages. Multiple images become one import,
-              in the order you select them.
+              in the order you select them. Review every dish and price before Apply Import.
             </p>
           </div>
           <form onSubmit={submit} className="space-y-4">
@@ -120,13 +102,7 @@ export default function MenuImportUploadPage() {
                 ))}
               </ul>
             )}
-            {photosBlocked && (
-              <p className="text-sm text-amber-200">
-                Photo menus need an extraction provider. Choose a text PDF, or enter the menu
-                manually.
-              </p>
-            )}
-            <Button type="submit" disabled={!files.length || uploading || photosBlocked}>
+            <Button type="submit" disabled={!files.length || uploading}>
               {uploading ? "Uploading…" : "Upload and extract"}
             </Button>
           </form>
@@ -150,7 +126,7 @@ export default function MenuImportUploadPage() {
           </Card>
         )}
 
-        {extractionConfigured === null && (
+        {!ready && (
           <div className="flex justify-center py-6">
             <Spinner className="w-6 h-6" />
           </div>

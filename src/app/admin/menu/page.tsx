@@ -511,7 +511,7 @@ export default function MenuManagePage() {
                 before anything is added to your live menu.
               </p>
               <p className="text-xs text-zinc-500">
-                Selectable text PDFs extract locally. Photo menus need an extraction provider.
+                PDF, JPG, JPEG, PNG or WebP. Review the draft before Apply Import.
               </p>
             </div>
           </div>
