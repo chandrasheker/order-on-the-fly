@@ -2,9 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { MENU_IMPORT_MAX_PROCESS_ATTEMPTS } from "@/lib/menu-import/constants";
 import { userFacingImportError } from "@/lib/menu-import/errors";
 import { getMenuImportExtractor } from "@/lib/menu-import/extractor";
+import { LocalTextMenuImportExtractor } from "@/lib/menu-import/providers/local-text";
 import { serializeDraft } from "@/lib/menu-import/draft";
 import { importAuditMetadata } from "@/lib/menu-import/public";
-import type { MenuImportExtractPage, MenuImportSourceMeta } from "@/lib/menu-import/types";
+import type { MenuImportDraft, MenuImportExtractPage, MenuImportSourceMeta } from "@/lib/menu-import/types";
 import { getMenuMediaStorage } from "@/lib/menu-media/storage";
 import { isManagedMenuImportSourceKey } from "@/lib/menu-media/keys";
 import { AUDIT_ACTION, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } from "@/platform/forensics/constants";
@@ -126,16 +127,29 @@ export async function processMenuImportById(importId: string) {
   if (!row || row.status !== "PROCESSING") return row;
 
   const { extractor, config } = getMenuImportExtractor();
-  if (!extractor || !config.configured) {
-    return markFailed(row.id, row.restaurantId, "EXTRACTION_NOT_CONFIGURED");
-  }
 
   try {
     const pages = await buildExtractPages(row);
     if (!pages.length) {
       return markFailed(row.id, row.restaurantId, "UNSUPPORTED_FILE");
     }
-    const draft = await extractor.extractMenu({ pages });
+    const textPages = pages.filter((page) => page.kind === "text");
+    const imagePages = pages.filter((page) => page.kind === "image");
+    let draft: MenuImportDraft;
+    if (extractor && config.configured) {
+      draft = await extractor.extractMenu({ pages });
+    } else if (textPages.length) {
+      draft = await new LocalTextMenuImportExtractor().extractMenu({ pages: textPages });
+      if (!draft.categories.length) {
+        return markFailed(
+          row.id,
+          row.restaurantId,
+          imagePages.length ? "IMAGE_EXTRACTION_NOT_CONFIGURED" : "PROVIDER_INVALID_OUTPUT",
+        );
+      }
+    } else {
+      return markFailed(row.id, row.restaurantId, "IMAGE_EXTRACTION_NOT_CONFIGURED");
+    }
     const stillOurs = await prisma.menuImport.updateMany({
       where: { id: row.id, status: "PROCESSING" },
       data: {
@@ -174,6 +188,7 @@ export async function processMenuImportById(importId: string) {
             : "PROVIDER_FAILED";
     const safeCode = [
       "EXTRACTION_NOT_CONFIGURED",
+      "IMAGE_EXTRACTION_NOT_CONFIGURED",
       "UNSUPPORTED_FILE",
       "ENCRYPTED_PDF",
       "PROVIDER_FAILED",

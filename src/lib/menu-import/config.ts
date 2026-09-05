@@ -42,6 +42,7 @@ export function publicMenuImportConfig(env: EnvMap = process.env) {
   return {
     provider: config.configured ? config.provider : "none",
     configured: config.configured,
+    textAvailable: true,
     model: config.configured ? config.model : undefined,
   };
 }

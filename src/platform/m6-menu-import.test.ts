@@ -484,6 +484,41 @@ describe("M6-B import workflow", () => {
     assert.equal(config.configured, false);
   });
 
+  it("extracts selectable text PDFs without a provider and rejects photo uploads", async () => {
+    const previous = process.env.MENU_IMPORT_PROVIDER;
+    delete process.env.MENU_IMPORT_PROVIDER;
+    try {
+      const abc = await seedRestaurant("no-provider");
+      const pdfImport = await createMenuImportFromUpload({
+        session: sessionFor(abc.owner, abc.restaurant),
+        files: [{ originalName: "menu.pdf", bytes: await sampleMenuPdf() }],
+      });
+      const processed = await processMenuImportById(pdfImport.id);
+      assert.equal(processed?.status, "READY_FOR_REVIEW");
+      const draft = JSON.parse(processed?.draftJson ?? "{}") as {
+        categories: Array<{ items: Array<{ name: string; pricePaise: number }> }>;
+      };
+      assert.ok(
+        draft.categories.some((category) =>
+          category.items.some((item) => item.name.includes("Chicken 65") && item.pricePaise === 24900),
+        ),
+      );
+
+      await assert.rejects(
+        async () =>
+          createMenuImportFromUpload({
+            session: sessionFor(abc.owner, abc.restaurant),
+            files: [{ originalName: "page.jpg", bytes: await jpegBytes() }],
+          }),
+        (error: unknown) =>
+          error instanceof MenuImportValidationError && error.code === "IMAGE_EXTRACTION_NOT_CONFIGURED",
+      );
+    } finally {
+      if (previous == null) delete process.env.MENU_IMPORT_PROVIDER;
+      else process.env.MENU_IMPORT_PROVIDER = previous;
+    }
+  });
+
   it("cleans import sources without deleting food photographs", async () => {
     const abc = await seedRestaurant("cleanup-imp");
     const created = await createMenuImportFromUpload({

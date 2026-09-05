@@ -6,6 +6,7 @@ import { createMenuImportSourceKey } from "@/lib/menu-import/keys";
 import { parseMenuImportDraft, serializeDraft } from "@/lib/menu-import/draft";
 import { MenuImportValidationError } from "@/lib/menu-import/errors";
 import { importAuditMetadata } from "@/lib/menu-import/public";
+import { resolveMenuImportConfig } from "@/lib/menu-import/config";
 import { validateMenuImportFiles, type IncomingImportFile } from "@/lib/menu-import/validate-source";
 import type { MenuImportSourceMeta } from "@/lib/menu-import/types";
 import { getMenuMediaStorage } from "@/lib/menu-media/storage";
@@ -58,6 +59,9 @@ export async function createMenuImportFromUpload(params: {
   }
 
   const validated = await validateMenuImportFiles(params.files);
+  if (validated.sourceType === "IMAGES" && !resolveMenuImportConfig().configured) {
+    throw new MenuImportValidationError("IMAGE_EXTRACTION_NOT_CONFIGURED");
+  }
   const created = await prisma.menuImport.create({
     data: {
       tenantId: restaurant.tenantId,

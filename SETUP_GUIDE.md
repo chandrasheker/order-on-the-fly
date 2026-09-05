@@ -236,6 +236,8 @@ npm run menu-media:cleanup -- --apply
 
 OWNER/MANAGER can upload an existing menu as one PDF or a set of JPG/JPEG/PNG/WebP pages. TableTap extracts a **review draft only**. Live `MenuCategory` / `MenuItem` rows are created after an explicit **Apply Import**. Source documents stay in a private `menu-imports` storage namespace and are never customer food photos.
 
+Selectable text PDFs extract locally even when `MENU_IMPORT_PROVIDER` is unset. Photo and scanned-page imports need `mock` (deterministic/test) or `openai` plus `MENU_IMPORT_API_KEY`. The app still starts if those are missing; photo uploads are rejected instead of creating a failed import.
+
 | Variable | Purpose |
 |----------|---------|
 | `MENU_IMPORT_PROVIDER` | `none` (default), `mock`, or `openai` |

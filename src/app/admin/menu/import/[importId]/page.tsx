@@ -33,6 +33,7 @@ type ImportRecord = {
   sourceFileCount: number;
   pageCount: number | null;
   draft: { categories: DraftCategory[] } | null;
+  errorCode: string | null;
   errorMessage: string | null;
   applyPreview?: {
     categoryCount: number;
@@ -247,10 +248,17 @@ export default function MenuImportReviewPage() {
         )}
 
         {record?.status === "FAILED" && (
-          <div className="flex gap-2">
-            <Button type="button" onClick={() => void retry()} disabled={Boolean(busy)}>
-              Retry extraction
-            </Button>
+          <div className="flex flex-wrap gap-2">
+            {record.errorCode === "EXTRACTION_NOT_CONFIGURED" ||
+            record.errorCode === "IMAGE_EXTRACTION_NOT_CONFIGURED" ? (
+              <Link href="/admin/menu">
+                <Button type="button">Enter menu manually</Button>
+              </Link>
+            ) : (
+              <Button type="button" onClick={() => void retry()} disabled={Boolean(busy)}>
+                Retry extraction
+              </Button>
+            )}
             <Button type="button" variant="secondary" onClick={() => void cancel()} disabled={Boolean(busy)}>
               Cancel Import
             </Button>

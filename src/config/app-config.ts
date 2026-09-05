@@ -49,7 +49,7 @@ export type AppConfig = z.infer<typeof envSchema> & {
   isProduction: boolean;
   isPostgres: boolean;
   menuMedia: PublicMenuMediaConfig;
-  menuImport: { provider: string; configured: boolean; model?: string };
+  menuImport: { provider: string; configured: boolean; textAvailable: boolean; model?: string };
 };
 
 let cached: AppConfig | null = null;

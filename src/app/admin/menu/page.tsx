@@ -510,7 +510,9 @@ export default function MenuManagePage() {
                 Upload a PDF or menu photos. Review the extracted draft, then press Apply Import
                 before anything is added to your live menu.
               </p>
-              <p className="text-xs text-zinc-500">PDF, JPG, JPEG, PNG or WebP</p>
+              <p className="text-xs text-zinc-500">
+                Selectable text PDFs extract locally. Photo menus need an extraction provider.
+              </p>
             </div>
           </div>
           <Link href="/admin/menu/import">
