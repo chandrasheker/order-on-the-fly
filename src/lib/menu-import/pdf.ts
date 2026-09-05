@@ -79,11 +79,9 @@ function usableText(text: string) {
 }
 
 async function loadPdfjs(): Promise<PdfjsModule> {
-  const importer = new Function(
-    "specifier",
-    "return import(specifier)",
-  ) as (specifier: string) => Promise<PdfjsModule>;
-  const mod = await importer(["pdfjs-dist", "legacy", "build", "pdf.mjs"].join("/"));
+  const mod = (await import(
+    /* webpackIgnore: true */ "pdfjs-dist/legacy/build/pdf.mjs"
+  )) as unknown as PdfjsModule;
   mod.GlobalWorkerOptions.workerSrc = path.join(
     process.cwd(),
     "node_modules",
