@@ -314,6 +314,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.svg$|api/branding/background/upload|api/payment/settings/upload|api/menu/manage/.+/image).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.svg$|api/branding/background/upload|api/payment/settings/upload|api/menu/manage/.+/image|api/menu/imports).*)",
   ],
 };

@@ -232,6 +232,25 @@ npm run menu-media:cleanup
 npm run menu-media:cleanup -- --apply
 ```
 
+### Assisted menu import (M6)
+
+OWNER/MANAGER can upload an existing menu as one PDF or a set of JPG/JPEG/PNG/WebP pages. TableTap extracts a **review draft only**. Live `MenuCategory` / `MenuItem` rows are created after an explicit **Apply Import**. Source documents stay in a private `menu-imports` storage namespace and are never customer food photos.
+
+| Variable | Purpose |
+|----------|---------|
+| `MENU_IMPORT_PROVIDER` | `none` (default), `mock`, or `openai` |
+| `MENU_IMPORT_API_KEY` | Server-side only. Missing key does not prevent the app from starting |
+| `MENU_IMPORT_MODEL` | Optional model id (default `gpt-4o-mini` for openai) |
+| `MENU_IMPORT_BASE_URL` | Optional OpenAI-compatible base URL |
+| `MENU_IMPORT_TIMEOUT_MS` | Provider timeout (default 45000, max 120000) |
+
+Limits: 20 pages/images, 10 MiB per file, 50 MiB total (Next.js proxy allows 55mb for multipart overhead). Password-protected PDFs are rejected. Cleanup of temporary sources (7 days after applied/cancelled, 30 days abandoned):
+
+```bash
+npm run menu-import:cleanup
+npm run menu-import:cleanup -- --apply
+```
+
 ### Docker Compose
 
 | Variable | Default | Purpose |

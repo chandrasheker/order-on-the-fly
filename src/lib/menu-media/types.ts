@@ -7,6 +7,7 @@ export type MenuMediaPutInput = {
   key: string;
   body: Buffer;
   contentType: string;
+  cacheControl?: string;
 };
 
 export interface MenuMediaStorage {

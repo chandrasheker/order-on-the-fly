@@ -10,4 +10,7 @@ export const MENU_MEDIA_CLEANUP_GRACE_MS = 24 * 60 * 60 * 1000;
 export const MENU_MEDIA_KEY_RE =
   /^tenant\/[a-zA-Z0-9_-]+\/restaurant\/[a-zA-Z0-9_-]+\/menu\/[a-zA-Z0-9_-]+\/[a-f0-9]{32}\.webp$/;
 
+export const MENU_IMPORT_SOURCE_KEY_RE =
+  /^tenant\/[a-zA-Z0-9_-]+\/restaurant\/[a-zA-Z0-9_-]+\/menu-imports\/[a-zA-Z0-9_-]+\/[0-9]{2}-[a-f0-9]{32}\.(pdf|jpg|jpeg|png|webp)$/;
+
 export const MENU_MEDIA_ACCEPTED_INPUT_FORMATS = ["jpeg", "png", "webp"] as const;

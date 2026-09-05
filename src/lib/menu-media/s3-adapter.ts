@@ -6,7 +6,12 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import type { S3MenuMediaConfig } from "@/lib/menu-media/config";
-import { assertManagedMenuMediaKey, isManagedMenuMediaKey, menuMediaListPrefix } from "@/lib/menu-media/keys";
+import {
+  assertStoredMenuObjectKey,
+  isManagedMenuMediaKey,
+  isStoredMenuObjectKey,
+  menuMediaListPrefix,
+} from "@/lib/menu-media/keys";
 import type { MenuMediaPutInput, MenuMediaStorage, StoredMenuMediaObject } from "@/lib/menu-media/types";
 
 export class S3MenuMediaStorage implements MenuMediaStorage {
@@ -29,20 +34,20 @@ export class S3MenuMediaStorage implements MenuMediaStorage {
   }
 
   async putObject(input: MenuMediaPutInput) {
-    const key = assertManagedMenuMediaKey(input.key);
+    const key = assertStoredMenuObjectKey(input.key);
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
         Key: key,
         Body: input.body,
         ContentType: input.contentType,
-        CacheControl: "public, max-age=31536000, immutable",
+        CacheControl: input.cacheControl ?? "public, max-age=31536000, immutable",
       }),
     );
   }
 
   async getObject(key: string): Promise<Buffer | null> {
-    if (!isManagedMenuMediaKey(key)) return null;
+    if (!isStoredMenuObjectKey(key)) return null;
     try {
       const result = await this.client.send(
         new GetObjectCommand({
@@ -61,7 +66,7 @@ export class S3MenuMediaStorage implements MenuMediaStorage {
   }
 
   async deleteObject(key: string) {
-    if (!isManagedMenuMediaKey(key)) return;
+    if (!isStoredMenuObjectKey(key)) return;
     await this.client.send(
       new DeleteObjectCommand({
         Bucket: this.bucket,

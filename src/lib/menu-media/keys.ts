@@ -1,5 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { MENU_MEDIA_KEY_PREFIX, MENU_MEDIA_KEY_RE } from "@/lib/menu-media/constants";
+import {
+  MENU_IMPORT_SOURCE_KEY_RE,
+  MENU_MEDIA_KEY_PREFIX,
+  MENU_MEDIA_KEY_RE,
+} from "@/lib/menu-media/constants";
 
 function sanitizeIdentity(value: string, fallback?: string) {
   const cleaned = String(value ?? "").replace(/[^a-zA-Z0-9_-]/g, "");
@@ -29,6 +33,24 @@ export function isManagedMenuMediaKey(key: string | null | undefined): key is st
 
 export function assertManagedMenuMediaKey(key: string) {
   if (!isManagedMenuMediaKey(key)) {
+    throw new Error("Invalid menu media storage key");
+  }
+  return key;
+}
+
+export function isManagedMenuImportSourceKey(key: string | null | undefined): key is string {
+  if (!key || typeof key !== "string") return false;
+  if (key.includes("\0") || key.includes("\\") || key.includes("..")) return false;
+  if (key.startsWith("/") || key.includes("//")) return false;
+  return MENU_IMPORT_SOURCE_KEY_RE.test(key);
+}
+
+export function isStoredMenuObjectKey(key: string | null | undefined): key is string {
+  return isManagedMenuMediaKey(key) || isManagedMenuImportSourceKey(key);
+}
+
+export function assertStoredMenuObjectKey(key: string) {
+  if (!isStoredMenuObjectKey(key)) {
     throw new Error("Invalid menu media storage key");
   }
   return key;

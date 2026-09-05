@@ -12,7 +12,7 @@ This document compares TableTap with leading restaurant software (Toast, TouchBi
 | M3 | Shipped | Production print reliability |
 | M4 | Shipped | Forensic audit |
 | M5 | Shipped | Platform command center |
-| **M6** | **This release** | **Menu Media & Food Image Upload** — one optional photo per menu item, validated/normalized WebP, local or S3-compatible storage, hostname-scoped customer delivery, M4 forensic events |
+| **M6** | **This release** | **Menu Media & Assisted Menu Onboarding** — food-image upload plus PDF/JPG existing-menu import, reviewable draft, explicit/idempotent Apply, tenant isolation, M4 forensic evidence. Extraction is advisory; the restaurant remains authoritative. |
 
 ---
 

@@ -14,6 +14,7 @@ import {
   Printer,
   Sparkles,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { Button, Card, Spinner, Badge, Input } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
@@ -499,6 +500,26 @@ export default function MenuManagePage() {
             </p>
           </Card>
         )}
+
+        <Card className="p-5 space-y-3 border border-amber-500/25 bg-amber-500/5">
+          <div className="flex items-start gap-3">
+            <Upload className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1">
+              <h2 className="font-semibold text-lg">Import Existing Menu</h2>
+              <p className="text-sm text-zinc-400">
+                Upload a PDF or menu photos. Review the extracted draft, then press Apply Import
+                before anything is added to your live menu.
+              </p>
+              <p className="text-xs text-zinc-500">PDF, JPG, JPEG, PNG or WebP</p>
+            </div>
+          </div>
+          <Link href="/admin/menu/import">
+            <Button type="button" variant="secondary">
+              <Upload className="w-4 h-4" />
+              Import Existing Menu
+            </Button>
+          </Link>
+        </Card>
 
         <Card className="p-5 space-y-4 border border-orange-500/20">
           <div className="flex items-start gap-3">

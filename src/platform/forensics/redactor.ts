@@ -40,6 +40,11 @@ const EXACT_DENY = new Set(
     "awssecretaccesskey",
     "menumedias3accesskeyid",
     "menumedias3secretaccesskey",
+    "menuimportapikey",
+    "openaiapikey",
+    "rawresponse",
+    "providerresponse",
+    "providerrequest",
   ].map((key) => key.toLowerCase()),
 );
 

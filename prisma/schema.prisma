@@ -259,6 +259,7 @@ model Restaurant {
   staffSessions          StaffSession[]
   hostSlugs              HostSlug[]
   bills                 Bill[]
+  menuImports            MenuImport[]
 
   @@unique([tenantId, nameNormalized])
 }
@@ -468,6 +469,33 @@ model MenuItem {
   modifierGroups  MenuItemModifierGroup[]
   comboMealItems  ComboMealItem[]
   recipeLines     RecipeLine[]
+}
+
+model MenuImport {
+  id                String     @id @default(cuid())
+  tenantId          String?
+  restaurantId      String
+  restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  status            String
+  sourceType        String
+  sourceFileCount   Int
+  pageCount         Int?
+  draftJson         String?
+  sourceMetaJson    String?
+  appliedResultJson String?
+  errorCode         String?
+  errorMessage      String?
+  createdByUserId   String
+  createdByName     String
+  processingAttempt Int        @default(0)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  processedAt       DateTime?
+  appliedAt         DateTime?
+  cancelledAt       DateTime?
+
+  @@index([restaurantId, createdAt])
+  @@index([status, updatedAt])
 }
 
 model Order {

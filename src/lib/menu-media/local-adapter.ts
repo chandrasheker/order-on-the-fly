@@ -1,13 +1,18 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { assertManagedMenuMediaKey, isManagedMenuMediaKey, menuMediaListPrefix } from "@/lib/menu-media/keys";
+import {
+  assertStoredMenuObjectKey,
+  isManagedMenuMediaKey,
+  isStoredMenuObjectKey,
+  menuMediaListPrefix,
+} from "@/lib/menu-media/keys";
 import type { MenuMediaPutInput, MenuMediaStorage, StoredMenuMediaObject } from "@/lib/menu-media/types";
 
 export class LocalMenuMediaStorage implements MenuMediaStorage {
   constructor(private readonly rootDir: string) {}
 
   private resolveKeyPath(key: string) {
-    const safeKey = assertManagedMenuMediaKey(key);
+    const safeKey = assertStoredMenuObjectKey(key);
     const root = path.resolve(this.rootDir);
     const resolved = path.resolve(root, safeKey);
     const prefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
@@ -36,7 +41,7 @@ export class LocalMenuMediaStorage implements MenuMediaStorage {
   }
 
   async deleteObject(key: string) {
-    if (!isManagedMenuMediaKey(key)) return;
+    if (!isStoredMenuObjectKey(key)) return;
     try {
       await fs.unlink(this.resolveKeyPath(key));
     } catch (error) {
