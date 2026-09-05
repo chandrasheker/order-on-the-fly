@@ -1,6 +1,6 @@
 import path from "node:path";
+import { createRequire } from "node:module";
 import { PDFDocument } from "pdf-lib";
-import { createCanvas } from "@napi-rs/canvas";
 import {
   MENU_IMPORT_PDF_MAX_RENDER_EDGE,
   MENU_IMPORT_PDF_MIN_TEXT_CHARS,
@@ -94,9 +94,25 @@ async function loadPdfjs(): Promise<PdfjsModule> {
   return mod;
 }
 
+type NativeCanvas = {
+  createCanvas: (width: number, height: number) => {
+    getContext: (id: "2d") => unknown;
+    width: number;
+    height: number;
+    toBuffer: (mime: "image/jpeg" | "image/png", quality?: number) => Buffer;
+  };
+};
+
+function loadNativeCanvas(): NativeCanvas {
+  const req = createRequire(path.join(process.cwd(), "package.json"));
+  return req("@napi-rs/" + "canvas") as NativeCanvas;
+}
+
 class NodeCanvasFactory {
+  private readonly createCanvas = loadNativeCanvas().createCanvas;
+
   create(width: number, height: number) {
-    const canvas = createCanvas(Math.max(1, Math.ceil(width)), Math.max(1, Math.ceil(height)));
+    const canvas = this.createCanvas(Math.max(1, Math.ceil(width)), Math.max(1, Math.ceil(height)));
     return { canvas, context: canvas.getContext("2d") };
   }
   reset(canvasAndContext: { canvas: { width: number; height: number } }, width: number, height: number) {
@@ -143,7 +159,6 @@ export async function inspectPdf(bytes: Buffer): Promise<InspectedPdf> {
       disableAutoFetch: true,
       disableStream: true,
       verbosity: 0,
-      canvasFactory: new NodeCanvasFactory(),
     }).promise;
     if (pdf.isEncrypted) {
       return { pageCount: pdf.numPages, encrypted: true, pages: [] };

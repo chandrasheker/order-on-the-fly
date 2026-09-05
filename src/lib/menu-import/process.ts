@@ -7,7 +7,6 @@ import { userFacingImportError } from "@/lib/menu-import/errors";
 import { getMenuImportExtractor } from "@/lib/menu-import/extractor";
 import { serializeDraft } from "@/lib/menu-import/draft";
 import { importAuditMetadata } from "@/lib/menu-import/public";
-import { renderPdfPage } from "@/lib/menu-import/pdf";
 import type { MenuImportExtractPage, MenuImportSourceMeta } from "@/lib/menu-import/types";
 import { getMenuMediaStorage } from "@/lib/menu-media/storage";
 import { isManagedMenuImportSourceKey } from "@/lib/menu-media/keys";
@@ -76,6 +75,7 @@ async function buildExtractPages(row: {
         pages.push({ pageNumber: page.pageNumber, kind: "text", text: page.text });
         continue;
       }
+      const { renderPdfPage } = await import("@/lib/menu-import/pdf");
       const image = await renderPdfPage(bytes, page.pageNumber);
       pages.push({
         pageNumber: page.pageNumber,
