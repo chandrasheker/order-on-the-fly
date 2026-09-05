@@ -45,16 +45,6 @@ async function deleteSourceKeys(keys: string[]) {
   }
 }
 
-function sourceKeysFromMeta(json: string | null | undefined) {
-  if (!json) return [];
-  try {
-    const meta = JSON.parse(json) as MenuImportSourceMeta;
-    return (meta.files ?? []).map((file) => file.key).filter(isManagedMenuImportSourceKey);
-  } catch {
-    return [];
-  }
-}
-
 export async function createMenuImportFromUpload(params: {
   session: SessionUser;
   files: IncomingImportFile[];

@@ -80,6 +80,12 @@ export default function MenuImportReviewPage() {
   const [busy, setBusy] = useState("");
   const [saveState, setSaveState] = useState("");
 
+  const applyRecord = useCallback((next: ImportRecord | null) => {
+    if (!next) return;
+    setRecord(next);
+    if (next.draft) setDraft(next.draft);
+  }, []);
+
   const load = useCallback(async () => {
     const res = await fetch(`/api/menu/imports/${importId}`);
     if (res.status === 401) {
@@ -91,14 +97,30 @@ export default function MenuImportReviewPage() {
       return null;
     }
     const json = await res.json();
-    setRecord(json.import);
-    if (json.import?.draft) setDraft(json.import.draft);
+    applyRecord(json.import);
     return json.import as ImportRecord;
-  }, [importId, router]);
+  }, [applyRecord, importId, router]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch(`/api/menu/imports/${importId}`);
+      if (cancelled) return;
+      if (res.status === 401) {
+        router.push("/staff");
+        return;
+      }
+      if (res.status === 404) {
+        setError("Not found");
+        return;
+      }
+      const json = await res.json();
+      if (!cancelled) applyRecord(json.import);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyRecord, importId, router]);
 
   useEffect(() => {
     if (!record || (record.status !== "UPLOADED" && record.status !== "PROCESSING")) return;
