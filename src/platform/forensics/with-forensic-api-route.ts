@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   AUDIT_ACTION,
+  AUDIT_ACTOR_TYPE,
   AUDIT_CATEGORY,
   AUDIT_EVENT_KIND,
   AUDIT_SEVERITY,
@@ -18,6 +19,19 @@ import { logApiError } from "@/lib/logger";
 import { sanitizeErrorText } from "@/platform/forensics/redactor";
 
 type AppRouteContext = { params: Promise<Record<string, string | string[] | undefined>> };
+
+function caughtErrorFields(error: unknown) {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? (error as { code?: unknown }).code
+      : undefined;
+  return {
+    error,
+    errorType: error instanceof Error ? error.name : "Error",
+    errorCode: typeof code === "string" || typeof code === "number" ? String(code) : undefined,
+    errorMessage: sanitizeErrorText(error),
+  };
+}
 
 export type ForensicRouteOptions = {
   suppressRequestEvent?: boolean;
@@ -48,6 +62,7 @@ export function withForensicApiRoute<C extends { params: Promise<unknown> } = Ap
         userAgent: forensicUserAgent(request.headers),
         source: options?.source ?? AUDIT_SOURCE.API,
         suppressRequestEvent: options?.suppressRequestEvent,
+        actor: { type: AUDIT_ACTOR_TYPE.ANONYMOUS },
       },
       async () => {
         try {
@@ -55,6 +70,20 @@ export function withForensicApiRoute<C extends { params: Promise<unknown> } = Ap
           const durationMs = Date.now() - startedAt;
           response.headers.set("X-Request-ID", requestId);
           const ctx = getForensicContext();
+          if (response.status >= 500 && ctx?.caughtError != null) {
+            await tryAppendPlatformAuditEvent({
+              eventKind: AUDIT_EVENT_KIND.ERROR,
+              severity: AUDIT_SEVERITY.ERROR,
+              category: AUDIT_CATEGORY.SYSTEM,
+              action: AUDIT_ACTION.REQUEST_FAILED,
+              outcome: "FAILED",
+              httpStatus: response.status,
+              durationMs,
+              httpMethod: request.method,
+              route: routeTemplate,
+              ...caughtErrorFields(ctx.caughtError),
+            });
+          }
           if (!options?.suppressRequestEvent && !ctx?.suppressRequestEvent) {
             await tryAppendPlatformAuditEvent({
               eventKind: AUDIT_EVENT_KIND.REQUEST,
@@ -82,9 +111,7 @@ export function withForensicApiRoute<C extends { params: Promise<unknown> } = Ap
             durationMs,
             httpMethod: request.method,
             route: routeTemplate,
-            error,
-            errorType: error instanceof Error ? error.name : "Error",
-            errorMessage: sanitizeErrorText(error),
+            ...caughtErrorFields(error),
           });
           const response = NextResponse.json({ error: "Internal server error" }, { status: 500 });
           response.headers.set("X-Request-ID", requestId);

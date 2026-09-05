@@ -46,6 +46,12 @@ let processPaymentWebhook: typeof import("@/lib/payment-webhook-service").proces
 let invalidateFeatureCache: typeof import("@/lib/feature-flags").invalidateFeatureCache;
 let createOrReuseRazorpayCheckout: typeof import("@/lib/gateway-payment-service").createOrReuseRazorpayCheckout;
 let verifyRazorpayCheckoutCallback: typeof import("@/lib/gateway-payment-service").verifyRazorpayCheckoutCallback;
+let refundAutomaticPayment: typeof import("@/lib/gateway-payment-service").refundAutomaticPayment;
+let logApiError: typeof import("@/lib/logger").logApiError;
+let createDiningToken: typeof import("@/lib/dining-access").createDiningToken;
+let DINING_COOKIE: typeof import("@/lib/dining-access").DINING_COOKIE;
+let joinTableSession: typeof import("@/lib/table-session-service").joinTableSession;
+let ordersPost: typeof import("@/app/api/orders/route").POST;
 let setRazorpayTransportForTests: typeof import("@/lib/razorpay-client").setRazorpayTransportForTests;
 let enqueueKitchenChitForOrder: typeof import("@/domains/printing/print-job-service").enqueueKitchenChitForOrder;
 let claimNextPrintJob: typeof import("@/domains/printing/print-job-service").claimNextPrintJob;
@@ -168,9 +174,13 @@ END;
   ));
   ({ updatePaymentGatewaySettings, processPaymentWebhook } = await import("@/lib/payment-webhook-service"));
   ({ invalidateFeatureCache } = await import("@/lib/feature-flags"));
-  ({ createOrReuseRazorpayCheckout, verifyRazorpayCheckoutCallback } = await import(
+  ({ createOrReuseRazorpayCheckout, verifyRazorpayCheckoutCallback, refundAutomaticPayment } = await import(
     "@/lib/gateway-payment-service"
   ));
+  ({ logApiError } = await import("@/lib/logger"));
+  ({ createDiningToken, DINING_COOKIE } = await import("@/lib/dining-access"));
+  ({ joinTableSession } = await import("@/lib/table-session-service"));
+  ({ POST: ordersPost } = await import("@/app/api/orders/route"));
   ({ setRazorpayTransportForTests } = await import("@/lib/razorpay-client"));
   ({
     enqueueKitchenChitForOrder,
@@ -707,6 +717,9 @@ describe("M4 forensic audit", () => {
       where: { action: "CASH_PAYMENT_CAPTURED", restaurantId: restaurant.id },
     });
     assert.ok(cashEvent);
+    assert.equal(cashEvent.beforeJson, null);
+    const cashAfter = JSON.parse(cashEvent.afterJson ?? "{}") as { status?: string };
+    assert.equal(cashAfter.status, "CAPTURED");
     const refundRequested = await prisma.platformAuditEvent.findFirst({
       where: { action: "REFUND_REQUESTED", restaurantId: restaurant.id },
     });
@@ -719,6 +732,16 @@ describe("M4 forensic audit", () => {
       where: { action: "MANUAL_UPI_VERIFIED", restaurantId: restaurant.id },
     });
     assert.ok(upiVerified);
+    const upiPayment = await prisma.payment.findFirst({
+      where: { restaurantId: restaurant.id, method: "MANUAL_UPI", status: "CAPTURED" },
+    });
+    assert.ok(upiPayment);
+    const upiCaptured = await prisma.platformAuditEvent.findFirst({
+      where: { action: "PAYMENT_CAPTURED", resourceId: upiPayment.id },
+    });
+    assert.ok(upiCaptured);
+    assert.equal(JSON.parse(upiCaptured.beforeJson ?? "{}").status, "PENDING");
+    assert.equal(JSON.parse(upiCaptured.afterJson ?? "{}").status, "CAPTURED");
     const captured = await eventsWhere({ action: "PAYMENT_CAPTURED", restaurantId: restaurant.id });
     assert.ok(captured.length >= 1);
     const replayedCapture = await eventsWhere({ action: "PAYMENT_CAPTURE_REPLAYED", restaurantId: restaurant.id });
@@ -1101,5 +1124,308 @@ describe("M4 forensic audit", () => {
     });
     assert.ok(Array.isArray(byRequest.events));
     setNodeEnv(previous);
+  });
+
+  it("records a truthful Razorpay checkout lifecycle without inventing reuse or recovery events", async () => {
+    const suffix = `rzlife-${Date.now()}`;
+    const { restaurant, table, menuItem } = await seedRestaurant(suffix, { razorpay: true });
+    const order = await seedServedOrder({
+      restaurantId: restaurant.id,
+      tableId: table.id,
+      menuItemId: menuItem.id,
+      orderNumber: 1,
+      unitPrice: 190,
+    });
+    const ctx = forensicCtx({ tenant: { restaurantId: restaurant.id } });
+    let publicToken = "";
+    let providerOrderId = "";
+    await runWithForensicContext(ctx, async () => {
+      const first = await createOrReuseRazorpayCheckout({
+        restaurantId: restaurant.id,
+        orderId: order.id,
+        tableId: table.id,
+      });
+      assert.equal(first.ok, true);
+      if (!first.ok) return;
+      publicToken = first.checkout.publicToken;
+      providerOrderId = first.checkout.orderId ?? "";
+      const second = await createOrReuseRazorpayCheckout({
+        restaurantId: restaurant.id,
+        orderId: order.id,
+        tableId: table.id,
+      });
+      assert.equal(second.ok, true);
+      if (second.ok) assert.equal(second.reused, true);
+    });
+    const createdAttempts = await eventsWhere({
+      action: "GATEWAY_ATTEMPT_CREATED",
+      restaurantId: restaurant.id,
+    });
+    const createdOrders = await eventsWhere({
+      action: "RAZORPAY_ORDER_CREATED",
+      restaurantId: restaurant.id,
+    });
+    const recoveredOrders = await eventsWhere({
+      action: "RAZORPAY_ORDER_RECOVERED",
+      restaurantId: restaurant.id,
+    });
+    assert.equal(createdAttempts.length, 1);
+    assert.equal(createdOrders.length, 1);
+    assert.equal(recoveredOrders.length, 0);
+    const createdMeta = JSON.parse(createdAttempts[0].metadataJson ?? "{}") as Record<string, unknown>;
+    assert.equal(createdMeta.provider, "razorpay");
+    assert.equal(createdMeta.status, "CREATING");
+    assert.equal(createdMeta.amountPaise, 19000);
+    assert.equal(createdAttempts[0].correlationId, createdAttempts[0].resourceId);
+    const blob = JSON.stringify(createdAttempts.concat(createdOrders));
+    assert.ok(!blob.includes(publicToken));
+    assert.ok(!/providerReceipt|keySecret|authorization|sessionKey/i.test(blob));
+
+    const paymentId = `pay_life_${suffix}`;
+    fake.addPayment({
+      id: paymentId,
+      order_id: providerOrderId,
+      amount: 19000,
+      currency: "INR",
+      status: "captured",
+    });
+    await runWithForensicContext(ctx, async () => {
+      const verified = await verifyRazorpayCheckoutCallback({
+        publicToken,
+        restaurantId: restaurant.id,
+        razorpayPaymentId: paymentId,
+        razorpaySignature: checkoutSignature(providerOrderId, paymentId),
+      });
+      assert.equal(verified.ok, true);
+    });
+    const callbackVerified = await eventsWhere({
+      action: "RAZORPAY_CALLBACK_VERIFIED",
+      restaurantId: restaurant.id,
+    });
+    assert.equal(callbackVerified.length, 1);
+    const attempt = await prisma.gatewayPaymentAttempt.findFirst({
+      where: { restaurantId: restaurant.id },
+    });
+    assert.ok(attempt?.verifiedAt);
+    assert.ok(attempt.status === "AUTHORIZED" || attempt.status === "CAPTURED");
+    assert.equal(callbackVerified[0].resourceId, attempt.id);
+    assert.equal(callbackVerified[0].correlationId, attempt.id);
+  });
+
+  it("records refund request before provider result and labels refund retry as REFUND_REPLAYED", async () => {
+    const suffix = `rfreplay-${Date.now()}`;
+    const { restaurant, table, menuItem } = await seedRestaurant(suffix, { razorpay: true });
+    const order = await seedServedOrder({
+      restaurantId: restaurant.id,
+      tableId: table.id,
+      menuItemId: menuItem.id,
+      orderNumber: 1,
+      unitPrice: 160,
+    });
+    const ctx = forensicCtx({ tenant: { restaurantId: restaurant.id } });
+    const requestId = `refundreq_${suffix}`.slice(0, 64);
+    await runWithForensicContext(ctx, async () => {
+      const created = await createOrReuseRazorpayCheckout({
+        restaurantId: restaurant.id,
+        orderId: order.id,
+        tableId: table.id,
+      });
+      assert.equal(created.ok, true);
+      if (!created.ok) return;
+      const paymentId = `pay_rf_${suffix}`;
+      fake.addPayment({
+        id: paymentId,
+        order_id: created.checkout.orderId!,
+        amount: created.checkout.amountPaise,
+        currency: "INR",
+        status: "captured",
+      });
+      const verified = await verifyRazorpayCheckoutCallback({
+        publicToken: created.checkout.publicToken,
+        restaurantId: restaurant.id,
+        razorpayPaymentId: paymentId,
+        razorpaySignature: checkoutSignature(created.checkout.orderId!, paymentId),
+      });
+      assert.equal(verified.ok, true);
+      if (!verified.ok || !verified.payment) throw new Error("capture failed");
+      const first = await refundAutomaticPayment({
+        paymentId: verified.payment.id,
+        restaurantId: restaurant.id,
+        requestId,
+        actorName: "Alice",
+      });
+      assert.equal(first.ok, true);
+      const retry = await refundAutomaticPayment({
+        paymentId: verified.payment.id,
+        restaurantId: restaurant.id,
+        requestId,
+        actorName: "Alice",
+      });
+      assert.equal(retry.ok, true);
+    });
+    const requested = await eventsWhere({ action: "REFUND_REQUESTED", restaurantId: restaurant.id });
+    const completed = await eventsWhere({ action: "REFUND_COMPLETED", restaurantId: restaurant.id });
+    const replayed = await eventsWhere({ action: "REFUND_REPLAYED", restaurantId: restaurant.id });
+    const captureReplay = await eventsWhere({
+      action: "PAYMENT_CAPTURE_REPLAYED",
+      restaurantId: restaurant.id,
+    });
+    assert.equal(requested.length, 1);
+    assert.ok(completed.length >= 1);
+    assert.equal(replayed.length, 1);
+    assert.equal(captureReplay.length, 0);
+    assert.ok(requested[0].occurredAt.getTime() <= completed[0].occurredAt.getTime());
+    const meta = JSON.parse(requested[0].metadataJson ?? "{}") as {
+      paymentId?: string;
+      gatewayRefundAttemptId?: string;
+      amountPaise?: number;
+    };
+    assert.ok(meta.paymentId);
+    assert.ok(meta.gatewayRefundAttemptId);
+    assert.equal(meta.amountPaise, 16000);
+    assert.equal(requested[0].actorType, "STAFF");
+    assert.equal(requested[0].requestId, ctx.requestId);
+  });
+
+  it("defaults wrapped public requests to ANONYMOUS and dine-in mutations to CUSTOMER", async () => {
+    const suffix = `actor-${Date.now()}`;
+    const { restaurant, table, menuItem } = await seedRestaurant(suffix);
+    await prisma.table.update({
+      where: { id: table.id },
+      data: { orderingEnabled: true },
+    });
+    const sessionKey = `sess-${suffix}-secret`;
+    await joinTableSession(table.id, sessionKey, 4);
+    const diningJwt = await createDiningToken({
+      tableId: table.id,
+      tableToken: table.qrToken,
+      sessionKey,
+      restaurantId: restaurant.id,
+      restaurantSlug: restaurant.slug,
+    });
+
+    const publicHandler = withForensicApiRoute(async () => NextResponse.json({ ok: true }));
+    const publicRes = await publicHandler(
+      new NextRequest(`http://${restaurant.slug}.dvadtech.in/api/menu`, {
+        headers: { host: `${restaurant.slug}.dvadtech.in` },
+      }),
+      emptyRouteContext,
+    );
+    const publicRequestId = publicRes.headers.get("x-request-id");
+    const publicEvent = await prisma.platformAuditEvent.findFirst({
+      where: { requestId: publicRequestId, action: "API_REQUEST" },
+    });
+    assert.equal(publicEvent?.actorType, "ANONYMOUS");
+
+    const staffHandler = withForensicApiRoute(async () => {
+      setForensicActor({ type: "STAFF", id: "staff-win", name: "Pat", role: "SERVER" });
+      setForensicActor({ type: "ANONYMOUS" });
+      return NextResponse.json({ ok: true });
+    });
+    const staffRes = await staffHandler(
+      new NextRequest("http://abc.dvadtech.in/api/orders/clstaff"),
+      emptyRouteContext,
+    );
+    const staffEvent = await prisma.platformAuditEvent.findFirst({
+      where: { requestId: staffRes.headers.get("x-request-id") ?? "", action: "API_REQUEST" },
+    });
+    assert.equal(staffEvent?.actorType, "STAFF");
+    assert.equal(staffEvent?.actorId, "staff-win");
+
+    const providerHandler = withForensicApiRoute(async () => {
+      setForensicActor({ type: "PAYMENT_PROVIDER", id: "razorpay", name: "razorpay" });
+      return NextResponse.json({ ok: true });
+    });
+    const providerRes = await providerHandler(
+      new NextRequest("http://abc.dvadtech.in/api/webhooks/payments/razorpay"),
+      emptyRouteContext,
+    );
+    const providerEvent = await prisma.platformAuditEvent.findFirst({
+      where: { requestId: providerRes.headers.get("x-request-id") ?? "", action: "API_REQUEST" },
+    });
+    assert.equal(providerEvent?.actorType, "PAYMENT_PROVIDER");
+
+    const agent = await createPrinterAgent({ restaurantId: restaurant.id, name: "Pi" });
+    assert.equal(agent.ok, true);
+    if (!agent.ok) return;
+    const printerHandler = withForensicApiRoute(async (req) => {
+      await authenticatePrinterAgent(req.headers.get("authorization"));
+      return NextResponse.json({ ok: true });
+    });
+    const printerReq = new NextRequest("http://abc.dvadtech.in/api/printer-agent/jobs", {
+      headers: { authorization: `Bearer ${agent.token}` },
+    });
+    const printerRes = await printerHandler(printerReq, emptyRouteContext);
+    const printerEvent = await prisma.platformAuditEvent.findFirst({
+      where: { requestId: printerRes.headers.get("x-request-id") ?? "", action: "API_REQUEST" },
+    });
+    assert.equal(printerEvent?.actorType, "PRINTER_AGENT");
+    assert.equal(printerEvent?.actorId, agent.agent.id);
+
+    const orderReq = new NextRequest(`http://${restaurant.slug}.dvadtech.in/api/orders`, {
+      method: "POST",
+      headers: {
+        host: `${restaurant.slug}.dvadtech.in`,
+        "content-type": "application/json",
+        cookie: `${DINING_COOKIE}=${diningJwt}`,
+      },
+    });
+    orderReq.json = async () => ({
+      tableToken: table.qrToken,
+      sessionKey,
+      customerName: "Guest",
+      items: [{ menuItemId: menuItem.id, quantity: 1 }],
+    });
+    const orderRes = await ordersPost(orderReq, emptyRouteContext);
+    assert.equal(orderRes.status, 201);
+    const created = await prisma.platformAuditEvent.findFirst({
+      where: { action: "ORDER_CREATED", restaurantId: restaurant.id },
+    });
+    assert.ok(created);
+    assert.equal(created.actorType, "CUSTOMER");
+    assert.equal(created.actorId, null);
+    const orderRows = await prisma.$queryRawUnsafe<Array<Record<string, string | null>>>(
+      `SELECT * FROM PlatformAuditEvent WHERE restaurantId = ?`,
+      restaurant.id,
+    );
+    const blob = JSON.stringify(orderRows);
+    assert.ok(!blob.includes(sessionKey));
+    assert.ok(!blob.includes(diningJwt));
+    assert.ok(!blob.includes(table.qrToken));
+  });
+
+  it("records exactly one REQUEST_FAILED when a handler catches logApiError and returns 500", async () => {
+    const handler = withForensicApiRoute(async () => {
+      try {
+        throw Object.assign(new Error("caught boom token=abc.def"), { code: "DB_DOWN" });
+      } catch (error) {
+        logApiError("/api/orders/[id]", "POST", error);
+        return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
+      }
+    });
+    const req = new NextRequest("http://abc.dvadtech.in/api/orders/clcaught", {
+      method: "POST",
+      headers: { host: "abc.dvadtech.in" },
+    });
+    const res = await handler(req, emptyRouteContext);
+    assert.equal(res.status, 500);
+    const requestId = res.headers.get("x-request-id");
+    assert.ok(requestId);
+    const failed = await eventsWhere({ requestId, action: "REQUEST_FAILED" });
+    const requests = await eventsWhere({ requestId, action: "API_REQUEST" });
+    assert.equal(failed.length, 1);
+    assert.equal(requests.length, 1);
+    assert.equal(failed[0].eventKind, "ERROR");
+    assert.equal(failed[0].category, "SYSTEM");
+    assert.equal(failed[0].outcome, "FAILED");
+    assert.equal(failed[0].httpStatus, 500);
+    assert.ok(failed[0].errorFingerprint);
+    assert.ok(failed[0].errorType);
+    assert.equal(failed[0].errorCode, "DB_DOWN");
+    assert.equal(failed[0].requestId, requests[0].requestId);
+    const blob = JSON.stringify(failed[0]);
+    assert.ok(!blob.includes("\\n    at "));
+    assert.ok(!blob.includes("token=abc.def"));
+    assert.ok(!Object.keys(failed[0] as object).includes("stack"));
   });
 });

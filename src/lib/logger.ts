@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { forensicContextIds } from "@/platform/forensics/request-context";
+import { forensicContextIds, recordForensicCaughtError } from "@/platform/forensics/request-context";
 import { redactSecrets, sanitizeErrorText } from "@/platform/forensics/redactor";
 import { FORENSIC_LIMITS } from "@/platform/forensics/constants";
 
@@ -121,6 +121,7 @@ export function logApiError(
   error: unknown,
   meta?: Record<string, unknown>
 ) {
+  recordForensicCaughtError(error);
   const err = error instanceof Error ? error : new Error(String(error));
   logError(`api:${route}`, `${method} failed: ${err.message}`, {
     ...meta,

@@ -585,7 +585,6 @@ export async function recordOrderPayment(params: {
           resourceType: "Payment",
           resourceId: payment.id,
           correlationId: payment.id,
-          before: { status: PAYMENT_STATUS.PENDING },
           after: auditPaymentSnapshot(payment),
         });
       } else if (method === "MANUAL_UPI") {
@@ -1117,6 +1116,7 @@ export async function refundCapturedPayment(params: {
   idempotencyKey?: string;
   provider?: string;
   providerPaymentId?: string;
+  skipRefundRequested?: boolean;
 }) {
   try {
     const result = await runWithUniqueConstraintRetry(() =>
@@ -1142,7 +1142,7 @@ export async function refundCapturedPayment(params: {
           if (existing?.refundOfPaymentId === original.id) {
             await appendPlatformAuditEventInTx(tx, {
               category: AUDIT_CATEGORY.MONEY,
-              action: AUDIT_ACTION.PAYMENT_CAPTURE_REPLAYED,
+              action: AUDIT_ACTION.REFUND_REPLAYED,
               restaurantId: params.restaurantId,
               resourceType: "Payment",
               resourceId: existing.id,
@@ -1197,33 +1197,35 @@ export async function refundCapturedPayment(params: {
           });
         }
 
-        await appendPlatformAuditEventInTx(tx, {
-          category: AUDIT_CATEGORY.MONEY,
-          action: AUDIT_ACTION.REFUND_REQUESTED,
-          restaurantId: original.restaurantId,
-          tenantId: original.tenantId,
-          resourceType: "Payment",
-          resourceId: refund.id,
-          correlationId: original.id,
-          before: {
-            capturedPaise: Math.round(Number(original.amount) * 100),
-            refundedPaise: alreadyRefundedPaise,
-          },
-          after: {
-            capturedPaise: Math.round(Number(original.amount) * 100),
-            refundedPaise: alreadyRefundedPaise + refundPaise,
-          },
-          metadata: {
-            paymentId: original.id,
-            refundId: refund.id,
-            amountPaise: refundPaise,
-            currency: "INR",
-            provider: refund.provider,
-            providerPaymentId: refund.providerPaymentId,
-            billId: original.billId,
-            orderId: original.orderId,
-          },
-        });
+        if (!params.skipRefundRequested) {
+          await appendPlatformAuditEventInTx(tx, {
+            category: AUDIT_CATEGORY.MONEY,
+            action: AUDIT_ACTION.REFUND_REQUESTED,
+            restaurantId: original.restaurantId,
+            tenantId: original.tenantId,
+            resourceType: "Payment",
+            resourceId: refund.id,
+            correlationId: original.id,
+            before: {
+              capturedPaise: Math.round(Number(original.amount) * 100),
+              refundedPaise: alreadyRefundedPaise,
+            },
+            after: {
+              capturedPaise: Math.round(Number(original.amount) * 100),
+              refundedPaise: alreadyRefundedPaise + refundPaise,
+            },
+            metadata: {
+              paymentId: original.id,
+              refundId: refund.id,
+              amountPaise: refundPaise,
+              currency: "INR",
+              provider: refund.provider,
+              providerPaymentId: refund.providerPaymentId,
+              billId: original.billId,
+              orderId: original.orderId,
+            },
+          });
+        }
         await appendPlatformAuditEventInTx(tx, {
           category: AUDIT_CATEGORY.MONEY,
           action: AUDIT_ACTION.REFUND_COMPLETED,

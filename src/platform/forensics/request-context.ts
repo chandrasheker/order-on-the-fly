@@ -1,6 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import type { AuditActorType } from "@/platform/forensics/constants";
+import { AUDIT_ACTOR_TYPE, type AuditActorType } from "@/platform/forensics/constants";
+
+function actorRank(type: AuditActorType | undefined): number {
+  if (!type || type === AUDIT_ACTOR_TYPE.ANONYMOUS) return 0;
+  if (type === AUDIT_ACTOR_TYPE.CUSTOMER) return 1;
+  return 2;
+}
 
 export type ForensicActor = {
   type: AuditActorType;
@@ -40,6 +46,8 @@ export type ForensicRequestContext = {
   source?: string | null;
   suppressRequestEvent?: boolean;
   securityDenied?: boolean;
+  /** Transient in-memory error from logApiError; never persisted or serialized here. */
+  caughtError?: unknown;
 };
 
 const storage = new AsyncLocalStorage<ForensicRequestContext>();
@@ -68,7 +76,18 @@ export function mergeForensicContext(patch: Partial<ForensicRequestContext>) {
 export function setForensicActor(actor: ForensicActor | null | undefined) {
   const current = storage.getStore();
   if (!current || !actor) return;
+  const currentType = current.actor?.type;
+  if (actorRank(actor.type) < actorRank(currentType)) {
+    current.actor = { ...current.actor, ...actor, type: currentType };
+    return;
+  }
   current.actor = { ...current.actor, ...actor };
+}
+
+export function recordForensicCaughtError(error: unknown) {
+  const current = storage.getStore();
+  if (!current) return;
+  current.caughtError = error;
 }
 
 export function setForensicTenant(tenant: ForensicTenant | null | undefined) {

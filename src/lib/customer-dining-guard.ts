@@ -10,6 +10,8 @@ import {
 import { joinTableSession, validateTableSession } from "@/lib/table-session-service";
 import { hasOpenTableWork } from "@/lib/table-ordering-service";
 import { loadTableByQrForRequest } from "@/platform/tenant-scope";
+import { AUDIT_ACTOR_TYPE } from "@/platform/forensics/constants";
+import { setForensicActor, setForensicTenant } from "@/platform/forensics/request-context";
 
 export async function assertCustomerDiningAccess(
   req: import("next/server").NextRequest,
@@ -65,6 +67,11 @@ export async function assertCustomerDiningAccess(
     };
   }
 
+  setForensicActor({ type: AUDIT_ACTOR_TYPE.CUSTOMER });
+  setForensicTenant({
+    restaurantId: table.restaurantId,
+    tenantId: table.tenantId ?? table.restaurant?.tenantId ?? null,
+  });
   return { ok: true as const, table };
 }
 
