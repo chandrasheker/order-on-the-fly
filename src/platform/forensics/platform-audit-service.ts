@@ -215,6 +215,11 @@ export async function recordSemanticAudit(
   return tryAppendPlatformAuditEvent(input);
 }
 
+export type ForensicScope =
+  | { kind: "platform" }
+  | { kind: "tenant"; tenantId: string; restaurantIds: string[] }
+  | { kind: "restaurant"; restaurantId: string };
+
 export type PlatformAuditQuery = {
   from?: Date;
   to?: Date;
@@ -237,10 +242,83 @@ export type PlatformAuditQuery = {
   requestId?: string;
   correlationId?: string;
   errorCode?: string;
+  errorFingerprint?: string;
   q?: string;
   cursor?: string | null;
   limit?: number;
+  scope?: ForensicScope;
+  extraWhere?: Prisma.PlatformAuditEventWhereInput;
 };
+
+export function forensicScopeWhere(scope: ForensicScope): Prisma.PlatformAuditEventWhereInput {
+  if (scope.kind === "platform") {
+    return { AND: [{ tenantId: null }, { restaurantId: null }] };
+  }
+  if (scope.kind === "tenant") {
+    const clauses: Prisma.PlatformAuditEventWhereInput[] = [{ tenantId: scope.tenantId }];
+    if (scope.restaurantIds.length > 0) {
+      clauses.push({ AND: [{ tenantId: null }, { restaurantId: { in: scope.restaurantIds } }] });
+    }
+    return { OR: clauses };
+  }
+  return { restaurantId: scope.restaurantId };
+}
+
+export function buildPlatformAuditWhere(query: PlatformAuditQuery): Prisma.PlatformAuditEventWhereInput {
+  const where: Prisma.PlatformAuditEventWhereInput = {};
+  const and: Prisma.PlatformAuditEventWhereInput[] = [];
+
+  if (query.from || query.to) {
+    where.occurredAt = {
+      ...(query.from ? { gte: query.from } : {}),
+      ...(query.to ? { lte: query.to } : {}),
+    };
+  }
+  if (query.eventKind) where.eventKind = query.eventKind;
+  if (query.severity) where.severity = query.severity;
+  if (query.category) where.category = query.category;
+  if (query.action) where.action = query.action;
+  if (query.outcome) where.outcome = query.outcome;
+  if (query.actorType) where.actorType = query.actorType;
+  if (query.actorId) where.actorId = query.actorId;
+  if (query.actorRole) where.actorRole = query.actorRole;
+  if (query.actorName) where.actorName = query.actorName;
+  if (query.clientIp) where.clientIp = query.clientIp;
+  if (query.hostname) where.hostname = query.hostname;
+  if (query.scope) {
+    and.push(forensicScopeWhere(query.scope));
+  } else {
+    if (query.tenantId) where.tenantId = query.tenantId;
+    if (query.restaurantId) where.restaurantId = query.restaurantId;
+  }
+  if (query.branchId) where.branchId = query.branchId;
+  if (query.resourceType) where.resourceType = query.resourceType;
+  if (query.resourceId) where.resourceId = query.resourceId;
+  if (query.requestId) where.requestId = query.requestId;
+  if (query.correlationId) where.correlationId = query.correlationId;
+  if (query.errorCode) where.errorCode = query.errorCode;
+  if (query.errorFingerprint) where.errorFingerprint = query.errorFingerprint;
+  if (query.q) {
+    const q = query.q.trim();
+    if (q) {
+      and.push({
+        OR: [
+          { action: q },
+          { requestId: q },
+          { correlationId: q },
+          { resourceId: q },
+          { actorId: q },
+          { clientIp: q },
+          { errorCode: q },
+          { errorFingerprint: q },
+        ],
+      });
+    }
+  }
+  if (query.extraWhere) and.push(query.extraWhere);
+  if (and.length) where.AND = and;
+  return where;
+}
 
 function decodeCursor(cursor?: string | null) {
   if (!cursor) return null;
@@ -265,50 +343,12 @@ function encodeCursor(row: { occurredAt: Date; id: string }) {
 export async function queryPlatformAuditEvents(query: PlatformAuditQuery) {
   const take = Math.min(Math.max(query.limit ?? 50, 1), 100);
   const cursor = decodeCursor(query.cursor);
-  const where: Record<string, unknown> = {};
-
-  if (query.from || query.to) {
-    where.occurredAt = {
-      ...(query.from ? { gte: query.from } : {}),
-      ...(query.to ? { lte: query.to } : {}),
-    };
-  }
-  if (query.eventKind) where.eventKind = query.eventKind;
-  if (query.severity) where.severity = query.severity;
-  if (query.category) where.category = query.category;
-  if (query.action) where.action = query.action;
-  if (query.outcome) where.outcome = query.outcome;
-  if (query.actorType) where.actorType = query.actorType;
-  if (query.actorId) where.actorId = query.actorId;
-  if (query.actorRole) where.actorRole = query.actorRole;
-  if (query.actorName) where.actorName = query.actorName;
-  if (query.clientIp) where.clientIp = query.clientIp;
-  if (query.hostname) where.hostname = query.hostname;
-  if (query.tenantId) where.tenantId = query.tenantId;
-  if (query.restaurantId) where.restaurantId = query.restaurantId;
-  if (query.branchId) where.branchId = query.branchId;
-  if (query.resourceType) where.resourceType = query.resourceType;
-  if (query.resourceId) where.resourceId = query.resourceId;
-  if (query.requestId) where.requestId = query.requestId;
-  if (query.correlationId) where.correlationId = query.correlationId;
-  if (query.errorCode) where.errorCode = query.errorCode;
-  const and: Record<string, unknown>[] = [];
-  if (query.q) {
-    const q = query.q.trim();
-    if (q) {
-      and.push({
-        OR: [
-          { action: q },
-          { requestId: q },
-          { correlationId: q },
-          { resourceId: q },
-          { actorId: q },
-          { clientIp: q },
-          { errorCode: q },
-        ],
-      });
-    }
-  }
+  const where = buildPlatformAuditWhere(query);
+  const and = Array.isArray(where.AND)
+    ? [...where.AND]
+    : where.AND
+      ? [where.AND]
+      : [];
   if (cursor) {
     and.push({
       OR: [
@@ -330,6 +370,58 @@ export async function queryPlatformAuditEvents(query: PlatformAuditQuery) {
     events: page.map(publicPlatformAuditEvent),
     nextCursor: hasMore && page.length ? encodeCursor(page[page.length - 1]!) : null,
   };
+}
+
+export async function aggregateErrorFingerprints(query: Omit<PlatformAuditQuery, "cursor" | "limit">) {
+  const where = buildPlatformAuditWhere(query);
+  const groups = await prisma.platformAuditEvent.groupBy({
+    by: ["errorFingerprint"],
+    where: {
+      AND: [where, { errorFingerprint: { not: null } }],
+    },
+    _count: { _all: true },
+    _max: { occurredAt: true },
+  });
+  groups.sort((a, b) => b._count._all - a._count._all || (a.errorFingerprint ?? "").localeCompare(b.errorFingerprint ?? ""));
+  const top = groups.slice(0, 25);
+
+  const latest = await Promise.all(
+    top
+      .filter((group) => group.errorFingerprint)
+      .map((group) =>
+        prisma.platformAuditEvent.findFirst({
+          where: {
+            AND: [where, { errorFingerprint: group.errorFingerprint }],
+          },
+          orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+          select: {
+            errorFingerprint: true,
+            occurredAt: true,
+            route: true,
+            action: true,
+            errorCode: true,
+            restaurantId: true,
+            httpStatus: true,
+          },
+        }),
+      ),
+  );
+
+  return top
+    .filter((group) => group.errorFingerprint)
+    .map((group, index) => {
+      const sample = latest[index];
+      return {
+        fingerprint: group.errorFingerprint as string,
+        count: group._count._all,
+        latest: (sample?.occurredAt ?? group._max.occurredAt)?.toISOString() ?? null,
+        route: sample?.route ?? null,
+        action: sample?.action ?? null,
+        errorCode: sample?.errorCode ?? null,
+        restaurantId: sample?.restaurantId ?? null,
+        httpStatus: sample?.httpStatus ?? null,
+      };
+    });
 }
 
 export function publicPlatformAuditEvent(row: {
@@ -440,7 +532,9 @@ export function auditFilterSummary(query: PlatformAuditQuery) {
     requestId: query.requestId ?? null,
     correlationId: query.correlationId ?? null,
     errorCode: query.errorCode ?? null,
+    errorFingerprint: query.errorFingerprint ?? null,
     q: query.q ?? null,
+    scope: query.scope?.kind ?? null,
   });
 }
 

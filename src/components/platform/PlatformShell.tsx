@@ -15,6 +15,7 @@ interface PlatformShellProps {
   backLabel?: string;
   children: React.ReactNode;
   actions?: React.ReactNode;
+  wide?: boolean;
 }
 
 export function PlatformShell({
@@ -26,7 +27,9 @@ export function PlatformShell({
   backLabel,
   children,
   actions,
+  wide,
 }: PlatformShellProps) {
+  const shellWidth = wide ? "max-w-7xl" : "max-w-5xl";
   const router = useRouter();
 
   const logout = async () => {
@@ -41,7 +44,7 @@ export function PlatformShell({
   return (
     <div className="min-h-screen bg-app-shell text-foreground">
       <header className="border-b border-white/5 px-4 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
+        <div className={`${shellWidth} mx-auto flex items-center justify-between gap-3`}>
           <div className="flex items-center gap-3 min-w-0">
             {backHref ? (
               <Link
@@ -75,7 +78,7 @@ export function PlatformShell({
         {breadcrumb && breadcrumb.length > 0 && (
           <nav
             aria-label="Breadcrumb"
-            className="max-w-5xl mx-auto px-4 mt-3 flex flex-wrap items-center gap-1 text-sm text-zinc-500"
+            className={`${shellWidth} mx-auto px-4 mt-3 flex flex-wrap items-center gap-1 text-sm text-zinc-500`}
           >
             {breadcrumb.map((item, i) => (
               <span key={`${item.label}-${i}`} className="flex items-center gap-1">
@@ -93,7 +96,7 @@ export function PlatformShell({
         )}
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6">{children}</main>
+      <main className={`${shellWidth} mx-auto px-4 py-6`}>{children}</main>
     </div>
   );
 }
