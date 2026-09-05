@@ -3,40 +3,25 @@ import { requirePlatformAdmin } from "@/lib/auth";
 import {
   activateDemoPack,
   expireDemoIfNeeded,
-  resolveBillingState,
+  serializeTenantBilling,
   setTenantPaidPlan,
 } from "@/lib/tenant-billing-service";
 import type { TenantPlan } from "@/generated/prisma/client";
+import { setForensicTenant } from "@/platform/forensics/request-context";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
-
-function serializeTenant(tenant: NonNullable<Awaited<ReturnType<typeof expireDemoIfNeeded>>>) {
-  return {
-    ...tenant,
-    demoPackUsedAt: tenant.demoPackUsedAt?.toISOString() ?? null,
-    demoExpiresAt: tenant.demoExpiresAt?.toISOString() ?? null,
-    createdAt: tenant.createdAt.toISOString(),
-    updatedAt: tenant.updatedAt.toISOString(),
-    subscriptions: tenant.subscriptions.map((s) => ({
-      ...s,
-      currentPeriodEnd: s.currentPeriodEnd?.toISOString() ?? null,
-      createdAt: s.createdAt.toISOString(),
-      updatedAt: s.updatedAt.toISOString(),
-    })),
-    billing: resolveBillingState(tenant),
-  };
-}
 
 async function handleGET(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const tenantId = req.nextUrl.searchParams.get("tenantId");
+  const tenantId = req.nextUrl.searchParams.get("tenantId")?.trim();
   if (!tenantId) return NextResponse.json({ error: "tenantId required" }, { status: 400 });
 
   const tenant = await expireDemoIfNeeded(tenantId);
   if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+  setForensicTenant({ tenantId: tenant.id });
 
-  return NextResponse.json({ tenant: serializeTenant(tenant) });
+  return NextResponse.json({ tenant: serializeTenantBilling(tenant) });
 }
 
 export const GET = withForensicApiRoute(handleGET);
@@ -46,7 +31,7 @@ async function handlePOST(req: NextRequest) {
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const tenantId = String(body.tenantId ?? "");
+  const tenantId = String(body.tenantId ?? "").trim();
   const action = String(body.action ?? "set_plan");
 
   if (!tenantId) return NextResponse.json({ error: "tenantId required" }, { status: 400 });
@@ -55,7 +40,8 @@ async function handlePOST(req: NextRequest) {
     if (action === "activate_demo") {
       const tenant = await activateDemoPack(tenantId);
       if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
-      return NextResponse.json({ ok: true, tenant: serializeTenant(tenant) });
+      setForensicTenant({ tenantId: tenant.id });
+      return NextResponse.json({ ok: true, tenant: serializeTenantBilling(tenant) });
     }
 
     const plan = String(body.plan ?? "STARTER").toUpperCase() as TenantPlan;
@@ -66,8 +52,9 @@ async function handlePOST(req: NextRequest) {
 
     const tenant = await setTenantPaidPlan(tenantId, plan);
     if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+    setForensicTenant({ tenantId: tenant.id });
 
-    return NextResponse.json({ ok: true, tenant: serializeTenant(tenant) });
+    return NextResponse.json({ ok: true, tenant: serializeTenantBilling(tenant) });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Billing update failed";
     return NextResponse.json({ error: message }, { status: 400 });

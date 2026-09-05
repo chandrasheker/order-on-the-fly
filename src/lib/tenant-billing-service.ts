@@ -19,6 +19,40 @@ export type TenantBillingState = {
   billingLockedReason: string | null;
 };
 
+function toIso(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+export function serializeTenantBilling(
+  tenant: NonNullable<Awaited<ReturnType<typeof expireDemoIfNeeded>>>,
+) {
+  return {
+    id: tenant.id,
+    name: tenant.name,
+    slug: tenant.slug,
+    plan: tenant.plan,
+    subscriptionStatus: tenant.subscriptionStatus,
+    billingEmail: tenant.billingEmail,
+    demoPackUsedAt: toIso(tenant.demoPackUsedAt),
+    demoExpiresAt: toIso(tenant.demoExpiresAt),
+    restaurants: tenant.restaurants.map((restaurant) => ({
+      id: restaurant.id,
+      name: restaurant.name,
+      slug: restaurant.slug,
+    })),
+    subscriptions: tenant.subscriptions.map((subscription) => ({
+      id: subscription.id,
+      plan: subscription.plan,
+      status: subscription.status,
+      currentPeriodEnd: toIso(subscription.currentPeriodEnd),
+      createdAt: toIso(subscription.createdAt) ?? new Date(0).toISOString(),
+    })),
+    billing: resolveBillingState(tenant),
+  };
+}
+
 async function restaurantIdsForTenant(tenantId: string) {
   const rows = await prisma.restaurant.findMany({
     where: { tenantId },
