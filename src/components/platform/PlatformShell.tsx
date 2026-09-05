@@ -68,6 +68,12 @@ export function PlatformShell({
             </div>
           </div>
           <div className="header-trailing-actions flex items-center gap-2 shrink-0">
+            <Link
+              href="/platform/logs"
+              className="hidden sm:inline-flex items-center px-3 py-1.5 rounded-xl text-sm font-medium border bg-white/5 border-white/10 hover:text-white"
+            >
+              Platform Logs
+            </Link>
             {actions}
             <Button variant="secondary" size="sm" onClick={logout}>
               <LogOut className="w-4 h-4" /> Logout

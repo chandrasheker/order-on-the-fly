@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge, Card, Input, Spinner } from "@/components/ui";
 import { Building2, ChevronRight, Plus, Search } from "lucide-react";
@@ -28,9 +28,8 @@ type TenantSummary = {
   restaurants: Array<{ id: string; name: string; slug: string }>;
 };
 
-function PlatformHomePage() {
+export default function PlatformHomePage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [admin, setAdmin] = useState<{ name: string; email: string } | null>(null);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [command, setCommand] = useState<CommandCenterPayload | null>(null);
@@ -38,26 +37,31 @@ function PlatformHomePage() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("name");
   const [filter, setFilter] = useState("all");
-  const range = searchParams.get("range") || "today";
-  const from = searchParams.get("from") || "";
-  const to = searchParams.get("to") || "";
+  const [range, setRange] = useState("today");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const nextFilter = params.get("filter");
+    if (
+      nextFilter &&
+      ["all", "attention", "kitchen", "service", "payments", "printing", "errors"].includes(nextFilter)
+    ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate fleet filter from URL without useSearchParams
+      setFilter(nextFilter);
+    }
+  }, []);
 
   const setRangeParams = (next: { range: string; from?: string; to?: string }) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("range", next.range);
-    if (next.range === "custom") {
-      if (next.from) params.set("from", next.from);
-      if (next.to) params.set("to", next.to);
-    } else {
-      params.delete("from");
-      params.delete("to");
-    }
-    router.replace(`/platform?${params.toString()}`);
+    setRange(next.range);
+    setFrom(next.from ?? "");
+    setTo(next.to ?? "");
   };
 
   const load = useCallback(async () => {
     try {
-      const meRes = await fetch("/api/platform/auth/me");
+      const meRes = await fetch("/api/platform/auth/me", { credentials: "same-origin" });
       if (!meRes.ok) {
         router.push("/platform/login");
         return;
@@ -125,12 +129,6 @@ function PlatformHomePage() {
       actions={
         <div className="flex items-center gap-2">
           <Link
-            href="/platform/logs"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border bg-white/5 border-white/10 hover:text-white"
-          >
-            Platform Logs
-          </Link>
-          <Link
             href="/platform/tenants/new"
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:text-white"
           >
@@ -167,13 +165,14 @@ function PlatformHomePage() {
             <p className="text-2xl font-semibold mt-1">{summary?.slaLabel ?? "No eligible SLA sample"}</p>
             <p className="text-xs text-zinc-500 mt-1">{summary?.slaSample ?? 0} eligible served items</p>
           </Card>
-          <SummaryCard
-            label="Need attention"
-            value={String(summary?.needAttention ?? 0)}
-            href="/platform?filter=attention"
-            warn={(summary?.needAttention ?? 0) > 0}
-            hint="Click a restaurant row to see the subsystem and evidence"
-          />
+          <button type="button" className="text-left w-full" onClick={() => setFilter("attention")}>
+            <SummaryCard
+              label="Need attention"
+              value={String(summary?.needAttention ?? 0)}
+              warn={(summary?.needAttention ?? 0) > 0}
+              hint="Shows restaurants whose kitchen, payments, printing, or reliability need attention"
+            />
+          </button>
         </div>
 
         <section className="space-y-3">
@@ -262,19 +261,5 @@ function PlatformHomePage() {
         </section>
       </div>
     </PlatformShell>
-  );
-}
-
-export default function PlatformHome() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-app-shell">
-          <Spinner className="w-8 h-8" />
-        </div>
-      }
-    >
-      <PlatformHomePage />
-    </Suspense>
   );
 }
