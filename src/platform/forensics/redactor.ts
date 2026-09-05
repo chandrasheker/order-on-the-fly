@@ -34,11 +34,17 @@ const EXACT_DENY = new Set(
     "publictoken",
     "qrtoken",
     "resettoken",
+    "accesskeyid",
+    "secretaccesskey",
+    "awsaccesskeyid",
+    "awssecretaccesskey",
+    "menumedias3accesskeyid",
+    "menumedias3secretaccesskey",
   ].map((key) => key.toLowerCase()),
 );
 
 const SENSITIVE_KEY =
-  /(password|secret|token|authorization|cookie|jwt|apikey|api[_-]?key|private[_-]?key|credential|otp|^pin$|signature)/i;
+  /(password|secret|token|authorization|cookie|jwt|apikey|api[_-]?key|private[_-]?key|credential|otp|^pin$|signature|access[_-]?key)/i;
 
 const ALLOW_EXACT = new Set(
   [

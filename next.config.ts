@@ -34,6 +34,8 @@ const nextConfig: NextConfig = {
     "@prisma/adapter-pg",
     "ioredis",
     "web-push",
+    "sharp",
+    "@aws-sdk/client-s3",
   ],
 };
 

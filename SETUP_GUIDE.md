@@ -208,6 +208,30 @@ npx tsx prisma/seed.ts
 
 See **[AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md)** for all path overrides.
 
+### Menu media (M6)
+
+Restaurants can attach **one optional food photo** per menu item. TableTap decodes the upload, strips EXIF, resizes to at most 1600×1600, and stores WebP.
+
+| Variable | Purpose |
+|----------|---------|
+| `MENU_MEDIA_STORAGE` | `local` (default) or `s3` |
+| `MENU_MEDIA_LOCAL_DIR` | Persistent directory (default `.data/menu-media`). Not `/tmp`, not `public/` |
+| `MENU_MEDIA_S3_BUCKET` | Bucket name when `s3` |
+| `MENU_MEDIA_S3_REGION` | Region (also used by R2/MinIO) |
+| `MENU_MEDIA_S3_ENDPOINT` | Optional custom endpoint for R2 / MinIO |
+| `MENU_MEDIA_S3_ACCESS_KEY_ID` | Server-side only |
+| `MENU_MEDIA_S3_SECRET_ACCESS_KEY` | Server-side only |
+| `MENU_MEDIA_S3_FORCE_PATH_STYLE` | `1` when the provider requires path-style URLs |
+
+Accepted input: JPEG, PNG, WebP. Maximum upload size: **5 MiB**.
+
+Orphan cleanup (dry-run by default; 24-hour grace):
+
+```bash
+npm run menu-media:cleanup
+npm run menu-media:cleanup -- --apply
+```
+
 ### Docker Compose
 
 | Variable | Default | Purpose |

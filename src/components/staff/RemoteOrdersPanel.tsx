@@ -35,6 +35,7 @@ type MenuCategory = {
     isVeg: boolean;
     isSpicy: boolean;
     isAvailable: boolean;
+    imageUrl?: string | null;
   }>;
 };
 

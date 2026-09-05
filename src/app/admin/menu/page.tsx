@@ -9,6 +9,7 @@ import {
   ChevronUp,
   FolderPlus,
   Monitor,
+  ImagePlus,
   Plus,
   Printer,
   Sparkles,
@@ -23,6 +24,8 @@ interface MenuItem {
   price: number;
   prepTimeMinutes: number;
   isAvailable: boolean;
+  imageUrl?: string | null;
+  imageRevision?: number;
 }
 
 interface Category {
@@ -50,6 +53,8 @@ const QUICK_PRESETS: CategoryPreset[] = [
   { name: "Desserts", slug: "desserts", icon: "🍰" },
 ];
 
+const MENU_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
+
 function AddItemForm({
   categoryId,
   categoryName,
@@ -57,17 +62,25 @@ function AddItemForm({
 }: {
   categoryId: string;
   categoryName: string;
-  onAdded: () => void;
+  onAdded: (notice?: string) => void;
 }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [prepTimeMinutes, setPrepTimeMinutes] = useState("10");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const clearImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(null);
+    setImagePreview("");
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !price) return;
+    if (!name.trim() || !price || saving) return;
     setSaving(true);
     setError("");
     const res = await fetch("/api/menu/manage", {
@@ -81,15 +94,33 @@ function AddItemForm({
       }),
     });
     const json = await res.json();
-    setSaving(false);
     if (!res.ok) {
+      setSaving(false);
       setError(json.error || "Could not add item");
       return;
     }
+
+    let notice: string | undefined;
+    const createdId = json.item?.id as string | undefined;
+    if (createdId && imageFile) {
+      const body = new FormData();
+      body.set("file", imageFile);
+      const upload = await fetch(`/api/menu/manage/${createdId}/image`, {
+        method: "POST",
+        body,
+      });
+      if (!upload.ok) {
+        notice =
+          "Item was created, but photo upload failed. You can retry from the item.";
+      }
+    }
+
     setName("");
     setPrice("");
     setPrepTimeMinutes("10");
-    onAdded();
+    clearImage();
+    setSaving(false);
+    onAdded(notice);
   };
 
   return (
@@ -125,6 +156,37 @@ function AddItemForm({
         <Button type="submit" disabled={saving} size="md" className="sm:w-auto w-full">
           <Plus className="w-4 h-4" /> {saving ? "Adding…" : "Add item"}
         </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        {imagePreview ? (
+          <img src={imagePreview} alt="" className="w-14 h-14 rounded-lg object-cover bg-black/20" />
+        ) : (
+          <div className="w-14 h-14 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-zinc-500">
+            <ImagePlus className="w-5 h-5" />
+          </div>
+        )}
+        <label className="text-sm text-orange-100 cursor-pointer">
+          <span className="underline">{imageFile ? "Change photo" : "Optional food photo"}</span>
+          <input
+            type="file"
+            accept={MENU_IMAGE_ACCEPT}
+            className="sr-only"
+            disabled={saving}
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              if (imagePreview) URL.revokeObjectURL(imagePreview);
+              setImageFile(file);
+              setImagePreview(file ? URL.createObjectURL(file) : "");
+              e.target.value = "";
+            }}
+          />
+        </label>
+        {imageFile && (
+          <button type="button" className="text-xs text-zinc-400 hover:text-zinc-200" onClick={clearImage}>
+            Remove
+          </button>
+        )}
+        <span className="text-xs text-zinc-500">JPEG, PNG, or WebP · max 5 MB</span>
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
     </form>
@@ -559,7 +621,10 @@ export default function MenuManagePage() {
                     <AddItemForm
                       categoryId={cat.id}
                       categoryName={cat.name}
-                      onAdded={fetchMenu}
+                      onAdded={async (notice) => {
+                        if (notice) flash(notice, true);
+                        await fetchMenu();
+                      }}
                     />
                     {cat.items.length === 0 ? (
                       <p className="text-sm text-zinc-500 text-center py-6">
@@ -574,6 +639,8 @@ export default function MenuManagePage() {
                           onToggle={toggleAvailability}
                           onUpdate={updateItem}
                           onDelete={deleteItem}
+                          onChanged={fetchMenu}
+                          onNotice={flash}
                         />
                       ))
                     )}
@@ -654,15 +721,89 @@ function ItemRow({
   onToggle,
   onUpdate,
   onDelete,
+  onChanged,
+  onNotice,
 }: {
   item: MenuItem;
   toggling: boolean;
   onToggle: (id: string, available: boolean) => void;
   onUpdate: (id: string, field: "name" | "price" | "prepTimeMinutes", value: string) => void;
   onDelete: (id: string) => void;
+  onChanged: () => void;
+  onNotice: (text: string, isError?: boolean) => void;
 }) {
+  const [imageBusy, setImageBusy] = useState(false);
+
+  const uploadImage = async (file: File) => {
+    if (imageBusy) return;
+    setImageBusy(true);
+    const body = new FormData();
+    body.set("file", file);
+    const res = await fetch(`/api/menu/manage/${item.id}/image`, { method: "POST", body });
+    const json = await res.json().catch(() => ({}));
+    setImageBusy(false);
+    if (!res.ok) {
+      onNotice(json.error || "Photo upload failed. The previous image is unchanged.", true);
+      return;
+    }
+    onNotice(item.imageUrl ? "Photo replaced" : "Photo uploaded");
+    onChanged();
+  };
+
+  const removeImage = async () => {
+    if (imageBusy || !item.imageUrl) return;
+    setImageBusy(true);
+    const res = await fetch(`/api/menu/manage/${item.id}/image`, { method: "DELETE" });
+    const json = await res.json().catch(() => ({}));
+    setImageBusy(false);
+    if (!res.ok) {
+      onNotice(json.error || "Could not remove photo", true);
+      return;
+    }
+    onNotice("Photo removed");
+    onChanged();
+  };
+
   return (
     <Card className={`p-3 flex flex-col sm:flex-row sm:items-center gap-3 bg-white/[0.02] ${!item.isAvailable ? "opacity-75" : ""}`}>
+      <div className="flex items-center gap-3 shrink-0">
+        {item.imageUrl ? (
+          <img src={item.imageUrl} alt={item.name} className="w-14 h-14 rounded-lg object-cover bg-black/20" />
+        ) : (
+          <div className="w-14 h-14 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-zinc-500">
+            <ImagePlus className="w-5 h-5" />
+          </div>
+        )}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-orange-200 cursor-pointer">
+            <span className="underline">{item.imageUrl ? "Change image" : "Choose image"}</span>
+            <input
+              type="file"
+              accept={MENU_IMAGE_ACCEPT}
+              className="sr-only"
+              disabled={imageBusy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void uploadImage(file);
+              }}
+            />
+          </label>
+          {item.imageUrl ? (
+            <button
+              type="button"
+              disabled={imageBusy}
+              onClick={() => void removeImage()}
+              className="text-xs text-zinc-400 hover:text-red-300 text-left disabled:opacity-50"
+            >
+              Remove image
+            </button>
+          ) : (
+            <span className="text-[11px] text-zinc-500">JPEG, PNG, WebP · 5 MB</span>
+          )}
+          {imageBusy && <span className="text-[11px] text-zinc-400">Saving photo…</span>}
+        </div>
+      </div>
       <div className="flex-1 grid sm:grid-cols-[1fr_6rem_5rem] gap-2">
         <Input
           defaultValue={item.name}
