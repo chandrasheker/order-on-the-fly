@@ -238,7 +238,7 @@ describe("M6-B source validation", () => {
       () => validateMenuImportFiles([{ originalName: "huge.pdf", bytes: huge }]),
       (error: unknown) => error instanceof MenuImportValidationError && error.status === 413,
     );
-    const images = [];
+    const images: Array<{ originalName: string; bytes: Buffer }> = [];
     for (let i = 0; i < 21; i += 1) {
       images.push({ originalName: `p${i}.jpg`, bytes: await jpegBytes(16, 16) });
     }
