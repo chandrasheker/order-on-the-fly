@@ -176,32 +176,6 @@ export default function PlatformHomePage() {
         </div>
 
         <section className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Restaurant fleet</h2>
-            <FilterPills
-              value={filter}
-              onChange={setFilter}
-              options={[
-                { id: "all", label: "All" },
-                { id: "attention", label: "Needs attention" },
-                { id: "kitchen", label: "Kitchen" },
-                { id: "service", label: "Service" },
-                { id: "payments", label: "Payments" },
-                { id: "printing", label: "Printing" },
-                { id: "errors", label: "Errors" },
-              ]}
-            />
-          </div>
-          <RestaurantHealthTable
-            rows={command?.restaurants ?? []}
-            sort={sort}
-            onSort={setSort}
-            filter={filter}
-            showTenant
-          />
-        </section>
-
-        <section className="space-y-3">
           <h2 className="text-lg font-semibold">Tenants</h2>
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
@@ -258,6 +232,32 @@ export default function PlatformHomePage() {
               </Link>
             ))}
           </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">Restaurant fleet</h2>
+            <FilterPills
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { id: "all", label: "All" },
+                { id: "attention", label: "Needs attention" },
+                { id: "kitchen", label: "Kitchen" },
+                { id: "service", label: "Service" },
+                { id: "payments", label: "Payments" },
+                { id: "printing", label: "Printing" },
+                { id: "errors", label: "Errors" },
+              ]}
+            />
+          </div>
+          <RestaurantHealthTable
+            rows={command?.restaurants ?? []}
+            sort={sort}
+            onSort={setSort}
+            filter={filter}
+            showTenant
+          />
         </section>
       </div>
     </PlatformShell>
