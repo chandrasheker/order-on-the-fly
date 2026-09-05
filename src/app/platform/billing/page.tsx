@@ -1,9 +1,11 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button, Card, Spinner } from "@/components/ui";
 import { PlatformShell } from "@/components/platform/PlatformShell";
+import { PlatformPagedListFrame, PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
+import { usePagedExpandableList } from "@/hooks/usePagedExpandableList";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type TenantBillingState = {
@@ -35,77 +37,134 @@ type TenantBilling = {
   billing: TenantBillingState;
 };
 
+type TenantOption = { id: string; name: string };
+
 const PLANS = ["STARTER", "PRO", "ENTERPRISE"] as const;
 
-export default function PlatformBillingPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-app-shell">
-          <Spinner className="w-8 h-8" />
-        </div>
-      }
-    >
-      <PlatformBillingContent />
-    </Suspense>
-  );
+function readTenantIdFromLocation() {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("tenantId")?.trim() ?? "";
 }
 
-function PlatformBillingContent() {
+function writeTenantIdToLocation(tenantId: string) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (tenantId) url.searchParams.set("tenantId", tenantId);
+  else url.searchParams.delete("tenantId");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+}
+
+export default function PlatformBillingPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const presetTenantId = searchParams.get("tenantId") ?? "";
   const [admin, setAdmin] = useState<{ name: string; email: string } | null>(null);
-  const [tenants, setTenants] = useState<TenantBilling[]>([]);
+  const [presetTenantId, setPresetTenantId] = useState("");
+  const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [tenant, setTenant] = useState<TenantBilling | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [activatingDemo, setActivatingDemo] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const loadTenants = useCallback(async () => {
-    try {
-      const me = await fetch("/api/platform/auth/me");
-      if (!me.ok) {
-        router.push("/platform/login");
-        return;
-      }
-      const meJson = await me.json();
-      setAdmin(meJson.admin);
+  const getTenantOptionId = useCallback((item: TenantOption) => item.id, []);
+  const getTenantOptionText = useCallback((item: TenantOption) => item.name, []);
+  const tenantList = usePagedExpandableList(tenantOptions, {
+    getId: getTenantOptionId,
+    getSearchText: getTenantOptionText,
+  });
 
-      const listRes = await fetch("/api/platform/tenants");
-      if (listRes.ok) {
-        const json = await listRes.json();
-        const ids = (json.tenants ?? []).map((t: { id: string }) => t.id);
-        const details = await Promise.all(
-          ids.map(async (id: string) => {
-            const r = await fetch(`/api/platform/billing?tenantId=${id}`);
-            return r.ok ? (await r.json()).tenant : null;
-          }),
-        );
-        const rows = (details.filter(Boolean) as TenantBilling[]).sort((a, b) =>
-          a.name.localeCompare(b.name),
-        );
-        setTenants(rows);
-        if (presetTenantId && rows.some((t) => t.id === presetTenantId)) {
-          setSelectedId(presetTenantId);
-        } else if (rows[0]) {
-          setSelectedId(rows[0].id);
-        }
-      }
-    } catch (error) {
-      swallowPollingFetchError(error);
-    } finally {
-      setLoading(false);
+  const fetchBilling = useCallback(async (tenantId: string) => {
+    const res = await fetch(`/api/platform/billing?tenantId=${encodeURIComponent(tenantId)}`, {
+      cache: "no-store",
+    });
+    const json = (await res.json().catch(() => ({}))) as { tenant?: TenantBilling; error?: string };
+    if (!res.ok || !json.tenant) {
+      throw new Error(json.error || "Failed to load billing");
     }
-  }, [router, presetTenantId]);
+    return json.tenant;
+  }, []);
+
+  const selectTenant = useCallback(
+    async (tenantId: string, options: TenantOption[] = tenantOptions) => {
+      setSelectedId(tenantId);
+      writeTenantIdToLocation(tenantId);
+      setDetailLoading(true);
+      setError("");
+      try {
+        const detail = await fetchBilling(tenantId);
+        setTenant(detail);
+        if (!options.some((item) => item.id === detail.id)) {
+          setTenantOptions([...options, { id: detail.id, name: detail.name }].sort((a, b) =>
+            a.name.localeCompare(b.name),
+          ));
+        }
+      } catch (err) {
+        setTenant(null);
+        setError(err instanceof Error ? err.message : "Failed to load billing");
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [fetchBilling, tenantOptions],
+  );
 
   useEffect(() => {
-    void loadTenants();
-  }, [loadTenants]);
+    void (async () => {
+      try {
+        const me = await fetch("/api/platform/auth/me");
+        if (!me.ok) {
+          router.push("/platform/login");
+          return;
+        }
+        const meJson = await me.json();
+        setAdmin(meJson.admin);
+
+        const urlTenantId = readTenantIdFromLocation();
+        setPresetTenantId(urlTenantId);
+
+        const listRes = await fetch("/api/platform/tenants", { cache: "no-store" });
+        const listJson = listRes.ok
+          ? ((await listRes.json()) as { tenants?: TenantOption[] })
+          : { tenants: [] };
+        const options = (listJson.tenants ?? [])
+          .map((item) => ({ id: item.id, name: item.name }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        setTenantOptions(options);
+
+        const targetId = urlTenantId || options[0]?.id || "";
+        setSelectedId(targetId);
+
+        if (!targetId) {
+          if (!listRes.ok) setError("Could not load tenants.");
+          return;
+        }
+
+        try {
+          const detail = await fetchBilling(targetId);
+          setTenant(detail);
+          if (!options.some((item) => item.id === detail.id)) {
+            setTenantOptions(
+              [...options, { id: detail.id, name: detail.name }].sort((a, b) =>
+                a.name.localeCompare(b.name),
+              ),
+            );
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to load billing");
+        }
+      } catch (err) {
+        swallowPollingFetchError(err);
+        setError("Network error — try again.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [fetchBilling, router]);
 
   const upgrade = async (plan: string) => {
+    if (!selectedId) return;
     setUpgrading(true);
     setMessage("");
     setError("");
@@ -115,15 +174,15 @@ function PlatformBillingContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tenantId: selectedId, plan, action: "set_plan" }),
       });
-      const json = await res.json();
-      if (!res.ok) {
+      const json = (await res.json()) as { error?: string; tenant?: TenantBilling };
+      if (!res.ok || !json.tenant) {
         setError(json.error || "Upgrade failed");
         return;
       }
+      setTenant(json.tenant);
       setMessage(`Plan updated to ${plan}. Features for all restaurants under this tenant now match ${plan}.`);
-      await loadTenants();
-    } catch (error) {
-      swallowPollingFetchError(error);
+    } catch (err) {
+      swallowPollingFetchError(err);
       setError("Network error — try again.");
     } finally {
       setUpgrading(false);
@@ -131,6 +190,7 @@ function PlatformBillingContent() {
   };
 
   const activateDemo = async () => {
+    if (!selectedId) return;
     setActivatingDemo(true);
     setMessage("");
     setError("");
@@ -140,23 +200,23 @@ function PlatformBillingContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tenantId: selectedId, action: "activate_demo" }),
       });
-      const json = await res.json();
-      if (!res.ok) {
+      const json = (await res.json()) as { error?: string; tenant?: TenantBilling };
+      if (!res.ok || !json.tenant) {
         setError(json.error || "Could not activate demo pack");
         return;
       }
+      setTenant(json.tenant);
       setMessage("7-day demo pack activated. Premium features are enabled until the demo ends.");
-      await loadTenants();
-    } catch (error) {
-      swallowPollingFetchError(error);
+    } catch (err) {
+      swallowPollingFetchError(err);
       setError("Network error — try again.");
     } finally {
       setActivatingDemo(false);
     }
   };
 
-  const tenant = tenants.find((t) => t.id === selectedId);
   const billing = tenant?.billing;
+  const backTenantId = selectedId || presetTenantId;
 
   if (loading) {
     return (
@@ -171,13 +231,15 @@ function PlatformBillingContent() {
       admin={admin}
       title="Billing"
       subtitle={tenant ? tenant.name : "Subscription plans per tenant"}
-      backHref={presetTenantId ? `/platform/tenants/${presetTenantId}` : "/platform"}
-      backLabel={presetTenantId ? "Tenant overview" : "All tenants"}
+      backHref={backTenantId ? `/platform/tenants/${backTenantId}` : "/platform"}
+      backLabel={backTenantId ? "Tenant overview" : "All tenants"}
       breadcrumb={[
         { label: "All tenants", href: "/platform" },
         ...(tenant
           ? [{ label: tenant.name, href: `/platform/tenants/${tenant.id}` }]
-          : []),
+          : backTenantId
+            ? [{ label: "Tenant", href: `/platform/tenants/${backTenantId}` }]
+            : []),
         { label: "Billing" },
       ]}
     >
@@ -188,24 +250,63 @@ function PlatformBillingContent() {
           set.
         </p>
 
-        <div className="flex flex-wrap gap-2">
-          {tenants.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => {
-                setSelectedId(t.id);
-                setMessage("");
-                setError("");
-              }}
-              className={`px-3 py-1.5 rounded-full text-sm ${selectedId === t.id ? "bg-violet-500" : "bg-white/5"}`}
+        {tenantOptions.length > 0 ? (
+          <div className="space-y-3">
+            <PlatformRestaurantToolbar
+              search={tenantList.search}
+              onSearchChange={tenantList.setSearch}
+              matching={tenantList.matchingCount}
+              total={tenantList.total}
+              showingFrom={tenantList.showingFrom}
+              showingTo={tenantList.showingTo}
+              pageSize={tenantList.pageSize}
+              onPageSizeChange={tenantList.setPageSize}
+              page={tenantList.page}
+              pageCount={tenantList.pageCount}
+              canPrev={tenantList.canPrev}
+              canNext={tenantList.canNext}
+              onPrev={tenantList.goPrev}
+              onNext={tenantList.goNext}
+              expandable={false}
+              noun="tenant"
+              placeholder="Search tenants…"
+            />
+            <PlatformPagedListFrame
+              canPrev={tenantList.canPrev}
+              canNext={tenantList.canNext}
+              onPrev={tenantList.goPrev}
+              onNext={tenantList.goNext}
+              noun="tenant"
             >
-              {t.name}
-            </button>
-          ))}
-        </div>
+              <div className="flex flex-wrap gap-2">
+                {tenantList.visible.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setMessage("");
+                      void selectTenant(item.id);
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-sm ${selectedId === item.id ? "bg-violet-500" : "bg-white/5"}`}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+            </PlatformPagedListFrame>
+          </div>
+        ) : null}
 
-        {tenant && billing && (
+        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        {message ? <p className="text-sm text-emerald-400">{message}</p> : null}
+
+        {detailLoading ? (
+          <p className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-zinc-400">
+            Loading billing…
+          </p>
+        ) : null}
+
+        {tenant && billing && !detailLoading && (
           <>
             <Card className="p-5 space-y-2">
               <p className="text-sm text-zinc-500">Current plan</p>
@@ -285,29 +386,27 @@ function PlatformBillingContent() {
               )
             )}
 
-            {(message || error) && (
-              <p className={`text-sm ${error ? "text-red-400" : "text-emerald-400"}`}>
-                {error || message}
-              </p>
-            )}
-
             <Card className="p-5">
               <p className="font-semibold mb-3">Subscription history</p>
-              <ul className="space-y-2 text-sm">
-                {tenant.subscriptions.map((s) => (
-                  <li key={s.id} className="flex justify-between border-b border-white/5 pb-2">
-                    <span>
-                      {s.plan} · {s.status}
-                      {s.currentPeriodEnd
-                        ? ` · until ${new Date(s.currentPeriodEnd).toLocaleDateString()}`
-                        : ""}
-                    </span>
-                    <span className="text-zinc-500">
-                      {new Date(s.createdAt).toLocaleDateString()}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              {tenant.subscriptions.length === 0 ? (
+                <p className="text-sm text-zinc-500">No subscription history yet.</p>
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  {tenant.subscriptions.map((s) => (
+                    <li key={s.id} className="flex justify-between border-b border-white/5 pb-2">
+                      <span>
+                        {s.plan} · {s.status}
+                        {s.currentPeriodEnd
+                          ? ` · until ${new Date(s.currentPeriodEnd).toLocaleDateString()}`
+                          : ""}
+                      </span>
+                      <span className="text-zinc-500">
+                        {new Date(s.createdAt).toLocaleDateString()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Card>
           </>
         )}

@@ -4,15 +4,18 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Spinner, Button } from "@/components/ui";
-import { Crown, LayoutGrid, Shield, Users } from "lucide-react";
+import { Activity, Crown, LayoutGrid, ScrollText, Shield, Store, Users } from "lucide-react";
 import { PlatformShell } from "@/components/platform/PlatformShell";
 import { PlatformStaffSetupPanel } from "@/components/platform/PlatformStaffSetupPanel";
 import { PlatformFeaturesPanel } from "@/components/platform/PlatformFeaturesPanel";
 import { PlatformTenantOverview } from "@/components/platform/PlatformTenantOverview";
-import { PlatformLoginLogsPanel } from "@/components/platform/PlatformLoginLogsPanel";
+import { PlatformScopedLogsConsole } from "@/components/platform/PlatformScopedLogsConsole";
 import { ConfirmDangerDialog } from "@/components/platform/ConfirmDangerDialog";
+import { FilterPills, TimeRangeBar } from "@/components/platform/command-center-shared";
+import { TenantAnalyticsPanel, TenantOperationsPanel, TenantOverviewStats } from "@/components/platform/PlatformCommandPanels";
 import { cn } from "@/lib/utils";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
+import type { CommandCenterPayload } from "@/platform/command-center/types";
 
 type TenantDetail = {
   id: string;
@@ -35,13 +38,16 @@ type TenantDetail = {
   }>;
 };
 
-type TenantTab = "overview" | "staff" | "features" | "logs";
+type TenantTab = "overview" | "restaurants" | "operations" | "analytics" | "logs" | "staff" | "features";
 
 const TABS: { id: TenantTab; label: string; icon: typeof LayoutGrid }[] = [
   { id: "overview", label: "Overview", icon: LayoutGrid },
-  { id: "staff", label: "Staff setup", icon: Users },
-  { id: "features", label: "Premium features", icon: Crown },
-  { id: "logs", label: "Login logs", icon: Shield },
+  { id: "restaurants", label: "Restaurants", icon: Store },
+  { id: "operations", label: "Operations", icon: Activity },
+  { id: "analytics", label: "Analytics", icon: Shield },
+  { id: "logs", label: "Logs", icon: ScrollText },
+  { id: "staff", label: "Staff", icon: Users },
+  { id: "features", label: "Premium Features", icon: Crown },
 ];
 
 export function PlatformTenantWorkspace() {
@@ -62,6 +68,23 @@ export function PlatformTenantWorkspace() {
   const [confirmDeleteTenant, setConfirmDeleteTenant] = useState(false);
   const [deletingTenant, setDeletingTenant] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [command, setCommand] = useState<CommandCenterPayload | null>(null);
+  const [sort, setSort] = useState("name");
+  const [filter, setFilter] = useState("all");
+  const range = searchParams.get("range") || "today";
+  const from = searchParams.get("from") || "";
+  const to = searchParams.get("to") || "";
+  const restaurantFilter = searchParams.get("restaurantId") || "";
+  const preset = searchParams.get("preset") || "all";
+
+  const replaceParams = (patch: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    router.replace(`/platform/tenants/${tenantId}?${params.toString()}`);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -85,14 +108,22 @@ export function PlatformTenantWorkspace() {
         found.restaurants = [...found.restaurants].sort((a, b) => a.name.localeCompare(b.name));
         setTenant({ ...found, isEnabled: found.isEnabled ?? true });
       }
+      const commandParams = new URLSearchParams({ range });
+      if (range === "custom" && from && to) {
+        commandParams.set("from", from);
+        commandParams.set("to", to);
+      }
+      const commandRes = await fetch(`/api/platform/tenants/${tenantId}/command?${commandParams.toString()}`);
+      if (commandRes.ok) setCommand((await commandRes.json()) as CommandCenterPayload);
     } catch (error) {
       swallowPollingFetchError(error);
     } finally {
       setLoading(false);
     }
-  }, [router, tenantId]);
+  }, [from, range, router, tenantId, to]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- platform fetch-on-mount
     void load();
   }, [load]);
 
@@ -161,6 +192,7 @@ export function PlatformTenantWorkspace() {
 
   return (
     <PlatformShell
+      wide
       admin={admin}
       title={tenant.name}
       subtitle={`${tenant.plan} · ${tenant.subscriptionStatus} · ${tenant.restaurants.length} restaurant${tenant.restaurants.length === 1 ? "" : "s"}${!tenant.isEnabled ? " · DISABLED" : ""}`}
@@ -205,7 +237,10 @@ export function PlatformTenantWorkspace() {
             <button
               key={id}
               type="button"
-              onClick={() => setTab(id)}
+              onClick={() => {
+                setTab(id);
+                replaceParams({ tab: id });
+              }}
               className={cn(
                 "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors",
                 tab === id
@@ -226,32 +261,78 @@ export function PlatformTenantWorkspace() {
           <p className="text-sm text-red-400">{actionError}</p>
         )}
 
-        {tab === "overview" && (
-          <PlatformTenantOverview
-            tenantId={tenant.id}
-            tenantName={tenant.name}
-            tenantSlug={tenant.slug}
-            tenantUrl={tenant.url ?? null}
-            tenantHubActive={Boolean(tenant.hubActive)}
-            tenantEnabled={tenant.isEnabled}
-            tenantBaseDomain={tenantBaseDomain}
-            restaurants={tenant.restaurants}
-            onRestaurantsChange={() => void load()}
-            onTenantToggle={toggleTenant}
-            togglingTenant={togglingTenant}
-            onDeleteTenant={() => setConfirmDeleteTenant(true)}
-            deletingTenant={deletingTenant}
+        {(tab === "overview" || tab === "restaurants" || tab === "operations" || tab === "analytics") && (
+          <TimeRangeBar
+            range={range}
+            from={from}
+            to={to}
+            onRange={(value) => replaceParams({ range: value, from: value === "custom" ? from : null, to: value === "custom" ? to : null })}
+            onCustom={(nextFrom, nextTo) => replaceParams({ range: "custom", from: nextFrom, to: nextTo })}
           />
         )}
+
+        {tab === "overview" && (
+          <div className="space-y-8">
+            {command && (
+              <TenantOverviewStats command={command} sort={sort} onSort={setSort} filter={filter} />
+            )}
+            <PlatformTenantOverview
+              tenantId={tenant.id}
+              tenantName={tenant.name}
+              tenantSlug={tenant.slug}
+              tenantUrl={tenant.url ?? null}
+              tenantHubActive={Boolean(tenant.hubActive)}
+              tenantEnabled={tenant.isEnabled}
+              tenantBaseDomain={tenantBaseDomain}
+              restaurants={tenant.restaurants}
+              onRestaurantsChange={() => void load()}
+              onTenantToggle={toggleTenant}
+              togglingTenant={togglingTenant}
+              onDeleteTenant={() => setConfirmDeleteTenant(true)}
+              deletingTenant={deletingTenant}
+            />
+          </div>
+        )}
+
+        {tab === "restaurants" && command && (
+          <div className="space-y-3">
+            <FilterPills
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { id: "all", label: "All" },
+                { id: "attention", label: "Needs attention" },
+                { id: "kitchen", label: "Kitchen" },
+                { id: "service", label: "Service" },
+                { id: "payments", label: "Payments" },
+                { id: "printing", label: "Printing" },
+                { id: "errors", label: "Errors" },
+              ]}
+            />
+            <TenantOverviewStats command={command} sort={sort} onSort={setSort} filter={filter} />
+          </div>
+        )}
+
+        {tab === "operations" && command && <TenantOperationsPanel command={command} />}
+
+        {tab === "analytics" && command && <TenantAnalyticsPanel command={command} />}
 
         {tab === "staff" && <PlatformStaffSetupPanel tenantId={tenant.id} />}
 
         {tab === "features" && <PlatformFeaturesPanel tenantId={tenant.id} />}
 
         {tab === "logs" && (
-          <PlatformLoginLogsPanel
-            tenantId={tenant.id}
+          <PlatformScopedLogsConsole
+            endpoint={`/api/platform/tenants/${tenant.id}/logs`}
             restaurants={tenant.restaurants.map((r) => ({ id: r.id, name: r.name }))}
+            restaurantId={restaurantFilter}
+            onRestaurantId={(id) => replaceParams({ restaurantId: id || null })}
+            initialPreset={preset}
+            initialFingerprint={searchParams.get("errorFingerprint") ?? undefined}
+            failedOnly={searchParams.get("failedOnly") === "1"}
+            ambiguousOnly={searchParams.get("ambiguousOnly") === "1"}
+            title="Tenant logs"
+            subtitle="Complete forensic evidence for this tenant, including historical restaurant-scoped rows that predate tenantId."
           />
         )}
       </div>

@@ -5,7 +5,7 @@ import { Button, Card, Input, Spinner, Badge } from "@/components/ui";
 import { Save, Download, Users, ChevronDown, ChevronUp } from "lucide-react";
 import type { Role } from "@/generated/prisma/client";
 import { DEFAULT_SLOT_COUNTS } from "@/lib/staff-permissions";
-import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
+import { PlatformPagedListFrame, PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
 
@@ -76,12 +76,23 @@ export function PlatformStaffSetupPanel({ tenantId }: { tenantId: string }) {
     search,
     setSearch,
     filtered: filteredRestaurants,
+    visible: visibleRestaurants,
     isExpanded,
     toggleExpanded,
     expandAll,
     collapseAll,
     total,
-    showing,
+    matchingCount,
+    showingFrom,
+    showingTo,
+    pageSize,
+    setPageSize,
+    page,
+    pageCount,
+    canPrev,
+    canNext,
+    goPrev,
+    goNext,
   } = useRestaurantSearch(restaurants);
 
   const load = useCallback(async () => {
@@ -114,6 +125,7 @@ export function PlatformStaffSetupPanel({ tenantId }: { tenantId: string }) {
   }, [tenantId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- platform fetch-on-mount
     void load();
   }, [load]);
 
@@ -213,8 +225,18 @@ export function PlatformStaffSetupPanel({ tenantId }: { tenantId: string }) {
       <PlatformRestaurantToolbar
         search={search}
         onSearchChange={setSearch}
-        showing={showing}
+        matching={matchingCount}
         total={total}
+        showingFrom={showingFrom}
+        showingTo={showingTo}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        page={page}
+        pageCount={pageCount}
+        canPrev={canPrev}
+        canNext={canNext}
+        onPrev={goPrev}
+        onNext={goNext}
         onExpandAll={expandAll}
         onCollapseAll={collapseAll}
       />
@@ -223,7 +245,15 @@ export function PlatformStaffSetupPanel({ tenantId }: { tenantId: string }) {
         <p className="text-sm text-center text-zinc-500 py-8">No restaurants match your search.</p>
       )}
 
-      {filteredRestaurants.map((restaurant) => {
+      <PlatformPagedListFrame
+        canPrev={canPrev}
+        canNext={canNext}
+        onPrev={goPrev}
+        onNext={goNext}
+        noun="restaurant"
+      >
+      <div className="space-y-6">
+      {visibleRestaurants.map((restaurant) => {
         const counts = countsDraft[restaurant.id] ?? restaurant.counts;
         const slots = Object.values(slotDrafts[restaurant.id] ?? {});
         const open = isExpanded(restaurant.id);
@@ -391,6 +421,8 @@ export function PlatformStaffSetupPanel({ tenantId }: { tenantId: string }) {
           </Card>
         );
       })}
+      </div>
+      </PlatformPagedListFrame>
     </div>
   );
 }
