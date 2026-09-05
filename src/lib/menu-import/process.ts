@@ -1,8 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import {
-  MENU_IMPORT_JOB_TYPE,
-  MENU_IMPORT_MAX_PROCESS_ATTEMPTS,
-} from "@/lib/menu-import/constants";
+import { MENU_IMPORT_MAX_PROCESS_ATTEMPTS } from "@/lib/menu-import/constants";
 import { userFacingImportError } from "@/lib/menu-import/errors";
 import { getMenuImportExtractor } from "@/lib/menu-import/extractor";
 import { serializeDraft } from "@/lib/menu-import/draft";
@@ -10,7 +7,6 @@ import { importAuditMetadata } from "@/lib/menu-import/public";
 import type { MenuImportExtractPage, MenuImportSourceMeta } from "@/lib/menu-import/types";
 import { getMenuMediaStorage } from "@/lib/menu-media/storage";
 import { isManagedMenuImportSourceKey } from "@/lib/menu-media/keys";
-import { enqueueJob } from "@/lib/job-queue";
 import { AUDIT_ACTION, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } from "@/platform/forensics/constants";
 import { tryAppendPlatformAuditEvent } from "@/platform/forensics/platform-audit-service";
 import { setForensicResource } from "@/platform/forensics/request-context";
@@ -68,14 +64,17 @@ async function buildExtractPages(row: {
     if (!file) throw new Error("UNSUPPORTED_FILE");
     const bytes = await storage.getObject(file.key);
     if (!bytes) throw new Error("UNSUPPORTED_FILE");
-    const { inspectPdf } = await import("@/lib/menu-import/pdf");
+    const { inspectPdf } = await import("./pdf");
     const inspected = await inspectPdf(bytes);
+    let renderPdfPage: ((source: Buffer, pageNumber: number) => Promise<Buffer>) | null = null;
     for (const page of inspected.pages) {
       if (page.usableText) {
         pages.push({ pageNumber: page.pageNumber, kind: "text", text: page.text });
         continue;
       }
-      const { renderPdfPage } = await import("@/lib/menu-import/pdf");
+      if (!renderPdfPage) {
+        ({ renderPdfPage } = await import("./pdf-render"));
+      }
       const image = await renderPdfPage(bytes, page.pageNumber);
       pages.push({
         pageNumber: page.pageNumber,
@@ -97,15 +96,6 @@ async function buildExtractPages(row: {
     });
   }
   return pages;
-}
-
-export async function enqueueMenuImportProcessing(importId: string, restaurantId: string) {
-  return enqueueJob({
-    type: MENU_IMPORT_JOB_TYPE,
-    payload: { importId },
-    restaurantId,
-    maxAttempts: 1,
-  });
 }
 
 export async function processMenuImportById(importId: string) {

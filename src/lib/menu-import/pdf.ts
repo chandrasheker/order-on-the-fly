@@ -1,8 +1,6 @@
 import path from "node:path";
-import { createRequire } from "node:module";
 import { PDFDocument } from "pdf-lib";
 import {
-  MENU_IMPORT_PDF_MAX_RENDER_EDGE,
   MENU_IMPORT_PDF_MIN_TEXT_CHARS,
   MENU_IMPORT_UNSUPPORTED_MESSAGE,
 } from "@/lib/menu-import/constants";
@@ -81,8 +79,11 @@ function usableText(text: string) {
 }
 
 async function loadPdfjs(): Promise<PdfjsModule> {
-  const mod = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as PdfjsModule;
-  // File path avoids webpack trying to bundle the ESM worker via require.resolve.
+  const importer = new Function(
+    "specifier",
+    "return import(specifier)",
+  ) as (specifier: string) => Promise<PdfjsModule>;
+  const mod = await importer(["pdfjs-dist", "legacy", "build", "pdf.mjs"].join("/"));
   mod.GlobalWorkerOptions.workerSrc = path.join(
     process.cwd(),
     "node_modules",
@@ -92,37 +93,6 @@ async function loadPdfjs(): Promise<PdfjsModule> {
     "pdf.worker.mjs",
   );
   return mod;
-}
-
-type NativeCanvas = {
-  createCanvas: (width: number, height: number) => {
-    getContext: (id: "2d") => unknown;
-    width: number;
-    height: number;
-    toBuffer: (mime: "image/jpeg" | "image/png", quality?: number) => Buffer;
-  };
-};
-
-function loadNativeCanvas(): NativeCanvas {
-  const req = createRequire(path.join(process.cwd(), "package.json"));
-  return req("@napi-rs/" + "canvas") as NativeCanvas;
-}
-
-class NodeCanvasFactory {
-  private readonly createCanvas = loadNativeCanvas().createCanvas;
-
-  create(width: number, height: number) {
-    const canvas = this.createCanvas(Math.max(1, Math.ceil(width)), Math.max(1, Math.ceil(height)));
-    return { canvas, context: canvas.getContext("2d") };
-  }
-  reset(canvasAndContext: { canvas: { width: number; height: number } }, width: number, height: number) {
-    canvasAndContext.canvas.width = Math.max(1, Math.ceil(width));
-    canvasAndContext.canvas.height = Math.max(1, Math.ceil(height));
-  }
-  destroy(canvasAndContext: { canvas: { width: number; height: number } }) {
-    canvasAndContext.canvas.width = 0;
-    canvasAndContext.canvas.height = 0;
-  }
 }
 
 export async function inspectPdf(bytes: Buffer): Promise<InspectedPdf> {
@@ -178,34 +148,5 @@ export async function inspectPdf(bytes: Buffer): Promise<InspectedPdf> {
     throw new MenuImportValidationError("UNSUPPORTED_FILE", MENU_IMPORT_UNSUPPORTED_MESSAGE);
   } finally {
     await pdf?.destroy?.().catch(() => undefined);
-  }
-}
-
-export async function renderPdfPage(bytes: Buffer, pageNumber: number): Promise<Buffer> {
-  const pdfjs = await loadPdfjs();
-  const canvasFactory = new NodeCanvasFactory();
-  const pdf = await pdfjs.getDocument({
-    data: new Uint8Array(bytes),
-    disableFontFace: true,
-    isEvalSupported: false,
-    useSystemFonts: true,
-    disableAutoFetch: true,
-    disableStream: true,
-    verbosity: 0,
-    canvasFactory,
-  }).promise;
-  try {
-    const page = await pdf.getPage(pageNumber);
-    const base = page.getViewport({ scale: 1 });
-    const scale = Math.min(1.2, MENU_IMPORT_PDF_MAX_RENDER_EDGE / Math.max(base.width, base.height, 1));
-    const viewport = page.getViewport({ scale });
-    const created = canvasFactory.create(viewport.width, viewport.height);
-    await page.render({ canvasContext: created.context, viewport }).promise;
-    const jpeg = created.canvas.toBuffer("image/jpeg", 75);
-    canvasFactory.destroy(created);
-    page.cleanup?.();
-    return jpeg;
-  } finally {
-    await pdf.destroy?.().catch(() => undefined);
   }
 }

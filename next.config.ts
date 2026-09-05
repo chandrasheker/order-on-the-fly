@@ -39,6 +39,7 @@ const nextConfig: NextConfig = {
     "pdfjs-dist",
     "pdf-lib",
     "@napi-rs/canvas",
+    "@napi-rs/canvas-linux-x64-gnu",
   ],
 };
 

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/auth";
-import { enqueueMenuImportProcessing } from "@/lib/menu-import/process";
+import { enqueueMenuImportProcessing } from "@/lib/menu-import/enqueue";
 import { applyMenuImportForRestaurant } from "@/lib/menu-import/apply";
 import { createMenuImportSourceKey } from "@/lib/menu-import/keys";
 import { parseMenuImportDraft, serializeDraft } from "@/lib/menu-import/draft";
