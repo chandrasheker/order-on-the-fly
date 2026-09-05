@@ -26,7 +26,7 @@ export async function GET(
     return opaqueNotFoundJson();
   }
 
-  return new NextResponse(bytes, {
+  return new NextResponse(new Uint8Array(bytes), {
     status: 200,
     headers: {
       "Content-Type": MENU_MEDIA_CONTENT_TYPE,

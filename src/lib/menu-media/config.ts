@@ -30,7 +30,9 @@ export type PublicMenuMediaConfig = {
   s3ForcePathStyle?: boolean;
 };
 
-function envTrim(env: NodeJS.ProcessEnv, key: string) {
+type EnvMap = Record<string, string | undefined>;
+
+function envTrim(env: EnvMap, key: string) {
   const value = env[key];
   return typeof value === "string" ? value.trim() : "";
 }
@@ -51,7 +53,7 @@ export function resolveSafeLocalMenuMediaDir(raw?: string, cwd = process.cwd()) 
   return resolved;
 }
 
-export function resolveMenuMediaConfig(env: NodeJS.ProcessEnv = process.env): MenuMediaConfig {
+export function resolveMenuMediaConfig(env: EnvMap = process.env): MenuMediaConfig {
   const modeRaw = envTrim(env, "MENU_MEDIA_STORAGE") || "local";
   const mode = modeRaw.toLowerCase();
   if (mode !== "local" && mode !== "s3") {

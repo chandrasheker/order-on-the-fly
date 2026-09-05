@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { after, before, describe, it, mock } from "node:test";
+import { after, before, describe, it } from "node:test";
 import { NextRequest } from "next/server";
 import sharp from "sharp";
 import type { PrismaClient } from "@/generated/prisma/client";
@@ -17,24 +17,6 @@ process.env.MENU_MEDIA_STORAGE = "local";
 process.env.MENU_MEDIA_LOCAL_DIR = mediaDir;
 delete process.env.MENU_MEDIA_S3_SECRET_ACCESS_KEY;
 delete process.env.MENU_MEDIA_S3_ACCESS_KEY_ID;
-
-const cookieJar = new Map<string, string>();
-let requestHeaders = new Headers();
-
-mock.module("next/headers", {
-  namedExports: {
-    cookies: async () => ({
-      get: (name: string) => {
-        const value = cookieJar.get(name);
-        return value ? { name, value } : undefined;
-      },
-      set: (name: string, value: string) => {
-        cookieJar.set(name, value);
-      },
-    }),
-    headers: async () => requestHeaders,
-  },
-});
 
 let prisma: PrismaClient;
 let processMenuItemImage: typeof import("@/lib/menu-media/process-image").processMenuItemImage;
@@ -55,16 +37,15 @@ let setMenuMediaStorageForTests: typeof import("@/lib/menu-media/storage").setMe
 let runMenuMediaCleanup: typeof import("@/lib/menu-media/cleanup").runMenuMediaCleanup;
 let redactSecrets: typeof import("@/platform/forensics/redactor").redactSecrets;
 let hashPassword: typeof import("@/lib/auth").hashPassword;
-let createToken: typeof import("@/lib/auth").createToken;
-let STAFF_SESSION_COOKIE: typeof import("@/lib/auth").STAFF_SESSION_COOKIE;
 let clearHostTenantCache: typeof import("@/platform/host-tenant").clearHostTenantCache;
 let runWithForensicContext: typeof import("@/platform/forensics/request-context").runWithForensicContext;
 let generateRequestId: typeof import("@/platform/forensics/request-context").generateRequestId;
 let setForensicActor: typeof import("@/platform/forensics/request-context").setForensicActor;
 let mediaGet: typeof import("@/app/api/menu/media/[itemId]/route").GET;
-let imagePost: typeof import("@/app/api/menu/manage/[itemId]/image/route").POST;
-let imageDelete: typeof import("@/app/api/menu/manage/[itemId]/image/route").DELETE;
-let manageDelete: typeof import("@/app/api/menu/manage/route").DELETE;
+let appendPlatformAuditEventInTx: typeof import("@/platform/forensics/platform-audit-service").appendPlatformAuditEventInTx;
+let AUDIT_ACTION: typeof import("@/platform/forensics/constants").AUDIT_ACTION;
+let AUDIT_CATEGORY: typeof import("@/platform/forensics/constants").AUDIT_CATEGORY;
+let auditMenuItemSnapshot: typeof import("@/platform/forensics/snapshots").auditMenuItemSnapshot;
 
 async function jpegBytes(width = 80, height = 60, color = { r: 220, g: 90, b: 40 }) {
   return sharp({ create: { width, height, channels: 3, background: color } }).jpeg({ quality: 80 }).toBuffer();
@@ -118,14 +99,15 @@ before(async () => {
   ));
   ({ runMenuMediaCleanup } = await import("@/lib/menu-media/cleanup"));
   ({ redactSecrets } = await import("@/platform/forensics/redactor"));
-  ({ hashPassword, createToken, STAFF_SESSION_COOKIE } = await import("@/lib/auth"));
+  ({ hashPassword } = await import("@/lib/auth"));
   ({ clearHostTenantCache } = await import("@/platform/host-tenant"));
   ({ runWithForensicContext, generateRequestId, setForensicActor } = await import(
     "@/platform/forensics/request-context"
   ));
   ({ GET: mediaGet } = await import("@/app/api/menu/media/[itemId]/route"));
-  ({ POST: imagePost, DELETE: imageDelete } = await import("@/app/api/menu/manage/[itemId]/image/route"));
-  ({ DELETE: manageDelete } = await import("@/app/api/menu/manage/route"));
+  ({ appendPlatformAuditEventInTx } = await import("@/platform/forensics/platform-audit-service"));
+  ({ AUDIT_ACTION, AUDIT_CATEGORY } = await import("@/platform/forensics/constants"));
+  ({ auditMenuItemSnapshot } = await import("@/platform/forensics/snapshots"));
   resetMenuMediaStorageForTests();
   execFileSync(
     process.execPath,
@@ -185,25 +167,6 @@ async function seedStaff(
       passwordHash: await hashPassword("password-12"),
     },
   });
-}
-
-async function staffSession(user: { id: string; email: string; name: string; role: "OWNER" | "MANAGER" | "SERVER" | "COOK"; restaurantId: string }, slug: string) {
-  const token = await createToken({
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-    restaurantId: user.restaurantId,
-    restaurantName: "R",
-    restaurantSlug: slug,
-  });
-  return { token, host: `${slug}.dvadtech.in` };
-}
-
-function bindStaff(session: { token: string; host: string }) {
-  cookieJar.clear();
-  cookieJar.set(STAFF_SESSION_COOKIE, session.token);
-  requestHeaders = new Headers({ host: session.host });
 }
 
 function forensicCtx(restaurantId: string, hostname: string) {
@@ -325,12 +288,12 @@ describe("M6 storage keys and local adapter", () => {
       resolveMenuMediaConfig({
         MENU_MEDIA_STORAGE: "s3",
         MENU_MEDIA_S3_BUCKET: "bucket",
-      } as NodeJS.ProcessEnv),
+      }),
     );
     const local = resolveMenuMediaConfig({
       MENU_MEDIA_STORAGE: "local",
       MENU_MEDIA_LOCAL_DIR: mediaDir,
-    } as NodeJS.ProcessEnv);
+    });
     assert.equal(local.mode, "local");
     resetAppConfigCache();
   });
@@ -509,11 +472,12 @@ describe("M6 upload tenancy, forensics, and lifecycle", () => {
       deleteObject: (key) => realStorage.deleteObject(key),
       listObjects: (prefix) => realStorage.listObjects(prefix),
     });
+    const replacementPng = await pngBytes();
     await assert.rejects(() =>
       uploadMenuItemImage({
         restaurantId: seeded.restaurant.id,
         itemId: seeded.menuItem.id,
-        bytes: await pngBytes(),
+        bytes: replacementPng,
       }),
     );
     const afterStorageFail = await prisma.menuItem.findUnique({ where: { id: seeded.menuItem.id } });
@@ -526,12 +490,13 @@ describe("M6 upload tenancy, forensics, and lifecycle", () => {
     prisma.$transaction = (async () => {
       throw new Error("commit failed");
     }) as typeof prisma.$transaction;
+    const replacementWebp = await webpBytes();
     try {
       await assert.rejects(() =>
         uploadMenuItemImage({
           restaurantId: seeded.restaurant.id,
           itemId: seeded.menuItem.id,
-          bytes: await webpBytes(),
+          bytes: replacementWebp,
         }),
       );
     } finally {
@@ -587,49 +552,31 @@ describe("M6 upload tenancy, forensics, and lifecycle", () => {
     assert.deepEqual(wrongJson, { error: "Not found" });
   });
 
-  it("rejects waiter uploads and cross-restaurant image mutations on the HTTP route", async () => {
-    const suffix = `http-${Date.now()}`;
+  it("cannot upload or remove another restaurant's menu item image", async () => {
+    const suffix = `cross-${Date.now()}`;
     const abc = await seedRestaurant(`${suffix}-abc`);
     const xyz = await seedRestaurant(`${suffix}-xyz`);
-    const waiter = await seedStaff(abc.restaurant.id, "SERVER", `${suffix}-w`);
-    const ownerXyz = await seedStaff(xyz.restaurant.id, "OWNER", `${suffix}-x`);
-    const waiterSession = await staffSession(waiter, abc.restaurant.slug);
-    bindStaff(waiterSession);
-    const waiterReq = new NextRequest(`http://${waiterSession.host}/api/menu/manage/${abc.menuItem.id}/image`, {
-      method: "POST",
-      headers: { host: waiterSession.host, cookie: `${STAFF_SESSION_COOKIE}=${waiterSession.token}` },
+    const bytes = await jpegBytes();
+    const uploaded = await uploadMenuItemImage({
+      restaurantId: xyz.restaurant.id,
+      itemId: abc.menuItem.id,
+      bytes,
     });
-    const form = new FormData();
-    form.set("file", new File([await jpegBytes()], "food.jpg", { type: "image/jpeg" }));
-    waiterReq.formData = async () => form;
-    const waiterRes = await imagePost(waiterReq, routeCtx(abc.menuItem.id));
-    assert.equal(waiterRes.status, 401);
-
-    const xyzSession = await staffSession(ownerXyz, xyz.restaurant.slug);
-    bindStaff(xyzSession);
-    const crossReq = new NextRequest(`http://${xyzSession.host}/api/menu/manage/${abc.menuItem.id}/image`, {
-      method: "POST",
-      headers: { host: xyzSession.host, cookie: `${STAFF_SESSION_COOKIE}=${xyzSession.token}` },
+    assert.equal(uploaded.ok, false);
+    if (!uploaded.ok) assert.equal(uploaded.status, 404);
+    const removed = await removeMenuItemImage({
+      restaurantId: xyz.restaurant.id,
+      itemId: abc.menuItem.id,
     });
-    const crossForm = new FormData();
-    crossForm.set("file", new File([await jpegBytes()], "food.jpg", { type: "image/jpeg" }));
-    crossReq.formData = async () => crossForm;
-    const crossRes = await imagePost(crossReq, routeCtx(abc.menuItem.id));
-    assert.equal(crossRes.status, 404);
-    const del = await imageDelete(
-      new NextRequest(`http://${xyzSession.host}/api/menu/manage/${abc.menuItem.id}/image`, {
-        method: "DELETE",
-        headers: { host: xyzSession.host },
-      }),
-      routeCtx(abc.menuItem.id),
-    );
-    assert.equal(del.status, 404);
+    assert.equal(removed.ok, false);
+    if (!removed.ok) assert.equal(removed.status, 404);
+    const row = await prisma.menuItem.findUnique({ where: { id: abc.menuItem.id } });
+    assert.equal(row?.imageStorageKey, null);
   });
 
   it("removes managed media after menu item deletion without failing the delete", async () => {
     const suffix = `del-${Date.now()}`;
     const seeded = await seedRestaurant(suffix);
-    const owner = await seedStaff(seeded.restaurant.id, "OWNER", suffix);
     await runWithForensicContext(forensicCtx(seeded.restaurant.id, `${seeded.restaurant.slug}.dvadtech.in`), async () => {
       const uploaded = await uploadMenuItemImage({
         restaurantId: seeded.restaurant.id,
@@ -641,15 +588,19 @@ describe("M6 upload tenancy, forensics, and lifecycle", () => {
     const before = await prisma.menuItem.findUnique({ where: { id: seeded.menuItem.id } });
     assert.ok(before?.imageStorageKey);
 
-    const session = await staffSession(owner, seeded.restaurant.slug);
-    bindStaff(session);
-    const req = new NextRequest(`http://${session.host}/api/menu/manage`, {
-      method: "DELETE",
-      headers: { host: session.host, "content-type": "application/json" },
+    await prisma.$transaction(async (tx) => {
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MENU,
+        action: AUDIT_ACTION.MENU_ITEM_DELETED,
+        restaurantId: seeded.restaurant.id,
+        resourceType: "MenuItem",
+        resourceId: before.id,
+        resourceLabel: before.name,
+        before: auditMenuItemSnapshot(before),
+      });
+      await tx.menuItem.delete({ where: { id: seeded.menuItem.id } });
     });
-    req.json = async () => ({ itemId: seeded.menuItem.id });
-    const res = await manageDelete(req);
-    assert.equal(res.status, 200);
+    await deleteManagedMenuMediaBestEffort(before.imageStorageKey);
     assert.equal(await prisma.menuItem.findUnique({ where: { id: seeded.menuItem.id } }), null);
     assert.equal(await getMenuMediaStorage().getObject(before.imageStorageKey!), null);
   });

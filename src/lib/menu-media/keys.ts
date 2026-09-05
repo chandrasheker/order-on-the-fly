@@ -55,6 +55,7 @@ export function menuMediaListPrefix() {
 export function omitMenuItemStorageKey<T extends { imageStorageKey?: string | null }>(
   item: T,
 ): Omit<T, "imageStorageKey"> {
-  const { imageStorageKey: _storageKey, ...rest } = item;
+  const rest = { ...item };
+  delete rest.imageStorageKey;
   return rest;
 }

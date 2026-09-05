@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp, { type Metadata as SharpMetadata } from "sharp";
 import {
   MENU_MEDIA_ACCEPTED_INPUT_FORMATS,
   MENU_MEDIA_CONTENT_TYPE,
@@ -43,7 +43,7 @@ export async function processMenuItemImage(input: Buffer): Promise<ProcessedMenu
     throw new MenuMediaValidationError("Image must be 5 MB or smaller.", 413);
   }
 
-  let metadata: sharp.Metadata;
+  let metadata: SharpMetadata;
   try {
     metadata = await sharp(input, {
       animated: false,
