@@ -1,4 +1,4 @@
-import { createRequire } from "node:module";
+import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { createCanvas } from "@napi-rs/canvas";
 import {
@@ -76,20 +76,21 @@ function textFromPdfItems(items: Array<{ str?: string; hasEOL?: boolean; transfo
     .trim();
 }
 
-const require = createRequire(import.meta.url);
-
 function usableText(text: string) {
   return (text.match(/[A-Za-z0-9]/g) ?? []).length >= MENU_IMPORT_PDF_MIN_TEXT_CHARS;
 }
 
 async function loadPdfjs(): Promise<PdfjsModule> {
   const mod = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as PdfjsModule;
-  try {
-    const worker = require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
-    mod.GlobalWorkerOptions.workerSrc = worker;
-  } catch {
-    mod.GlobalWorkerOptions.workerSrc = "";
-  }
+  // File path avoids webpack trying to bundle the ESM worker via require.resolve.
+  mod.GlobalWorkerOptions.workerSrc = path.join(
+    process.cwd(),
+    "node_modules",
+    "pdfjs-dist",
+    "legacy",
+    "build",
+    "pdf.worker.mjs",
+  );
   return mod;
 }
 
