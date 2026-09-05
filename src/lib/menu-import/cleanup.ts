@@ -64,7 +64,8 @@ export async function runMenuImportCleanup(options?: {
   const rows = await prisma.menuImport.findMany({
     where: {
       OR: [
-        { status: { in: ["APPLIED", "CANCELLED"] }, updatedAt: { lte: terminalCutoff } },
+        { status: "APPLIED", appliedAt: { lte: terminalCutoff } },
+        { status: "CANCELLED", cancelledAt: { lte: terminalCutoff } },
         {
           status: { in: ["UPLOADED", "PROCESSING", "READY_FOR_REVIEW", "FAILED", "APPLYING"] },
           createdAt: { lte: abandonedCutoff },
