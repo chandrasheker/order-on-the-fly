@@ -203,6 +203,7 @@ END;
 });
 
 after(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 100));
   setRazorpayTransportForTests?.(null);
   if (prisma) await prisma.$disconnect().catch(() => undefined);
   for (const extra of ["", "-wal", "-shm", "-journal"]) {
@@ -1378,6 +1379,7 @@ describe("M4 forensic audit", () => {
     });
     const orderRes = await ordersPost(orderReq, emptyRouteContext);
     assert.equal(orderRes.status, 201);
+    await new Promise((resolve) => setTimeout(resolve, 75));
     const created = await prisma.platformAuditEvent.findFirst({
       where: { action: "ORDER_CREATED", restaurantId: restaurant.id },
     });
