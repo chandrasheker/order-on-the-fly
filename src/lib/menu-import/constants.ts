@@ -21,6 +21,13 @@ export const MENU_IMPORT_PDF_MAX_RENDER_EDGE = 1200;
 export const MENU_IMPORT_DEFAULT_PREP_MINUTES = 10;
 export const MENU_IMPORT_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const MENU_IMPORT_ABANDONED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const MENU_IMPORT_ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
+export const MENU_IMPORT_CANCELLABLE_STATUSES = [
+  "UPLOADED",
+  "PROCESSING",
+  "READY_FOR_REVIEW",
+  "FAILED",
+] as const;
 
 export const MENU_IMPORT_UNSUPPORTED_MESSAGE = "Unsupported or unreadable menu file";
 

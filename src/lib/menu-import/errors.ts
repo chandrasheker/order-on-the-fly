@@ -3,12 +3,14 @@ import { MENU_IMPORT_ERROR_MESSAGES, MENU_IMPORT_UNSUPPORTED_MESSAGE } from "@/l
 export class MenuImportValidationError extends Error {
   readonly status: 400 | 409 | 413;
   readonly code: string;
+  readonly currentStatus?: string;
 
-  constructor(code: string, message?: string, status: 400 | 409 | 413 = 400) {
+  constructor(code: string, message?: string, status: 400 | 409 | 413 = 400, currentStatus?: string) {
     super(message || MENU_IMPORT_ERROR_MESSAGES[code] || MENU_IMPORT_UNSUPPORTED_MESSAGE);
     this.name = "MenuImportValidationError";
     this.code = code;
     this.status = status;
+    this.currentStatus = currentStatus;
   }
 }
 

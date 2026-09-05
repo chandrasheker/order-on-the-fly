@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   assertStoredMenuObjectKey,
-  isManagedMenuMediaKey,
   isStoredMenuObjectKey,
   menuMediaListPrefix,
 } from "@/lib/menu-media/keys";
@@ -78,7 +77,7 @@ export class LocalMenuMediaStorage implements MenuMediaStorage {
       }
       if (!entry.isFile()) continue;
       const relative = path.relative(root, full).split(path.sep).join("/");
-      if (!relative.startsWith(prefix) || !isManagedMenuMediaKey(relative)) continue;
+      if (!relative.startsWith(prefix) || !isStoredMenuObjectKey(relative)) continue;
       const stat = await fs.stat(full);
       out.push({ key: relative, lastModified: stat.mtime });
     }

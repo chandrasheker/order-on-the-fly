@@ -8,7 +8,6 @@ import {
 import type { S3MenuMediaConfig } from "@/lib/menu-media/config";
 import {
   assertStoredMenuObjectKey,
-  isManagedMenuMediaKey,
   isStoredMenuObjectKey,
   menuMediaListPrefix,
 } from "@/lib/menu-media/keys";
@@ -87,7 +86,7 @@ export class S3MenuMediaStorage implements MenuMediaStorage {
         }),
       );
       for (const obj of result.Contents ?? []) {
-        if (!obj.Key || !isManagedMenuMediaKey(obj.Key)) continue;
+        if (!obj.Key || !isStoredMenuObjectKey(obj.Key)) continue;
         objects.push({
           key: obj.Key,
           lastModified: obj.LastModified ?? new Date(0),

@@ -10,7 +10,7 @@ import { validateMenuImportFiles, type IncomingImportFile } from "@/lib/menu-imp
 import type { MenuImportSourceMeta } from "@/lib/menu-import/types";
 import { getMenuMediaStorage } from "@/lib/menu-media/storage";
 import { isManagedMenuImportSourceKey } from "@/lib/menu-media/keys";
-import { MENU_IMPORT_MAX_PROCESS_ATTEMPTS } from "@/lib/menu-import/constants";
+import { MENU_IMPORT_CANCELLABLE_STATUSES, MENU_IMPORT_MAX_PROCESS_ATTEMPTS } from "@/lib/menu-import/constants";
 import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
 import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
 import { setForensicResource } from "@/platform/forensics/request-context";
@@ -156,44 +156,63 @@ export async function saveMenuImportDraft(params: {
   importId: string;
   draft: unknown;
 }) {
-  const row = await findRestaurantMenuImport(params.restaurantId, params.importId);
-  if (!row) return null;
-  if (row.status !== "READY_FOR_REVIEW") {
-    throw new MenuImportValidationError("INVALID_STATE", undefined, 409);
-  }
+  const existing = await findRestaurantMenuImport(params.restaurantId, params.importId);
+  if (!existing) return null;
   const draft = parseMenuImportDraft(params.draft);
-  return prisma.menuImport.update({
-    where: { id: row.id },
+  const updated = await prisma.menuImport.updateMany({
+    where: {
+      id: params.importId,
+      restaurantId: params.restaurantId,
+      status: "READY_FOR_REVIEW",
+    },
     data: { draftJson: serializeDraft(draft) },
   });
+  if (updated.count !== 1) {
+    const current = await findRestaurantMenuImport(params.restaurantId, params.importId);
+    throw new MenuImportValidationError("INVALID_STATE", undefined, 409, current?.status);
+  }
+  return findRestaurantMenuImport(params.restaurantId, params.importId);
 }
 
 export async function cancelMenuImport(params: { restaurantId: string; importId: string }) {
-  const row = await findRestaurantMenuImport(params.restaurantId, params.importId);
-  if (!row) return null;
-  if (row.status === "APPLIED") {
-    throw new MenuImportValidationError("INVALID_STATE", undefined, 409);
-  }
-  if (row.status === "CANCELLED") return row;
+  const existing = await findRestaurantMenuImport(params.restaurantId, params.importId);
+  if (!existing) return null;
+  if (existing.status === "CANCELLED") return existing;
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const cancelled = await tx.menuImport.update({
-      where: { id: row.id },
+  const outcome = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.menuImport.updateMany({
+      where: {
+        id: params.importId,
+        restaurantId: params.restaurantId,
+        status: { in: [...MENU_IMPORT_CANCELLABLE_STATUSES] },
+      },
       data: { status: "CANCELLED", cancelledAt: new Date() },
     });
-    setForensicResource({ type: "MenuImport", id: cancelled.id, label: "menu-import" });
-    await appendPlatformAuditEventInTx(tx, {
-      category: AUDIT_CATEGORY.MENU,
-      action: AUDIT_ACTION.MENU_IMPORT_CANCELLED,
-      restaurantId: params.restaurantId,
-      resourceType: "MenuImport",
-      resourceId: cancelled.id,
-      resourceLabel: "menu-import",
-      metadata: importAuditMetadata(cancelled),
+    const current = await tx.menuImport.findFirst({
+      where: { id: params.importId, restaurantId: params.restaurantId },
     });
-    return cancelled;
+    if (claimed.count !== 1) {
+      return { cancelled: false as const, current };
+    }
+    if (current) {
+      setForensicResource({ type: "MenuImport", id: current.id, label: "menu-import" });
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MENU,
+        action: AUDIT_ACTION.MENU_IMPORT_CANCELLED,
+        restaurantId: params.restaurantId,
+        resourceType: "MenuImport",
+        resourceId: current.id,
+        resourceLabel: "menu-import",
+        metadata: importAuditMetadata(current),
+      });
+    }
+    return { cancelled: true as const, current };
   });
-  return updated;
+
+  if (outcome.cancelled) return outcome.current;
+  if (!outcome.current) return null;
+  if (outcome.current.status === "CANCELLED") return outcome.current;
+  throw new MenuImportValidationError("INVALID_STATE", undefined, 409, outcome.current.status);
 }
 
 export async function retryMenuImportProcessing(params: { restaurantId: string; importId: string }) {
@@ -212,12 +231,17 @@ export async function retryMenuImportProcessing(params: { restaurantId: string; 
   return row;
 }
 
-export async function applyOwnedMenuImport(params: { restaurantId: string; importId: string }) {
+export async function applyOwnedMenuImport(params: {
+  restaurantId: string;
+  importId: string;
+  draft?: unknown;
+}) {
   const row = await findRestaurantMenuImport(params.restaurantId, params.importId);
   if (!row) return null;
   const result = await applyMenuImportForRestaurant({
     restaurantId: params.restaurantId,
     importId: params.importId,
+    draft: params.draft,
   });
   const latest = await findRestaurantMenuImport(params.restaurantId, params.importId);
   return { import: latest, result };

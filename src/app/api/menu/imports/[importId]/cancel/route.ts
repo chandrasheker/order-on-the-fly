@@ -22,7 +22,10 @@ async function handlePOST(_req: NextRequest, ctx: { params: Promise<{ importId: 
     return NextResponse.json({ import: toPublicMenuImport(row) });
   } catch (error) {
     if (error instanceof MenuImportValidationError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+      return NextResponse.json(
+        { error: error.message, code: error.code, status: error.currentStatus },
+        { status: error.status },
+      );
     }
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

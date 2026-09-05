@@ -14,6 +14,9 @@ async function main() {
     deletedKeys: result.deletedKeys,
     failedKeys: result.failedKeys,
     cancelledAbandoned: result.cancelledAbandoned,
+    orphanedKeys: result.orphanedKeys,
+    deletedOrphans: result.deletedOrphans,
+    skippedRecentOrphans: result.skippedRecentOrphans,
   }, null, 2));
   if (result.failedKeys.length > 0) {
     process.exitCode = 1;

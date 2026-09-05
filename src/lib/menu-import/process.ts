@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { MENU_IMPORT_MAX_PROCESS_ATTEMPTS } from "@/lib/menu-import/constants";
-import { userFacingImportError } from "@/lib/menu-import/errors";
+import { MenuImportValidationError, userFacingImportError } from "@/lib/menu-import/errors";
 import { getMenuImportExtractor } from "@/lib/menu-import/extractor";
 import { LocalMenuImportExtractor } from "@/lib/menu-import/providers/local-text";
 import { serializeDraft } from "@/lib/menu-import/draft";
@@ -25,9 +25,14 @@ function parseSourceMeta(json: string | null | undefined): MenuImportSourceMeta 
   }
 }
 
-async function markFailed(importId: string, restaurantId: string, code: string, error?: unknown) {
-  const row = await prisma.menuImport.update({
-    where: { id: importId },
+export async function markMenuImportFailed(
+  importId: string,
+  restaurantId: string,
+  code: string,
+  error?: unknown,
+) {
+  const failed = await prisma.menuImport.updateMany({
+    where: { id: importId, status: "PROCESSING" },
     data: {
       status: "FAILED",
       errorCode: code,
@@ -35,6 +40,10 @@ async function markFailed(importId: string, restaurantId: string, code: string, 
       processedAt: new Date(),
     },
   });
+  const row = await prisma.menuImport.findUnique({ where: { id: importId } });
+  if (failed.count !== 1 || !row) {
+    return row;
+  }
   setForensicResource({ type: "MenuImport", id: row.id, label: "menu-import" });
   await tryAppendPlatformAuditEvent({
     eventKind: AUDIT_EVENT_KIND.ACTION,
@@ -50,6 +59,27 @@ async function markFailed(importId: string, restaurantId: string, code: string, 
     metadata: importAuditMetadata({ ...row, extra: { errorCode: code } }),
   });
   return row;
+}
+
+export async function tryMarkMenuImportReady(
+  importId: string,
+  data: { draftJson: string; pageCount: number },
+) {
+  const updated = await prisma.menuImport.updateMany({
+    where: { id: importId, status: "PROCESSING" },
+    data: {
+      status: "READY_FOR_REVIEW",
+      draftJson: data.draftJson,
+      pageCount: data.pageCount,
+      errorCode: null,
+      errorMessage: null,
+      processedAt: new Date(),
+    },
+  });
+  return prisma.menuImport.findUnique({ where: { id: importId } }).then((row) => ({
+    transitioned: updated.count === 1,
+    row,
+  }));
 }
 
 async function buildExtractPages(row: {
@@ -131,28 +161,21 @@ export async function processMenuImportById(importId: string) {
   try {
     const pages = await buildExtractPages(row);
     if (!pages.length) {
-      return markFailed(row.id, row.restaurantId, "UNSUPPORTED_FILE");
+      return markMenuImportFailed(row.id, row.restaurantId, "UNSUPPORTED_FILE");
     }
     const draft: MenuImportDraft =
       extractor && config.configured
         ? await extractor.extractMenu({ pages })
         : await new LocalMenuImportExtractor().extractMenu({ pages });
     if (!draft.categories.length) {
-      return markFailed(row.id, row.restaurantId, "PROVIDER_INVALID_OUTPUT");
+      return markMenuImportFailed(row.id, row.restaurantId, "PROVIDER_INVALID_OUTPUT");
     }
-    const stillOurs = await prisma.menuImport.updateMany({
-      where: { id: row.id, status: "PROCESSING" },
-      data: {
-        status: "READY_FOR_REVIEW",
-        draftJson: serializeDraft(draft),
-        pageCount: pages.length,
-        errorCode: null,
-        errorMessage: null,
-        processedAt: new Date(),
-      },
+    const stillOurs = await tryMarkMenuImportReady(row.id, {
+      draftJson: serializeDraft(draft),
+      pageCount: pages.length,
     });
-    if (stillOurs.count !== 1) {
-      return prisma.menuImport.findUnique({ where: { id: row.id } });
+    if (!stillOurs.transitioned) {
+      return stillOurs.row;
     }
     const ready = await prisma.menuImport.findUnique({ where: { id: row.id } });
     if (!ready) return ready;
@@ -169,25 +192,28 @@ export async function processMenuImportById(importId: string) {
     return ready;
   } catch (error) {
     const code =
-      error instanceof Error && /TIMEOUT/i.test(error.message)
-        ? "PROVIDER_TIMEOUT"
-        : error instanceof Error && /INVALID_DRAFT|INVALID_OUTPUT/i.test(error.message)
-          ? "PROVIDER_INVALID_OUTPUT"
-          : error instanceof Error && "code" in error
-            ? String((error as { code: string }).code)
-            : "PROVIDER_FAILED";
+      error instanceof MenuImportValidationError
+        ? error.code
+        : error instanceof Error && /TIMEOUT/i.test(error.message)
+          ? "PROVIDER_TIMEOUT"
+          : error instanceof Error && /INVALID_DRAFT|INVALID_OUTPUT/i.test(error.message)
+            ? "PROVIDER_INVALID_OUTPUT"
+            : error instanceof Error && "code" in error
+              ? String((error as { code: string }).code)
+              : "PROVIDER_FAILED";
     const safeCode = [
       "EXTRACTION_NOT_CONFIGURED",
       "IMAGE_EXTRACTION_NOT_CONFIGURED",
       "UNSUPPORTED_FILE",
       "ENCRYPTED_PDF",
+      "TOO_MANY_PAGES",
       "PROVIDER_FAILED",
       "PROVIDER_INVALID_OUTPUT",
       "PROVIDER_TIMEOUT",
     ].includes(code)
       ? code
       : "PROVIDER_FAILED";
-    return markFailed(row.id, row.restaurantId, safeCode, error);
+    return markMenuImportFailed(row.id, row.restaurantId, safeCode, error);
   }
 }
 

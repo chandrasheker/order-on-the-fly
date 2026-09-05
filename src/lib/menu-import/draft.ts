@@ -148,33 +148,7 @@ export function annotateDraftDuplicates(
   };
 }
 
-export function applyPreviewFromDraft(draft: MenuImportDraft) {
-  let itemCount = 0;
-  let duplicateCount = 0;
-  let incompleteCount = 0;
-  for (const category of draft.categories) {
-    for (const item of category.items) {
-      const duplicateSkip = Boolean(item.possibleDuplicate && item.skipOnApply !== false);
-      if (duplicateSkip) {
-        duplicateCount += 1;
-        continue;
-      }
-      if (!item.name.trim() || item.pricePaise == null || item.priceAmbiguous) {
-        incompleteCount += 1;
-        continue;
-      }
-      itemCount += 1;
-    }
-  }
-  return {
-    categoryCount: draft.categories.filter((category) =>
-      category.items.some((item) => item.name.trim() && item.pricePaise != null && !item.priceAmbiguous && !(item.possibleDuplicate && item.skipOnApply !== false)),
-    ).length,
-    itemCount,
-    duplicateCount,
-    incompleteCount,
-  };
-}
+export { applyPreviewFromDraft } from "@/lib/menu-import/eligibility";
 
 export function serializeDraft(draft: MenuImportDraft) {
   const cleaned: MenuImportDraft = {

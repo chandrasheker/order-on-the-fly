@@ -2,10 +2,17 @@ import { prisma } from "@/lib/prisma";
 import { MENU_CATEGORY_PRESETS } from "@/lib/menu-setup-service";
 import { MENU_IMPORT_DEFAULT_PREP_MINUTES } from "@/lib/menu-import/constants";
 import { MenuImportValidationError } from "@/lib/menu-import/errors";
-import { menuLabelsMatch, parseStoredDraft } from "@/lib/menu-import/draft";
+import {
+  annotateDraftDuplicates,
+  menuLabelsMatch,
+  parseMenuImportDraft,
+  parseStoredDraft,
+  serializeDraft,
+} from "@/lib/menu-import/draft";
+import { isDefaultSkippedDuplicate, isEligibleApplyItem } from "@/lib/menu-import/eligibility";
 import { paiseToRupeeNumber } from "@/lib/menu-import/prices";
 import { importAuditMetadata } from "@/lib/menu-import/public";
-import type { MenuImportApplyResult } from "@/lib/menu-import/types";
+import type { MenuImportApplyResult, MenuImportDraft } from "@/lib/menu-import/types";
 import { slugify } from "@/lib/utils";
 import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
 import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
@@ -22,10 +29,21 @@ function parseResult(json: string | null): MenuImportApplyResult | null {
   }
 }
 
+function parseReviewedDraft(input: unknown): MenuImportDraft {
+  try {
+    return parseMenuImportDraft(input);
+  } catch {
+    throw new MenuImportValidationError("INVALID_DRAFT", "Invalid import draft", 400);
+  }
+}
+
 export async function applyMenuImportForRestaurant(params: {
   restaurantId: string;
   importId: string;
+  draft?: unknown;
 }) {
+  const reviewedDraft = params.draft !== undefined ? parseReviewedDraft(params.draft) : null;
+
   const result = await prisma.$transaction(async (tx) => {
     const current = await tx.menuImport.findFirst({
       where: { id: params.importId, restaurantId: params.restaurantId },
@@ -38,10 +56,10 @@ export async function applyMenuImportForRestaurant(params: {
       if (existing) return existing;
     }
     if (current.status === "CANCELLED") {
-      throw new MenuImportValidationError("CANCELLED", undefined, 409);
+      throw new MenuImportValidationError("CANCELLED", undefined, 409, current.status);
     }
     if (current.status !== "READY_FOR_REVIEW") {
-      throw new MenuImportValidationError("INVALID_STATE", undefined, 409);
+      throw new MenuImportValidationError("INVALID_STATE", undefined, 409, current.status);
     }
 
     const claimed = await tx.menuImport.updateMany({
@@ -56,13 +74,18 @@ export async function applyMenuImportForRestaurant(params: {
         const existing = parseResult(again.appliedResultJson);
         if (existing) return existing;
       }
-      throw new MenuImportValidationError("INVALID_STATE", undefined, 409);
+      throw new MenuImportValidationError("INVALID_STATE", undefined, 409, again?.status);
     }
 
-    const draft = parseStoredDraft(current.draftJson);
+    const draft = reviewedDraft ?? parseStoredDraft(current.draftJson);
     if (!draft) {
       throw new MenuImportValidationError("PROVIDER_INVALID_OUTPUT", undefined, 409);
     }
+
+    await tx.menuImport.update({
+      where: { id: current.id },
+      data: { draftJson: serializeDraft(draft) },
+    });
 
     const existingCategories = await tx.menuCategory.findMany({
       where: { restaurantId: params.restaurantId },
@@ -70,6 +93,12 @@ export async function applyMenuImportForRestaurant(params: {
     });
     const categories = [...existingCategories];
     const maxCatSort = categories.reduce((max, category) => Math.max(max, category.sortOrder), -1);
+    const annotated = annotateDraftDuplicates(
+      draft,
+      categories.flatMap((category) =>
+        category.items.map((item) => ({ categoryName: category.name, itemName: item.name })),
+      ),
+    );
 
     const result: MenuImportApplyResult = {
       createdCategoryCount: 0,
@@ -83,12 +112,28 @@ export async function applyMenuImportForRestaurant(params: {
 
     let nextCatSort = maxCatSort + 1;
 
-    for (const draftCategory of draft.categories) {
+    for (const draftCategory of annotated.categories) {
+      const eligible: typeof draftCategory.items = [];
+      for (const draftItem of draftCategory.items) {
+        if (isDefaultSkippedDuplicate(draftItem)) {
+          result.skippedDuplicateCount += 1;
+          continue;
+        }
+        if (!isEligibleApplyItem(draftItem)) {
+          result.skippedIncompleteCount += 1;
+          continue;
+        }
+        eligible.push(draftItem);
+      }
+      if (eligible.length === 0) {
+        continue;
+      }
+
       let category = categories.find((row) => menuLabelsMatch(row.name, draftCategory.name));
       if (!category) {
         const baseSlug = slugify(draftCategory.name);
         if (!baseSlug) {
-          result.skippedIncompleteCount += draftCategory.items.length;
+          result.skippedIncompleteCount += eligible.length;
           continue;
         }
         let slug = baseSlug;
@@ -135,11 +180,7 @@ export async function applyMenuImportForRestaurant(params: {
       });
       let nextItemSort = (maxItemSort._max.sortOrder ?? 0) + 1;
 
-      for (const draftItem of draftCategory.items) {
-        if (!draftItem.name.trim() || draftItem.pricePaise == null || draftItem.priceAmbiguous) {
-          result.skippedIncompleteCount += 1;
-          continue;
-        }
+      for (const draftItem of eligible) {
         const duplicate = liveNames.some((name) => menuLabelsMatch(name, draftItem.name));
         if (duplicate && draftItem.skipOnApply !== false) {
           result.skippedDuplicateCount += 1;
@@ -150,7 +191,7 @@ export async function applyMenuImportForRestaurant(params: {
           data: {
             name: draftItem.name.trim(),
             description: draftItem.description,
-            price: paiseToRupeeNumber(draftItem.pricePaise),
+            price: paiseToRupeeNumber(draftItem.pricePaise!),
             categoryId: category.id,
             prepTimeMinutes: draftItem.prepTimeMinutes ?? MENU_IMPORT_DEFAULT_PREP_MINUTES,
             isAvailable: true,

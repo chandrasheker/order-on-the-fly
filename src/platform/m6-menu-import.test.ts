@@ -38,6 +38,16 @@ let isManagedMenuImportSourceKey: typeof import("@/lib/menu-media/keys").isManag
 let isManagedMenuMediaKey: typeof import("@/lib/menu-media/keys").isManagedMenuMediaKey;
 let createMenuMediaStorageKey: typeof import("@/lib/menu-media/keys").createMenuMediaStorageKey;
 let resetMenuMediaStorageForTests: typeof import("@/lib/menu-media/storage").resetMenuMediaStorageForTests;
+let setMenuMediaStorageForTests: typeof import("@/lib/menu-media/storage").setMenuMediaStorageForTests;
+let getMenuMediaStorage: typeof import("@/lib/menu-media/storage").getMenuMediaStorage;
+let createMenuImportSourceKey: typeof import("@/lib/menu-import/keys").createMenuImportSourceKey;
+let applyPreviewFromDraft: typeof import("@/lib/menu-import/eligibility").applyPreviewFromDraft;
+let annotateDraftDuplicates: typeof import("@/lib/menu-import/draft").annotateDraftDuplicates;
+let inspectPdf: typeof import("@/lib/menu-import/pdf").inspectPdf;
+let resetPdfTextExtractCallCountForTests: typeof import("@/lib/menu-import/pdf").resetPdfTextExtractCallCountForTests;
+let getPdfTextExtractCallCountForTests: typeof import("@/lib/menu-import/pdf").getPdfTextExtractCallCountForTests;
+let markMenuImportFailed: typeof import("@/lib/menu-import/process").markMenuImportFailed;
+let tryMarkMenuImportReady: typeof import("@/lib/menu-import/process").tryMarkMenuImportReady;
 let hashPassword: typeof import("@/lib/auth").hashPassword;
 let redactSecrets: typeof import("@/platform/forensics/redactor").redactSecrets;
 let resolveMenuImportConfig: typeof import("@/lib/menu-import/config").resolveMenuImportConfig;
@@ -123,7 +133,16 @@ before(async () => {
   ({ isManagedMenuImportSourceKey, isManagedMenuMediaKey, createMenuMediaStorageKey } = await import(
     "@/lib/menu-media/keys"
   ));
-  ({ resetMenuMediaStorageForTests } = await import("@/lib/menu-media/storage"));
+  ({ resetMenuMediaStorageForTests, setMenuMediaStorageForTests, getMenuMediaStorage } = await import(
+    "@/lib/menu-media/storage"
+  ));
+  ({ createMenuImportSourceKey } = await import("@/lib/menu-import/keys"));
+  ({ applyPreviewFromDraft } = await import("@/lib/menu-import/eligibility"));
+  ({ annotateDraftDuplicates } = await import("@/lib/menu-import/draft"));
+  ({ inspectPdf, resetPdfTextExtractCallCountForTests, getPdfTextExtractCallCountForTests } = await import(
+    "@/lib/menu-import/pdf"
+  ));
+  ({ markMenuImportFailed, tryMarkMenuImportReady } = await import("@/lib/menu-import/process"));
   ({ hashPassword } = await import("@/lib/auth"));
   ({ redactSecrets } = await import("@/platform/forensics/redactor"));
   ({ resolveMenuImportConfig } = await import("@/lib/menu-import/config"));
@@ -254,10 +273,26 @@ describe("M6-B source validation", () => {
       (error: unknown) => error instanceof MenuImportValidationError && error.code === "TOO_MANY_PAGES",
     );
     const manyPages = await sampleMenuPdf(21);
+    resetPdfTextExtractCallCountForTests();
+    await assert.rejects(
+      () => inspectPdf(manyPages),
+      (error: unknown) => error instanceof MenuImportValidationError && error.code === "TOO_MANY_PAGES",
+    );
+    assert.equal(getPdfTextExtractCallCountForTests(), 0);
     await assert.rejects(
       () => validateMenuImportFiles([{ originalName: "long.pdf", bytes: manyPages }]),
       (error: unknown) => error instanceof MenuImportValidationError && error.code === "TOO_MANY_PAGES",
     );
+    assert.equal(getPdfTextExtractCallCountForTests(), 0);
+    resetPdfTextExtractCallCountForTests();
+    const ok = await inspectPdf(await sampleMenuPdf(1));
+    assert.equal(ok.pageCount, 1);
+    assert.ok(getPdfTextExtractCallCountForTests() >= 1);
+    assert.ok(getPdfTextExtractCallCountForTests() <= 20);
+    resetPdfTextExtractCallCountForTests();
+    const encrypted = await inspectPdf(encryptedPdfBytes());
+    assert.equal(encrypted.encrypted, true);
+    assert.equal(getPdfTextExtractCallCountForTests(), 0);
   });
 
   it("normalizes common price strings to integer paise and flags ranges", () => {
@@ -576,5 +611,396 @@ describe("M6-B import workflow", () => {
     const media = await runMenuMediaCleanup({ apply: false, now: new Date("2020-01-20") });
     assert.equal(media.orphans.includes(photoKey), false);
     assert.ok(await getMenuMediaStorage().getObject(photoKey));
+  });
+});
+
+function draftItem(
+  name: string,
+  pricePaise: number | null,
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    id: `item-${name.replace(/\s+/g, "-").toLowerCase()}`,
+    name,
+    description: null,
+    pricePaise,
+    priceAmbiguous: pricePaise == null,
+    isVeg: true,
+    ...extra,
+  };
+}
+
+describe("M6-B blocker invariants", () => {
+  it("applies the exact reviewed price, not a stale stored OCR draft", async () => {
+    const abc = await seedRestaurant("reviewed-price");
+    const created = await createMenuImportFromUpload({
+      session: sessionFor(abc.owner, abc.restaurant),
+      files: [{ originalName: "menu.pdf", bytes: await sampleMenuPdf() }],
+    });
+    await processMenuImportById(created.id);
+    const ready = await findRestaurantMenuImport(abc.restaurant.id, created.id);
+    const stored = JSON.parse(ready?.draftJson ?? "{}") as {
+      categories: Array<{
+        id: string;
+        name: string;
+        items: Array<{
+          id: string;
+          name: string;
+          description: string | null;
+          pricePaise: number | null;
+          priceAmbiguous?: boolean;
+          isVeg: boolean | null;
+        }>;
+      }>;
+    };
+    const chicken = stored.categories.flatMap((category) => category.items).find((item) => item.name.includes("Chicken 65"));
+    assert.ok(chicken);
+    assert.equal(chicken.pricePaise, 24900);
+    const reviewed = structuredClone(stored);
+    const reviewedChicken = reviewed.categories.flatMap((category) => category.items).find((item) => item.name.includes("Chicken 65"));
+    assert.ok(reviewedChicken);
+    reviewedChicken.pricePaise = 25900;
+    const applied = await applyOwnedMenuImport({
+      restaurantId: abc.restaurant.id,
+      importId: created.id,
+      draft: reviewed,
+    });
+    assert.equal(applied?.import?.status, "APPLIED");
+    const live = await liveItemNames(abc.restaurant.id);
+    const published = live.find((item) => item.name.includes("Chicken 65"));
+    assert.equal(published?.price, 259);
+    assert.equal(live.some((item) => item.name.includes("Chicken 65") && item.price === 249), false);
+    const persisted = JSON.parse((await findRestaurantMenuImport(abc.restaurant.id, created.id))?.draftJson ?? "{}") as typeof stored;
+    assert.ok(persisted.categories.flatMap((category) => category.items).some((item) => item.name.includes("Chicken 65") && item.pricePaise === 25900));
+  });
+
+  it("rejects a late draft PATCH after Apply and keeps the applied draft", async () => {
+    const abc = await seedRestaurant("late-patch");
+    const created = await createMenuImportFromUpload({
+      session: sessionFor(abc.owner, abc.restaurant),
+      files: [{ originalName: "menu.pdf", bytes: await sampleMenuPdf() }],
+    });
+    await processMenuImportById(created.id);
+    const ready = await findRestaurantMenuImport(abc.restaurant.id, created.id);
+    const stored = JSON.parse(ready?.draftJson ?? "{}") as {
+      categories: Array<{
+        id: string;
+        name: string;
+        items: Array<{
+          id: string;
+          name: string;
+          description: string | null;
+          pricePaise: number | null;
+          priceAmbiguous?: boolean;
+          isVeg: boolean | null;
+        }>;
+      }>;
+    };
+    const reviewed = structuredClone(stored);
+    const reviewedChicken = reviewed.categories.flatMap((category) => category.items).find((item) => item.name.includes("Chicken 65"));
+    assert.ok(reviewedChicken);
+    reviewedChicken.pricePaise = 25900;
+    await applyOwnedMenuImport({
+      restaurantId: abc.restaurant.id,
+      importId: created.id,
+      draft: reviewed,
+    });
+    const stale = structuredClone(stored);
+    await assert.rejects(
+      () =>
+        saveMenuImportDraft({
+          restaurantId: abc.restaurant.id,
+          importId: created.id,
+          draft: stale,
+        }),
+      (error: unknown) =>
+        error instanceof MenuImportValidationError && error.status === 409 && error.currentStatus === "APPLIED",
+    );
+    const after = await findRestaurantMenuImport(abc.restaurant.id, created.id);
+    assert.equal(after?.status, "APPLIED");
+    const persisted = JSON.parse(after?.draftJson ?? "{}") as typeof stored;
+    assert.ok(persisted.categories.flatMap((category) => category.items).some((item) => item.pricePaise === 25900));
+    assert.equal(
+      persisted.categories.flatMap((category) => category.items).some((item) => item.name.includes("Chicken 65") && item.pricePaise === 24900),
+      false,
+    );
+    const live = await liveItemNames(abc.restaurant.id);
+    assert.ok(live.some((item) => item.name.includes("Chicken 65") && item.price === 259));
+  });
+
+  it("does not create a category when every item is incomplete", async () => {
+    const abc = await seedRestaurant("empty-cat");
+    const created = await createMenuImportFromUpload({
+      session: sessionFor(abc.owner, abc.restaurant),
+      files: [{ originalName: "menu.pdf", bytes: await sampleMenuPdf() }],
+    });
+    await processMenuImportById(created.id);
+    const draft = {
+      categories: [
+        {
+          id: "cat-incomplete",
+          name: "Starters",
+          items: [
+            draftItem("Mystery Plate", null, { priceAmbiguous: true }),
+            draftItem("Range Plate", null, { priceAmbiguous: true }),
+          ],
+        },
+      ],
+    };
+    const preview = applyPreviewFromDraft(draft);
+    assert.equal(preview.categoryCount, 0);
+    assert.equal(preview.itemCount, 0);
+    const applied = await applyOwnedMenuImport({
+      restaurantId: abc.restaurant.id,
+      importId: created.id,
+      draft,
+    });
+    assert.equal(applied?.result.createdCategoryCount, 0);
+    assert.equal(applied?.result.createdItemCount, 0);
+    assert.equal((await prisma.menuCategory.count({ where: { restaurantId: abc.restaurant.id } })), 0);
+    assert.equal((await liveItemNames(abc.restaurant.id)).length, 0);
+  });
+
+  it("does not create an empty category for default-skipped duplicates", async () => {
+    const abc = await seedRestaurant("dup-only");
+    const starters = await prisma.menuCategory.create({
+      data: { name: "Starters", slug: "starters-dup", restaurantId: abc.restaurant.id, icon: "🥗" },
+    });
+    await prisma.menuItem.create({
+      data: { name: "Chicken 65", price: 199, categoryId: starters.id, prepTimeMinutes: 10 },
+    });
+    const created = await createMenuImportFromUpload({
+      session: sessionFor(abc.owner, abc.restaurant),
+      files: [{ originalName: "menu.pdf", bytes: await sampleMenuPdf() }],
+    });
+    await processMenuImportById(created.id);
+    const draft = annotateDraftDuplicates(
+      {
+        categories: [
+          {
+            id: "cat-dups",
+            name: "Starters",
+            items: [draftItem("Chicken 65", 24900)],
+          },
+        ],
+      },
+      [{ categoryName: "Starters", itemName: "Chicken 65" }],
+    );
+    const preview = applyPreviewFromDraft(draft);
+    assert.equal(preview.categoryCount, 0);
+    assert.equal(preview.itemCount, 0);
+    const applied = await applyOwnedMenuImport({
+      restaurantId: abc.restaurant.id,
+      importId: created.id,
+      draft,
+    });
+    assert.equal(applied?.result.createdCategoryCount, 0);
+    assert.equal(applied?.result.createdItemCount, 0);
+    assert.equal(await prisma.menuCategory.count({ where: { restaurantId: abc.restaurant.id } }), 1);
+    const live = await liveItemNames(abc.restaurant.id);
+    assert.equal(live.length, 1);
+    assert.equal(live[0]?.price, 199);
+  });
+
+  it("lets cancel or apply win, but never publishes a cancelled live menu", async () => {
+    const abc = await seedRestaurant("race-cas");
+    const created = await createMenuImportFromUpload({
+      session: sessionFor(abc.owner, abc.restaurant),
+      files: [{ originalName: "menu.pdf", bytes: await sampleMenuPdf() }],
+    });
+    await processMenuImportById(created.id);
+    const ready = await findRestaurantMenuImport(abc.restaurant.id, created.id);
+    const draft = JSON.parse(ready?.draftJson ?? "{}");
+    const [applyOutcome, cancelOutcome] = await Promise.allSettled([
+      applyOwnedMenuImport({ restaurantId: abc.restaurant.id, importId: created.id, draft }),
+      cancelMenuImport({ restaurantId: abc.restaurant.id, importId: created.id }),
+    ]);
+    const row = await findRestaurantMenuImport(abc.restaurant.id, created.id);
+    const live = await liveItemNames(abc.restaurant.id);
+    assert.ok(row?.status === "APPLIED" || row?.status === "CANCELLED");
+    if (row?.status === "CANCELLED") {
+      assert.equal(live.length, 0);
+      assert.equal(applyOutcome.status, "rejected");
+    } else {
+      assert.ok(live.length > 0);
+      assert.equal(cancelOutcome.status, "rejected");
+      assert.ok(cancelOutcome.reason instanceof MenuImportValidationError);
+    }
+  });
+
+  it("keeps CANCELLED when a worker later fails", async () => {
+    const abc = await seedRestaurant("cancel-fail");
+    const created = await createMenuImportFromUpload({
+      session: sessionFor(abc.owner, abc.restaurant),
+      files: [{ originalName: "menu.pdf", bytes: await sampleMenuPdf() }],
+    });
+    await prisma.menuImport.update({
+      where: { id: created.id },
+      data: { status: "PROCESSING" },
+    });
+    const cancelled = await cancelMenuImport({ restaurantId: abc.restaurant.id, importId: created.id });
+    assert.equal(cancelled?.status, "CANCELLED");
+    const afterFail = await markMenuImportFailed(created.id, abc.restaurant.id, "PROVIDER_FAILED");
+    assert.equal(afterFail?.status, "CANCELLED");
+    assert.equal((await findRestaurantMenuImport(abc.restaurant.id, created.id))?.status, "CANCELLED");
+    const failedEvents = await prisma.platformAuditEvent.count({
+      where: { restaurantId: abc.restaurant.id, action: "MENU_IMPORT_FAILED", resourceId: created.id },
+    });
+    assert.equal(failedEvents, 0);
+  });
+
+  it("keeps CANCELLED when a worker later succeeds", async () => {
+    const abc = await seedRestaurant("cancel-ready");
+    const created = await createMenuImportFromUpload({
+      session: sessionFor(abc.owner, abc.restaurant),
+      files: [{ originalName: "menu.pdf", bytes: await sampleMenuPdf() }],
+    });
+    await prisma.menuImport.update({
+      where: { id: created.id },
+      data: { status: "PROCESSING", draftJson: null },
+    });
+    const cancelled = await cancelMenuImport({ restaurantId: abc.restaurant.id, importId: created.id });
+    assert.equal(cancelled?.status, "CANCELLED");
+    const afterReady = await tryMarkMenuImportReady(created.id, {
+      draftJson: JSON.stringify({
+        categories: [{ id: "cat-late", name: "Late", items: [draftItem("Should Not Appear", 10000)] }],
+      }),
+      pageCount: 1,
+    });
+    assert.equal(afterReady.transitioned, false);
+    assert.equal(afterReady.row?.status, "CANCELLED");
+    assert.equal((await findRestaurantMenuImport(abc.restaurant.id, created.id))?.status, "CANCELLED");
+    assert.equal((await liveItemNames(abc.restaurant.id)).length, 0);
+  });
+
+  it("keeps a failed source key so a later cleanup can retry", async () => {
+    const abc = await seedRestaurant("cleanup-retry");
+    const created = await createMenuImportFromUpload({
+      session: sessionFor(abc.owner, abc.restaurant),
+      files: [{ originalName: "page.jpg", bytes: await jpegBytes() }],
+    });
+    const key = JSON.parse(created.sourceMetaJson ?? "{}").files[0].key as string;
+    await prisma.menuImport.update({
+      where: { id: created.id },
+      data: { status: "APPLIED", appliedAt: new Date("2020-01-01"), updatedAt: new Date("2020-01-01") },
+    });
+    const real = getMenuMediaStorage();
+    setMenuMediaStorageForTests({
+      putObject: (input) => real.putObject(input),
+      getObject: (objectKey) => real.getObject(objectKey),
+      listObjects: (prefix) => real.listObjects(prefix),
+      deleteObject: async () => {
+        throw new Error("temporary outage");
+      },
+    });
+    const failed = await runMenuImportCleanup({
+      apply: true,
+      now: new Date("2020-01-20"),
+      terminalRetentionMs: 7 * 24 * 60 * 60 * 1000,
+    });
+    assert.ok(failed.failedKeys.includes(key));
+    const stillReferenced = JSON.parse(
+      (await findRestaurantMenuImport(abc.restaurant.id, created.id))?.sourceMetaJson ?? "{}",
+    ) as { files: Array<{ key: string }> };
+    assert.ok(stillReferenced.files.some((file) => file.key === key));
+    assert.ok(await real.getObject(key));
+    setMenuMediaStorageForTests(real);
+    const retried = await runMenuImportCleanup({
+      apply: true,
+      now: new Date("2020-01-21"),
+      terminalRetentionMs: 7 * 24 * 60 * 60 * 1000,
+    });
+    assert.ok(retried.deletedKeys.includes(key));
+    assert.equal(retried.failedKeys.includes(key), false);
+    const cleared = JSON.parse(
+      (await findRestaurantMenuImport(abc.restaurant.id, created.id))?.sourceMetaJson ?? "{}",
+    ) as { files: Array<{ key: string }> };
+    assert.equal(cleared.files.length, 0);
+    assert.equal(await real.getObject(key), null);
+    resetMenuMediaStorageForTests();
+  });
+
+  it("sweeps old unreferenced import sources and protects live, recent, and food keys", async () => {
+    const abc = await seedRestaurant("orphan-sweep");
+    const created = await createMenuImportFromUpload({
+      session: sessionFor(abc.owner, abc.restaurant),
+      files: [{ originalName: "page.jpg", bytes: await jpegBytes() }],
+    });
+    const referencedKey = JSON.parse(created.sourceMetaJson ?? "{}").files[0].key as string;
+    const storage = getMenuMediaStorage();
+    const oldOrphan = createMenuImportSourceKey({
+      tenantId: abc.tenant.id,
+      restaurantId: abc.restaurant.id,
+      importId: "orphanold1",
+      index: 0,
+      contentType: "image/jpeg",
+      originalName: "old.jpg",
+    });
+    const recentOrphan = createMenuImportSourceKey({
+      tenantId: abc.tenant.id,
+      restaurantId: abc.restaurant.id,
+      importId: "orphannew1",
+      index: 0,
+      contentType: "image/jpeg",
+      originalName: "new.jpg",
+    });
+    const photoKey = createMenuMediaStorageKey({
+      tenantId: abc.tenant.id,
+      restaurantId: abc.restaurant.id,
+      menuItemId: "foodprot1",
+    });
+    await storage.putObject({ key: oldOrphan, body: await jpegBytes(), contentType: "image/jpeg" });
+    await storage.putObject({ key: recentOrphan, body: await jpegBytes(), contentType: "image/jpeg" });
+    await storage.putObject({ key: photoKey, body: await jpegBytes(), contentType: "image/webp" });
+    const category = await prisma.menuCategory.create({
+      data: { name: "Mains", slug: "mains-orphan", restaurantId: abc.restaurant.id },
+    });
+    await prisma.menuItem.create({
+      data: {
+        name: "Photo Item",
+        price: 100,
+        categoryId: category.id,
+        imageStorageKey: photoKey,
+        imageUrl: "/api/menu/media/foodprot1?v=1",
+      },
+    });
+
+    const real = getMenuMediaStorage();
+    setMenuMediaStorageForTests({
+      putObject: (input) => real.putObject(input),
+      getObject: (key) => real.getObject(key),
+      deleteObject: (key) => real.deleteObject(key),
+      listObjects: async (prefix) => {
+        const listed = await real.listObjects(prefix);
+        return listed.map((object) =>
+          object.key === oldOrphan ? { ...object, lastModified: new Date("2020-01-01") } : object,
+        );
+      },
+    });
+    const dry = await runMenuImportCleanup({
+      apply: false,
+      now: new Date("2020-01-20"),
+      orphanGraceMs: 24 * 60 * 60 * 1000,
+    });
+    assert.ok(dry.orphanedKeys.includes(oldOrphan));
+    assert.equal(dry.orphanedKeys.includes(recentOrphan), false);
+    assert.equal(dry.orphanedKeys.includes(referencedKey), false);
+    assert.equal(dry.orphanedKeys.includes(photoKey), false);
+    assert.ok(await real.getObject(oldOrphan));
+    assert.ok(await real.getObject(recentOrphan));
+    assert.ok(await real.getObject(referencedKey));
+    assert.ok(await real.getObject(photoKey));
+
+    const applied = await runMenuImportCleanup({
+      apply: true,
+      now: new Date("2020-01-20"),
+      orphanGraceMs: 24 * 60 * 60 * 1000,
+    });
+    assert.ok(applied.deletedOrphans.includes(oldOrphan));
+    assert.equal(await real.getObject(oldOrphan), null);
+    assert.ok(await real.getObject(recentOrphan));
+    assert.ok(await real.getObject(referencedKey));
+    assert.ok(await real.getObject(photoKey));
+    resetMenuMediaStorageForTests();
   });
 });

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { Button, Card, Input, Spinner } from "@/components/ui";
+import { applyPreviewFromDraft } from "@/lib/menu-import/eligibility";
 
 type DraftItem = {
   id: string;
@@ -150,10 +151,10 @@ export default function MenuImportReviewPage() {
     setSaveState("Saved");
   };
 
-  const preview = record?.applyPreview;
+  const preview = useMemo(() => applyPreviewFromDraft(draft), [draft]);
   const confirmLabel = useMemo(() => {
-    const cats = preview?.categoryCount ?? 0;
-    const items = preview?.itemCount ?? 0;
+    const cats = preview.categoryCount;
+    const items = preview.itemCount;
     return `Create ${cats} categories and ${items} menu items?`;
   }, [preview]);
 
@@ -162,7 +163,11 @@ export default function MenuImportReviewPage() {
     if (!confirm(confirmLabel)) return;
     setBusy("apply");
     setError("");
-    const res = await fetch(`/api/menu/imports/${importId}/apply`, { method: "POST" });
+    const res = await fetch(`/api/menu/imports/${importId}/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ draft }),
+    });
     const json = await res.json().catch(() => ({}));
     setBusy("");
     if (!res.ok) {

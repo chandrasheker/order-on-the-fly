@@ -3,6 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { PDFDocument } from "pdf-lib";
 import {
+  MENU_IMPORT_MAX_PAGES,
   MENU_IMPORT_PDF_MIN_TEXT_CHARS,
   MENU_IMPORT_UNSUPPORTED_MESSAGE,
 } from "@/lib/menu-import/constants";
@@ -110,9 +111,56 @@ async function loadPdfjs(): Promise<PdfjsModule> {
   return mod;
 }
 
+let pdfTextExtractCallsForTests = 0;
+
+export function resetPdfTextExtractCallCountForTests() {
+  pdfTextExtractCallsForTests = 0;
+}
+
+export function getPdfTextExtractCallCountForTests() {
+  return pdfTextExtractCallsForTests;
+}
+
 async function pageCountWithPdfLib(bytes: Buffer) {
   const loaded = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
   return { pageCount: loaded.getPageCount(), encrypted: Boolean(loaded.isEncrypted) };
+}
+
+function assertAllowedPageCount(pageCount: number) {
+  if (pageCount < 1) {
+    throw new MenuImportValidationError("UNSUPPORTED_FILE", MENU_IMPORT_UNSUPPORTED_MESSAGE);
+  }
+  if (pageCount > MENU_IMPORT_MAX_PAGES) {
+    throw new MenuImportValidationError("TOO_MANY_PAGES");
+  }
+}
+
+async function resolvePageCountBeforeExtract(pdfBytes: Buffer): Promise<{ pageCount: number | null; encrypted: boolean }> {
+  try {
+    const loaded = await PDFDocument.load(pdfBytes, { ignoreEncryption: false, updateMetadata: false });
+    if (loaded.isEncrypted) {
+      return { pageCount: loaded.getPageCount(), encrypted: true };
+    }
+    const pageCount = loaded.getPageCount();
+    assertAllowedPageCount(pageCount);
+    return { pageCount, encrypted: false };
+  } catch (error) {
+    if (error instanceof MenuImportValidationError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    if (/password|encrypt/i.test(message)) {
+      return { pageCount: 0, encrypted: true };
+    }
+  }
+
+  try {
+    const fallback = await pageCountWithPdfLib(pdfBytes);
+    if (fallback.encrypted) return { pageCount: fallback.pageCount, encrypted: true };
+    assertAllowedPageCount(fallback.pageCount);
+    return { pageCount: fallback.pageCount, encrypted: false };
+  } catch (error) {
+    if (error instanceof MenuImportValidationError) throw error;
+    return { pageCount: null, encrypted: false };
+  }
 }
 
 export async function inspectPdf(bytes: Buffer): Promise<InspectedPdf> {
@@ -125,16 +173,9 @@ export async function inspectPdf(bytes: Buffer): Promise<InspectedPdf> {
     return { pageCount: 0, encrypted: true, pages: [] };
   }
 
-  try {
-    const loaded = await PDFDocument.load(pdfBytes, { ignoreEncryption: false, updateMetadata: false });
-    if (loaded.isEncrypted) {
-      return { pageCount: loaded.getPageCount(), encrypted: true, pages: [] };
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (/password|encrypt/i.test(message)) {
-      return { pageCount: 0, encrypted: true, pages: [] };
-    }
+  const counted = await resolvePageCountBeforeExtract(pdfBytes);
+  if (counted.encrypted) {
+    return { pageCount: counted.pageCount ?? 0, encrypted: true, pages: [] };
   }
 
   let pdf: PdfjsDocument | null = null;
@@ -152,10 +193,12 @@ export async function inspectPdf(bytes: Buffer): Promise<InspectedPdf> {
     if (pdf.isEncrypted) {
       return { pageCount: pdf.numPages, encrypted: true, pages: [] };
     }
+    assertAllowedPageCount(pdf.numPages);
 
     const pages: PdfPageText[] = [];
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
+      pdfTextExtractCallsForTests += 1;
       const content = await page.getTextContent();
       const text = textFromPdfItems(content.items);
       pages.push({ pageNumber, text, usableText: usableText(text) });
@@ -164,22 +207,16 @@ export async function inspectPdf(bytes: Buffer): Promise<InspectedPdf> {
     return { pageCount: pdf.numPages, encrypted: false, pages };
   } catch (error) {
     if (error instanceof MenuImportValidationError) throw error;
-    try {
-      const fallback = await pageCountWithPdfLib(pdfBytes);
-      if (fallback.encrypted) return { pageCount: fallback.pageCount, encrypted: true, pages: [] };
-      if (fallback.pageCount >= 1) {
-        return {
-          pageCount: fallback.pageCount,
-          encrypted: false,
-          pages: Array.from({ length: fallback.pageCount }, (_, index) => ({
-            pageNumber: index + 1,
-            text: "",
-            usableText: false,
-          })),
-        };
-      }
-    } catch {
-      // keep the original pdfjs failure
+    if (counted.pageCount != null && counted.pageCount >= 1 && counted.pageCount <= MENU_IMPORT_MAX_PAGES) {
+      return {
+        pageCount: counted.pageCount,
+        encrypted: false,
+        pages: Array.from({ length: counted.pageCount }, (_, index) => ({
+          pageNumber: index + 1,
+          text: "",
+          usableText: false,
+        })),
+      };
     }
     throw new MenuImportValidationError("UNSUPPORTED_FILE", MENU_IMPORT_UNSUPPORTED_MESSAGE);
   } finally {

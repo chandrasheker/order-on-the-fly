@@ -49,7 +49,10 @@ async function handlePATCH(req: NextRequest, ctx: { params: Promise<{ importId: 
     return NextResponse.json({ import: toPublicMenuImport(updated, { liveItems }) });
   } catch (error) {
     if (error instanceof MenuImportValidationError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+      return NextResponse.json(
+        { error: error.message, code: error.code, status: error.currentStatus },
+        { status: error.status },
+      );
     }
     return NextResponse.json({ error: "Invalid import draft" }, { status: 400 });
   }
