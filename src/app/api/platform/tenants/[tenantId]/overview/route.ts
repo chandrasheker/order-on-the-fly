@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePlatformAdmin } from "@/lib/auth";
 import { getTenantOverview } from "@/lib/tenant-onboarding-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
+async function handleGET(_req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
   const admin = await requirePlatformAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -12,3 +13,5 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ten
 
   return NextResponse.json(overview);
 }
+
+export const GET = withForensicApiRoute(handleGET);

@@ -3,8 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { getPaymentQrPublicUrl, paymentQrExists, removePaymentQrFile } from "@/lib/payment-qr-storage";
 import { isRazorpayAutomaticReady } from "@/lib/automatic-gateway";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -28,6 +29,19 @@ export async function GET() {
   const paymentQrUrl =
     hasPaymentQr && restaurant?.slug ? getPaymentQrPublicUrl(restaurant.slug) : "";
 
+  const { tryAppendPlatformAuditEvent } = await import("@/platform/forensics/platform-audit-service");
+  const { AUDIT_ACTION, AUDIT_CATEGORY } = await import("@/platform/forensics/constants");
+  const { setForensicResource } = await import("@/platform/forensics/request-context");
+  setForensicResource({ type: "Restaurant", id: session.restaurantId, label: "payment-settings" });
+  await tryAppendPlatformAuditEvent({
+    category: AUDIT_CATEGORY.CONFIG,
+    action: AUDIT_ACTION.GATEWAY_CONFIG_VIEWED,
+    restaurantId: session.restaurantId,
+    resourceType: "Restaurant",
+    resourceId: session.restaurantId,
+    metadata: { surface: "payment-settings" },
+  });
+
   return NextResponse.json({
     settings: {
       paymentQrUrl,
@@ -38,7 +52,9 @@ export async function GET() {
   });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -90,3 +106,5 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ error: "Use file upload to set payment QR." }, { status: 400 });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

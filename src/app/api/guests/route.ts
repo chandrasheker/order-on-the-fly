@@ -4,8 +4,9 @@ import { canAccessAdminMenu } from "@/lib/staff-permissions";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { listGuestProfiles, lookupGuestByPhone } from "@/lib/guest-crm-service";
 import { prisma } from "@/lib/prisma";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canAccessAdminMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -15,16 +16,37 @@ export async function GET(req: NextRequest) {
   if (blocked) return blocked;
 
   const phone = req.nextUrl.searchParams.get("phone");
+  const { tryAppendPlatformAuditEvent } = await import("@/platform/forensics/platform-audit-service");
+  const { AUDIT_ACTION, AUDIT_CATEGORY } = await import("@/platform/forensics/constants");
+  const { setForensicResource } = await import("@/platform/forensics/request-context");
   if (phone) {
     const guest = await lookupGuestByPhone(session.restaurantId, phone);
+    if (guest) {
+      setForensicResource({ type: "GuestProfile", id: guest.id, label: "guest" });
+    }
+    await tryAppendPlatformAuditEvent({
+      category: AUDIT_CATEGORY.SECURITY,
+      action: AUDIT_ACTION.CUSTOMER_DETAILS_VIEWED,
+      resourceType: "GuestProfile",
+      resourceId: guest?.id ?? null,
+      metadata: { lookup: "phone", found: Boolean(guest) },
+    });
     return NextResponse.json({ guest });
   }
 
   const guests = await listGuestProfiles(session.restaurantId);
+  await tryAppendPlatformAuditEvent({
+    category: AUDIT_CATEGORY.SECURITY,
+    action: AUDIT_ACTION.CUSTOMER_DETAILS_VIEWED,
+    resourceType: "GuestProfile",
+    metadata: { lookup: "list", count: guests.length },
+  });
   return NextResponse.json({ guests });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canAccessAdminMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -51,3 +73,5 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ guest: updated });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

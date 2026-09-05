@@ -10,8 +10,9 @@ import { getKitchenCapacityState } from "@/lib/kitchen-capacity-service";
 import { resolveTenantFromHost } from "@/platform/host-tenant";
 import { assertPathSlugForResolution, opaqueNotFoundJson } from "@/platform/tenant-scope";
 import { isRazorpayAutomaticReady } from "@/lib/automatic-gateway";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(
+async function handleGET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string; token: string }> }
 ) {
@@ -186,3 +187,5 @@ export async function GET(
     return NextResponse.json({ error: "Failed to load menu" }, { status: 500 });
   }
 }
+
+export const GET = withForensicApiRoute(handleGET);

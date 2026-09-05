@@ -13,6 +13,10 @@ import {
 } from "@/lib/staff-slots";
 import { roleForSlotKey } from "@/lib/staff-permissions";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
+import { auditStaffSnapshot } from "@/platform/forensics/snapshots";
 
 function parseCounts(body: Record<string, unknown>): SlotCounts | null {
   const owner = Number(body.ownerSlots ?? body.owner);
@@ -28,7 +32,7 @@ function parseCounts(body: Record<string, unknown>): SlotCounts | null {
   return { owner, manager, cook, server };
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -80,7 +84,9 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   logApiRequest("platform/staff-config", "POST");
   const admin = await requirePlatformAdmin();
   if (!admin) {
@@ -176,6 +182,17 @@ export async function POST(req: NextRequest) {
             where: { id: existing.id },
             data: updateData,
           });
+          await appendPlatformAuditEventInTx(tx, {
+            category: AUDIT_CATEGORY.STAFF,
+            action: existing.role !== role ? AUDIT_ACTION.STAFF_ROLE_CHANGED : AUDIT_ACTION.STAFF_UPDATED,
+            restaurantId,
+            resourceType: "User",
+            resourceId: existing.id,
+            resourceLabel: name,
+            before: auditStaffSnapshot(existing),
+            after: auditStaffSnapshot({ ...existing, name, email, role }),
+            metadata: { passwordChanged: Boolean(enteredPassword) },
+          });
           keepIds.add(existing.id);
         } else {
           const emailTaken = await tx.user.findUnique({ where: { email } });
@@ -197,18 +214,46 @@ export async function POST(req: NextRequest) {
               restaurantId,
             },
           });
+          await appendPlatformAuditEventInTx(tx, {
+            category: AUDIT_CATEGORY.STAFF,
+            action: AUDIT_ACTION.STAFF_CREATED,
+            restaurantId,
+            resourceType: "User",
+            resourceId: created.id,
+            resourceLabel: created.name,
+            after: auditStaffSnapshot(created),
+            metadata: { passwordChanged: true },
+          });
           keepIds.add(created.id);
         }
       }
 
       const toRemove = existingUsers.filter((u) => u.slotKey && !expectedKeys.has(u.slotKey));
       for (const user of toRemove) {
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.STAFF,
+          action: AUDIT_ACTION.STAFF_DELETED,
+          restaurantId,
+          resourceType: "User",
+          resourceId: user.id,
+          resourceLabel: user.name,
+          before: auditStaffSnapshot(user),
+        });
         await tx.user.delete({ where: { id: user.id } });
       }
 
       const legacyUsers = existingUsers.filter((u) => !u.slotKey);
       for (const user of legacyUsers) {
         if (!keepIds.has(user.id)) {
+          await appendPlatformAuditEventInTx(tx, {
+            category: AUDIT_CATEGORY.STAFF,
+            action: AUDIT_ACTION.STAFF_DELETED,
+            restaurantId,
+            resourceType: "User",
+            resourceId: user.id,
+            resourceLabel: user.name,
+            before: auditStaffSnapshot(user),
+          });
           await tx.user.delete({ where: { id: user.id } });
         }
       }
@@ -227,3 +272,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

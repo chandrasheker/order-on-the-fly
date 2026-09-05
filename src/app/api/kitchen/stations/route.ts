@@ -3,8 +3,9 @@ import { requireSession } from "@/lib/auth";
 import { canAccessKitchen } from "@/lib/staff-permissions";
 import { getKitchenStations } from "@/lib/kitchen-service";
 import { featureDisabledResponse } from "@/lib/feature-guard";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession();
   if (!session || !canAccessKitchen(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -16,3 +17,5 @@ export async function GET() {
   const stations = await getKitchenStations(session.restaurantId);
   return NextResponse.json({ stations });
 }
+
+export const GET = withForensicApiRoute(handleGET);

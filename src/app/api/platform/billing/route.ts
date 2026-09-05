@@ -7,6 +7,7 @@ import {
   setTenantPaidPlan,
 } from "@/lib/tenant-billing-service";
 import type { TenantPlan } from "@/generated/prisma/client";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 function serializeTenant(tenant: NonNullable<Awaited<ReturnType<typeof expireDemoIfNeeded>>>) {
   return {
@@ -25,7 +26,7 @@ function serializeTenant(tenant: NonNullable<Awaited<ReturnType<typeof expireDem
   };
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -38,7 +39,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ tenant: serializeTenant(tenant) });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -70,3 +73,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

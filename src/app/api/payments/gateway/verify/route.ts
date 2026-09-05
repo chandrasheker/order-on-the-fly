@@ -6,8 +6,9 @@ import {
   resolveRequestRestaurant,
 } from "@/platform/tenant-scope";
 import { logApiRequest } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   logApiRequest("payments/gateway/verify", "POST");
   const body = await req.json().catch(() => ({}));
   const publicToken = typeof body.publicToken === "string" ? body.publicToken : "";
@@ -35,3 +36,5 @@ export async function POST(req: NextRequest) {
   }
   return NextResponse.json({ ok: true, paid: true });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

@@ -1126,3 +1126,71 @@ model DemandForecast {
   @@unique([restaurantId, menuItemId, date])
   @@index([restaurantId, date])
 }
+
+/// Always-on platform forensic evidence. No foreign keys — events survive
+/// deletion of the original business objects. Append-only at the database.
+model PlatformAuditEvent {
+  id               String   @id @default(cuid())
+  occurredAt       DateTime
+  recordedAt       DateTime @default(now())
+
+  eventKind        String
+  severity         String
+  source           String
+
+  category         String
+  action           String
+  outcome          String
+
+  requestId        String?
+  correlationId    String?
+
+  actorType        String?
+  actorId          String?
+  actorName        String?
+  actorRole        String?
+  actorSessionId   String?
+
+  tenantId         String?
+  restaurantId     String?
+  branchId         String?
+  floorId          String?
+
+  hostname         String?
+  clientIp         String?
+  clientIpSource   String?
+  forwardedFor     String?
+
+  userAgent        String?
+
+  httpMethod       String?
+  route            String?
+  httpStatus       Int?
+  durationMs       Int?
+
+  resourceType     String?
+  resourceId       String?
+  resourceLabel    String?
+
+  beforeJson       String?
+  afterJson        String?
+  diffJson         String?
+  metadataJson     String?
+
+  errorType        String?
+  errorCode        String?
+  errorMessage     String?
+  errorFingerprint String?
+
+  @@index([occurredAt])
+  @@index([recordedAt])
+  @@index([category, occurredAt])
+  @@index([outcome, occurredAt])
+  @@index([actorId, occurredAt])
+  @@index([restaurantId, occurredAt])
+  @@index([tenantId, occurredAt])
+  @@index([clientIp, occurredAt])
+  @@index([requestId])
+  @@index([correlationId])
+  @@index([resourceType, resourceId, occurredAt])
+}

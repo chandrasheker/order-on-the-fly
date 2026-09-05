@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { prisma } from "@/lib/prisma";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,7 +20,9 @@ export async function GET() {
   return NextResponse.json({ settings: row });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -43,3 +46,5 @@ export async function PATCH(req: NextRequest) {
   });
   return NextResponse.json({ settings });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

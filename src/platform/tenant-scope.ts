@@ -121,7 +121,37 @@ export async function loadOrderByIdForRequest(req: { headers: Headers }, orderId
         where: { id: orderId },
         include: { items: true, table: true },
       });
-  return { order: scopeResourceForResolution(resolution, order), resolution };
+  const scoped = scopeResourceForResolution(resolution, order);
+  if (!scoped && hostId) {
+    const foreign = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, restaurantId: true },
+    });
+    if (foreign && foreign.restaurantId !== hostId) {
+      const { markForensicSecurityDenied } = await import("@/platform/forensics/request-context");
+      const { tryAppendPlatformAuditEvent } = await import("@/platform/forensics/platform-audit-service");
+      const { AUDIT_ACTION, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } = await import(
+        "@/platform/forensics/constants"
+      );
+      markForensicSecurityDenied();
+      void tryAppendPlatformAuditEvent({
+        eventKind: AUDIT_EVENT_KIND.SECURITY,
+        severity: AUDIT_SEVERITY.WARN,
+        category: AUDIT_CATEGORY.SECURITY,
+        action: AUDIT_ACTION.CROSS_RESTAURANT_ACCESS_DENIED,
+        outcome: "DENIED",
+        restaurantId: hostId,
+        resourceType: "Order",
+        resourceId: orderId,
+        metadata: {
+          authorizedRestaurantId: hostId,
+          attemptedResourceRestaurantId: foreign.restaurantId,
+          attemptedResourceId: foreign.id,
+        },
+      });
+    }
+  }
+  return { order: scoped, resolution };
 }
 
 export function assertPathSlugForResolution(

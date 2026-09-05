@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRestaurantDisplayMenu } from "@/lib/menu-display-service";
 import { rejectIfSlugEscapesHost } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(
+async function handleGET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
@@ -17,3 +18,5 @@ export async function GET(
     headers: { "Cache-Control": "no-store" },
   });
 }
+
+export const GET = withForensicApiRoute(handleGET);

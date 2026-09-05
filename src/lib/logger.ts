@@ -1,10 +1,23 @@
 import fs from "node:fs";
 import path from "node:path";
+import { forensicContextIds, recordForensicCaughtError } from "@/platform/forensics/request-context";
+import { redactSecrets, sanitizeErrorText } from "@/platform/forensics/redactor";
+import { FORENSIC_LIMITS } from "@/platform/forensics/constants";
 
 const LOG_DIR = path.join(process.cwd(), "logs");
 const LOG_FILE = path.join(LOG_DIR, "app.log");
 
 type LogLevel = "info" | "warn" | "error" | "debug";
+
+function sanitizeMeta(meta?: Record<string, unknown>) {
+  const ids = forensicContextIds();
+  const merged = { ...ids, ...(meta ?? {}) };
+  const redacted = redactSecrets(merged) as Record<string, unknown>;
+  if (typeof redacted.stack === "string") {
+    redacted.stack = sanitizeErrorText(redacted.stack, FORENSIC_LIMITS.stack);
+  }
+  return redacted;
+}
 
 function ensureLogDir() {
   if (!fs.existsSync(LOG_DIR)) {
@@ -19,8 +32,10 @@ function formatLine(
   meta?: Record<string, unknown>
 ) {
   const ts = new Date().toISOString();
-  const metaStr = meta ? ` ${JSON.stringify(meta)}` : "";
-  return `[${ts}] [${level.toUpperCase()}] [${context}] ${message}${metaStr}`;
+  const safeMessage = sanitizeErrorText(message, FORENSIC_LIMITS.errorMessage);
+  const safeMeta = sanitizeMeta(meta);
+  const metaStr = Object.keys(safeMeta).length ? ` ${JSON.stringify(safeMeta)}` : "";
+  return `[${ts}] [${level.toUpperCase()}] [${context}] ${safeMessage}${metaStr}`;
 }
 
 function write(
@@ -106,6 +121,7 @@ export function logApiError(
   error: unknown,
   meta?: Record<string, unknown>
 ) {
+  recordForensicCaughtError(error);
   const err = error instanceof Error ? error : new Error(String(error));
   logError(`api:${route}`, `${method} failed: ${err.message}`, {
     ...meta,
@@ -113,4 +129,4 @@ export function logApiError(
   });
 }
 
-export { LOG_DIR, LOG_FILE };
+export { formatLine as formatOperationalLogLine, LOG_DIR, LOG_FILE };

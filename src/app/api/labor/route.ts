@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { clockIn, clockOut, getLaborDashboard } from "@/lib/labor-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,7 +18,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(dashboard);
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -44,3 +47,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

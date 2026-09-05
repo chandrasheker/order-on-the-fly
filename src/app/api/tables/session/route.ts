@@ -13,6 +13,7 @@ import {
   readDiningTokenFromRequest,
 } from "@/lib/dining-access";
 import { logApiError, logApiRequest } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 async function resolveTable(req: NextRequest, tableToken: string) {
   const { table, resolution } = await loadTableByQrForRequest(req, tableToken);
@@ -20,7 +21,7 @@ async function resolveTable(req: NextRequest, tableToken: string) {
   return table;
 }
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   logApiRequest("tables/session", "POST");
   try {
     const { tableToken, sessionKey } = await req.json();
@@ -45,7 +46,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function PATCH(req: NextRequest) {
+export const POST = withForensicApiRoute(handlePOST);
+
+async function handlePATCH(req: NextRequest) {
   try {
     const { tableToken, sessionKey } = await req.json();
     if (!tableToken || !sessionKey) {
@@ -80,7 +83,9 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-export async function DELETE(req: NextRequest) {
+export const PATCH = withForensicApiRoute(handlePATCH);
+
+async function handleDELETE(req: NextRequest) {
   try {
     const { tableToken, sessionKey } = await req.json();
     if (!tableToken || !sessionKey) {
@@ -99,3 +104,5 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Failed to leave session" }, { status: 500 });
   }
 }
+
+export const DELETE = withForensicApiRoute(handleDELETE);

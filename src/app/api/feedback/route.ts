@@ -3,8 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,7 +25,9 @@ export async function GET() {
   return NextResponse.json({ feedbacks, averageStars: avg });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   logApiRequest("feedback", "POST");
   try {
     const { tableToken, stars, message, customerName, orderId } = await req.json();
@@ -61,3 +64,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to submit feedback" }, { status: 500 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureStarterMenuCategories } from "@/lib/menu-setup-service";
+import { ensureStarterMenuCategories, updateManagedMenuItemForRestaurant } from "@/lib/menu-setup-service";
 import { scheduleMenuSync, syncMenuItemAvailability } from "@/lib/aggregator-sync-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
+import { auditMenuItemSnapshot } from "@/platform/forensics/snapshots";
+import { setForensicResource } from "@/platform/forensics/request-context";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -23,7 +28,9 @@ export async function GET() {
   return NextResponse.json({ categories });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -63,15 +70,28 @@ export async function POST(req: NextRequest) {
     _max: { sortOrder: true },
   });
 
-  const item = await prisma.menuItem.create({
-    data: {
-      name: name.trim(),
-      price: parsedPrice,
-      categoryId: category.id,
-      prepTimeMinutes: prepTimeMinutes ?? 10,
-      sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
-      isAvailable: true,
-    },
+  const item = await prisma.$transaction(async (tx) => {
+    const created = await tx.menuItem.create({
+      data: {
+        name: name.trim(),
+        price: parsedPrice,
+        categoryId: category.id,
+        prepTimeMinutes: prepTimeMinutes ?? 10,
+        sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
+        isAvailable: true,
+      },
+    });
+    setForensicResource({ type: "MenuItem", id: created.id, label: created.name });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.MENU,
+      action: AUDIT_ACTION.MENU_ITEM_CREATED,
+      restaurantId: session.restaurantId,
+      resourceType: "MenuItem",
+      resourceId: created.id,
+      resourceLabel: created.name,
+      after: auditMenuItemSnapshot(created),
+    });
+    return created;
   });
 
   scheduleMenuSync(session.restaurantId);
@@ -79,7 +99,9 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ item }, { status: 201 });
 }
 
-export async function PATCH(req: NextRequest) {
+export const POST = withForensicApiRoute(handlePOST);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -111,20 +133,16 @@ export async function PATCH(req: NextRequest) {
     });
   }
 
-  const updated = await prisma.menuItem.update({
-    where: { id: itemId },
-    data: {
-      ...(isAvailable !== undefined && { isAvailable }),
-      ...(prepTimeMinutes !== undefined && { prepTimeMinutes }),
-      ...(price !== undefined && { price: parseFloat(String(price)) }),
-      ...(name !== undefined && { name: name.trim() }),
-      ...(swiggyItemId !== undefined && {
-        swiggyItemId: swiggyItemId ? String(swiggyItemId).trim() : null,
-      }),
-      ...(zomatoItemId !== undefined && {
-        zomatoItemId: zomatoItemId ? String(zomatoItemId).trim() : null,
-      }),
-    },
+  const nextPrice = price !== undefined ? parseFloat(String(price)) : undefined;
+  const updated = await updateManagedMenuItemForRestaurant({
+    restaurantId: session.restaurantId,
+    item,
+    nextPrice,
+    isAvailable,
+    prepTimeMinutes,
+    name,
+    swiggyItemId,
+    zomatoItemId,
   });
 
   if (isAvailable !== undefined) {
@@ -135,7 +153,9 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ item: updated });
 }
 
-export async function DELETE(req: NextRequest) {
+export const PATCH = withForensicApiRoute(handlePATCH);
+
+async function handleDELETE(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -154,7 +174,21 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
   }
 
-  await prisma.menuItem.delete({ where: { id: itemId } });
+  await prisma.$transaction(async (tx) => {
+    const snapshot = auditMenuItemSnapshot(item);
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.MENU,
+      action: AUDIT_ACTION.MENU_ITEM_DELETED,
+      restaurantId: session.restaurantId,
+      resourceType: "MenuItem",
+      resourceId: item.id,
+      resourceLabel: item.name,
+      before: snapshot,
+    });
+    await tx.menuItem.delete({ where: { id: itemId } });
+  });
   scheduleMenuSync(session.restaurantId);
   return NextResponse.json({ success: true });
 }
+
+export const DELETE = withForensicApiRoute(handleDELETE);

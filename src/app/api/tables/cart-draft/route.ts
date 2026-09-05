@@ -8,6 +8,7 @@ import {
   type CartDraftItem,
 } from "@/lib/table-cart-draft-service";
 import type { CartDraftSource } from "@/generated/prisma/client";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 function parseItems(raw: unknown): CartDraftItem[] {
   if (!Array.isArray(raw)) return [];
@@ -24,7 +25,7 @@ function parseItems(raw: unknown): CartDraftItem[] {
     .filter((item): item is CartDraftItem => item !== null);
 }
 
-export async function PUT(req: NextRequest) {
+async function handlePUT(req: NextRequest) {
   const body = await req.json();
   const { tableToken, tableId, sessionKey, source, items } = body as {
     tableToken?: string;
@@ -77,7 +78,9 @@ export async function PUT(req: NextRequest) {
   return NextResponse.json(result);
 }
 
-export async function DELETE(req: NextRequest) {
+export const PUT = withForensicApiRoute(handlePUT);
+
+async function handleDELETE(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const { tableToken, tableId, sessionKey, source } = body as {
     tableToken?: string;
@@ -122,3 +125,5 @@ export async function DELETE(req: NextRequest) {
   await clearTableCartDraft({ tableId, source: "STAFF" });
   return NextResponse.json({ success: true });
 }
+
+export const DELETE = withForensicApiRoute(handleDELETE);

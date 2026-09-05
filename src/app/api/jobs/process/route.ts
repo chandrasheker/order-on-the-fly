@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { processPendingJobs } from "@/lib/job-queue";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const secret = process.env.JOB_CRON_SECRET;
   if (secret) {
     const auth = req.headers.get("authorization");
@@ -13,3 +14,5 @@ export async function POST(req: Request) {
   const processed = await processPendingJobs(50);
   return NextResponse.json({ ok: true, processed });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

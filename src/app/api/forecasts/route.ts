@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { generateDemandForecasts, listForecasts, getForecastInsights } from "@/lib/forecast-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -17,10 +18,14 @@ export async function GET(req: Request) {
   return NextResponse.json({ forecasts, insights });
 }
 
-export async function POST() {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST() {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const count = await generateDemandForecasts(session.restaurantId);
   return NextResponse.json({ ok: true, forecastsUpdated: count });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

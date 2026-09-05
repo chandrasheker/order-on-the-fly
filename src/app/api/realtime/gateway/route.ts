@@ -6,8 +6,12 @@ import {
   updatePaymentGatewaySettings,
 } from "@/lib/payment-webhook-service";
 import type { PaymentGatewayProvider } from "@/generated/prisma/client";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+import { AUDIT_ACTION, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } from "@/platform/forensics/constants";
+import { tryAppendPlatformAuditEvent } from "@/platform/forensics/platform-audit-service";
+import { markForensicSecurityDenied } from "@/platform/forensics/request-context";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,15 +21,35 @@ export async function GET() {
   if (blocked) return blocked;
 
   const settings = await getPaymentGatewaySettings(session.restaurantId);
+  void tryAppendPlatformAuditEvent({
+    category: AUDIT_CATEGORY.CONFIG,
+    action: AUDIT_ACTION.GATEWAY_CONFIG_VIEWED,
+    restaurantId: session.restaurantId,
+    resourceType: "Restaurant",
+    resourceId: session.restaurantId,
+  });
   return NextResponse.json({ settings });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (!canMutatePaymentGatewayCredentials(session.role)) {
+    markForensicSecurityDenied();
+    void tryAppendPlatformAuditEvent({
+      eventKind: AUDIT_EVENT_KIND.SECURITY,
+      severity: AUDIT_SEVERITY.WARN,
+      category: AUDIT_CATEGORY.SECURITY,
+      action: AUDIT_ACTION.GATEWAY_CREDENTIAL_CHANGE_DENIED,
+      outcome: "DENIED",
+      restaurantId: session.restaurantId,
+      resourceType: "Restaurant",
+      resourceId: session.restaurantId,
+    });
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -51,3 +75,5 @@ export async function PATCH(req: NextRequest) {
     );
   }
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

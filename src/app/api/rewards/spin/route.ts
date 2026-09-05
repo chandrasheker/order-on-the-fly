@@ -3,10 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { getRewardTier, sumBillableTotal } from "@/lib/utils";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { loadOrderByIdForRequest, loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 const WIN_SEGMENT_INDEX = 0;
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   logApiRequest("rewards/spin", "GET");
   try {
     const orderId = req.nextUrl.searchParams.get("orderId");
@@ -55,7 +56,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   logApiRequest("rewards/spin", "POST");
   try {
     const { tableToken, orderId } = await req.json();
@@ -123,3 +126,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to process spin" }, { status: 500 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

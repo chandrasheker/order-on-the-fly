@@ -7,8 +7,9 @@ import {
 } from "@/lib/staff-performance-service";
 import { todayDateString } from "@/lib/utils";
 import { featureDisabledResponse } from "@/lib/feature-guard";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session || !canAccessReports(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -30,3 +31,5 @@ export async function GET(req: NextRequest) {
     tableLog,
   });
 }
+
+export const GET = withForensicApiRoute(handleGET);

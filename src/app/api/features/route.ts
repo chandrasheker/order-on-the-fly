@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 import {
   getRestaurantFeatureFlags,
   serializeFeaturesForClient,
   getStaffHomePath,
 } from "@/lib/feature-flags";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,3 +22,5 @@ export async function GET() {
     homePath,
   });
 }
+
+export const GET = withForensicApiRoute(handleGET);

@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import type { PaymentMethod } from "@/generated/prisma/client";
+import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
+import { auditPaymentSnapshot } from "@/platform/forensics/snapshots";
+import { setForensicCorrelationId, setForensicResource } from "@/platform/forensics/request-context";
 import { clearPaymentAlerts } from "@/lib/payment-service";
 import { orderItemLineTotal } from "@/lib/utils";
 import { fromPaise, maxPaise, minPaise, toPaise } from "@/lib/money";
@@ -383,6 +387,20 @@ export async function recordOrderPayment(params: {
         });
         if (existing) {
           const summary = computeSummaryFromOrder(order, paidByItemFromPayments(order));
+          setForensicCorrelationId(existing.id);
+          setForensicResource({ type: "Payment", id: existing.id });
+          await appendPlatformAuditEventInTx(tx, {
+            category: AUDIT_CATEGORY.MONEY,
+            action: AUDIT_ACTION.PAYMENT_CAPTURE_REPLAYED,
+            restaurantId: order.restaurantId,
+            tenantId: order.tenantId,
+            branchId: order.branchId,
+            resourceType: "Payment",
+            resourceId: existing.id,
+            correlationId: existing.id,
+            after: auditPaymentSnapshot(existing),
+            metadata: { orderId: order.id, billId: existing.billId, providerPaymentId: existing.providerPaymentId },
+          });
           return {
             ok: true as const,
             payment: existing,
@@ -536,6 +554,48 @@ export async function recordOrderPayment(params: {
             paidByUserId: params.collectedByUserId ?? null,
             paidByName: params.collectedByName ?? null,
           },
+        });
+      }
+
+      setForensicCorrelationId(payment.id);
+      setForensicResource({ type: "Payment", id: payment.id });
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MONEY,
+        action: AUDIT_ACTION.PAYMENT_RECORDED,
+        restaurantId: order.restaurantId,
+        tenantId: order.tenantId,
+        branchId: order.branchId,
+        resourceType: "Payment",
+        resourceId: payment.id,
+        correlationId: payment.id,
+        after: auditPaymentSnapshot(payment),
+        metadata: {
+          amountPaise: Math.round(Number(payment.amount) * 100),
+          currency: "INR",
+          orderId: order.id,
+          billId: payment.billId,
+        },
+      });
+      if (status === PAYMENT_STATUS.CAPTURED) {
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: method === "CASH" ? AUDIT_ACTION.CASH_PAYMENT_CAPTURED : AUDIT_ACTION.PAYMENT_CAPTURED,
+          restaurantId: order.restaurantId,
+          tenantId: order.tenantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          after: auditPaymentSnapshot(payment),
+        });
+      } else if (method === "MANUAL_UPI") {
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.MANUAL_UPI_SUBMITTED,
+          restaurantId: order.restaurantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          after: auditPaymentSnapshot(payment),
         });
       }
 
@@ -814,6 +874,15 @@ export async function confirmManualUpiPayment(params: {
         return { ok: false as const, error: "Not a manual UPI payment", status: 400 };
       }
       if (payment.status === PAYMENT_STATUS.CAPTURED) {
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.PAYMENT_CAPTURE_REPLAYED,
+          restaurantId: payment.restaurantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          after: auditPaymentSnapshot(payment),
+        });
         return {
           ok: true as const,
           payment,
@@ -913,6 +982,27 @@ export async function confirmManualUpiPayment(params: {
         });
       }
 
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MONEY,
+        action: AUDIT_ACTION.MANUAL_UPI_VERIFIED,
+        restaurantId: order.restaurantId,
+        resourceType: "Payment",
+        resourceId: updated.id,
+        correlationId: updated.id,
+        before: auditPaymentSnapshot(payment),
+        after: auditPaymentSnapshot(updated),
+      });
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MONEY,
+        action: AUDIT_ACTION.PAYMENT_CAPTURED,
+        restaurantId: order.restaurantId,
+        resourceType: "Payment",
+        resourceId: updated.id,
+        correlationId: updated.id,
+        before: { status: payment.status },
+        after: auditPaymentSnapshot(updated),
+      });
+
       return {
         ok: true as const,
         payment: updated,
@@ -993,13 +1083,26 @@ export async function rejectManualUpiPayment(params: {
     return { ok: false as const, error: "Captured payment cannot be rejected", status: 409 };
   }
 
-  const updated = await prisma.payment.update({
-    where: { id: payment.id },
-    data: {
-      status: PAYMENT_STATUS.FAILED,
-      verificationStatus: MANUAL_UPI_VERIFICATION.REJECTED,
-      idempotencyKey: null,
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const next = await tx.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: PAYMENT_STATUS.FAILED,
+        verificationStatus: MANUAL_UPI_VERIFICATION.REJECTED,
+        idempotencyKey: null,
+      },
+    });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.MONEY,
+      action: AUDIT_ACTION.MANUAL_UPI_REJECTED,
+      restaurantId: payment.restaurantId,
+      resourceType: "Payment",
+      resourceId: next.id,
+      correlationId: next.id,
+      before: auditPaymentSnapshot(payment),
+      after: auditPaymentSnapshot(next),
+    });
+    return next;
   });
   return { ok: true as const, payment: updated };
 }
@@ -1013,6 +1116,7 @@ export async function refundCapturedPayment(params: {
   idempotencyKey?: string;
   provider?: string;
   providerPaymentId?: string;
+  skipRefundRequested?: boolean;
 }) {
   try {
     const result = await runWithUniqueConstraintRetry(() =>
@@ -1036,6 +1140,15 @@ export async function refundCapturedPayment(params: {
             },
           });
           if (existing?.refundOfPaymentId === original.id) {
+            await appendPlatformAuditEventInTx(tx, {
+              category: AUDIT_CATEGORY.MONEY,
+              action: AUDIT_ACTION.REFUND_REPLAYED,
+              restaurantId: params.restaurantId,
+              resourceType: "Payment",
+              resourceId: existing.id,
+              correlationId: original.id,
+              metadata: { replay: "refund" },
+            });
             return { ok: true as const, payment: existing, idempotent: true as const };
           }
           if (existing) {
@@ -1084,6 +1197,44 @@ export async function refundCapturedPayment(params: {
           });
         }
 
+        if (!params.skipRefundRequested) {
+          await appendPlatformAuditEventInTx(tx, {
+            category: AUDIT_CATEGORY.MONEY,
+            action: AUDIT_ACTION.REFUND_REQUESTED,
+            restaurantId: original.restaurantId,
+            tenantId: original.tenantId,
+            resourceType: "Payment",
+            resourceId: refund.id,
+            correlationId: original.id,
+            before: {
+              capturedPaise: Math.round(Number(original.amount) * 100),
+              refundedPaise: alreadyRefundedPaise,
+            },
+            after: {
+              capturedPaise: Math.round(Number(original.amount) * 100),
+              refundedPaise: alreadyRefundedPaise + refundPaise,
+            },
+            metadata: {
+              paymentId: original.id,
+              refundId: refund.id,
+              amountPaise: refundPaise,
+              currency: "INR",
+              provider: refund.provider,
+              providerPaymentId: refund.providerPaymentId,
+              billId: original.billId,
+              orderId: original.orderId,
+            },
+          });
+        }
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.REFUND_COMPLETED,
+          restaurantId: original.restaurantId,
+          resourceType: "Payment",
+          resourceId: refund.id,
+          correlationId: original.id,
+          after: auditPaymentSnapshot(refund),
+        });
         return { ok: true as const, payment: refund, idempotent: false as const, original };
       }),
     );

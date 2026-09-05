@@ -28,6 +28,14 @@ import {
 import { getBillForOrder, isUniqueConstraintError } from "@/lib/bill-service";
 import { ensureBillPublicToken } from "@/lib/public-receipt-service";
 import { logInfo, logWarn } from "@/lib/logger";
+import { AUDIT_ACTION, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
+import {
+  getForensicContext,
+  setForensicCorrelationId,
+  setForensicResource,
+  setForensicTenant,
+} from "@/platform/forensics/request-context";
 
 function customerStatus(status: string, paid: boolean) {
   if (paid || status === GATEWAY_ATTEMPT_STATUS.CAPTURED) return "Payment successful";
@@ -185,22 +193,58 @@ export async function createOrReuseRazorpayCheckout(params: {
   const publicToken = generatePublicToken();
   let attempt;
   try {
-    attempt = await prisma.gatewayPaymentAttempt.create({
-      data: {
-        publicToken,
-        tenantId: order.tenantId ?? configured.restaurant.tenantId,
-        restaurantId: params.restaurantId,
-        branchId: order.branchId,
-        tableId: params.tableId,
-        orderId: order.id,
-        provider: RAZORPAY_PROVIDER,
-        amountPaise,
-        currency: "INR",
-        status: GATEWAY_ATTEMPT_STATUS.CREATING,
-        idempotencyKey,
-        providerReceipt: `g${publicToken.slice(0, 24)}`,
-        expiresAt: new Date(Date.now() + GATEWAY_ATTEMPT_TTL_MS),
-      },
+    attempt = await prisma.$transaction(async (tx) => {
+      const created = await tx.gatewayPaymentAttempt.create({
+        data: {
+          publicToken,
+          tenantId: order.tenantId ?? configured.restaurant.tenantId,
+          restaurantId: params.restaurantId,
+          branchId: order.branchId,
+          tableId: params.tableId,
+          orderId: order.id,
+          provider: RAZORPAY_PROVIDER,
+          amountPaise,
+          currency: "INR",
+          status: GATEWAY_ATTEMPT_STATUS.CREATING,
+          idempotencyKey,
+          providerReceipt: `g${publicToken.slice(0, 24)}`,
+          expiresAt: new Date(Date.now() + GATEWAY_ATTEMPT_TTL_MS),
+        },
+      });
+      setForensicCorrelationId(created.id);
+      setForensicResource({ type: "GatewayPaymentAttempt", id: created.id });
+      setForensicTenant({
+        tenantId: created.tenantId,
+        restaurantId: created.restaurantId,
+        branchId: created.branchId,
+      });
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MONEY,
+        action: AUDIT_ACTION.GATEWAY_ATTEMPT_CREATED,
+        restaurantId: created.restaurantId,
+        tenantId: created.tenantId,
+        branchId: created.branchId,
+        resourceType: "GatewayPaymentAttempt",
+        resourceId: created.id,
+        correlationId: created.id,
+        after: {
+          status: GATEWAY_ATTEMPT_STATUS.CREATING,
+          amountPaise: created.amountPaise,
+          currency: created.currency,
+          provider: created.provider,
+        },
+        metadata: {
+          attemptId: created.id,
+          orderId: created.orderId,
+          tableId: created.tableId,
+          amountPaise: created.amountPaise,
+          currency: created.currency,
+          provider: created.provider,
+          status: GATEWAY_ATTEMPT_STATUS.CREATING,
+          requestId: getForensicContext()?.requestId ?? null,
+        },
+      });
+      return created;
     });
   } catch (error) {
     if (!isUniqueConstraintError(error)) throw error;
@@ -239,22 +283,57 @@ export async function createOrReuseRazorpayCheckout(params: {
       });
       return { ok: false as const, error: "Payment could not be completed. You can retry.", status: 409 };
     }
-    const updated = await prisma.gatewayPaymentAttempt.update({
-      where: { id: attempt.id },
-      data: {
-        status: GATEWAY_ATTEMPT_STATUS.PENDING,
-        providerOrderId: created.id,
-      },
-    });
-    return {
-      ok: true as const,
-      checkout: safeCheckout({
-        attempt: updated,
-        keyId: configured.auth.keyId,
-        name: configured.restaurant.name,
-      }),
-      reused: false,
-    };
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        const next = await tx.gatewayPaymentAttempt.update({
+          where: { id: attempt.id },
+          data: {
+            status: GATEWAY_ATTEMPT_STATUS.PENDING,
+            providerOrderId: created.id,
+          },
+        });
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.RAZORPAY_ORDER_CREATED,
+          restaurantId: next.restaurantId,
+          tenantId: next.tenantId,
+          branchId: next.branchId,
+          resourceType: "GatewayPaymentAttempt",
+          resourceId: next.id,
+          correlationId: next.id,
+          after: {
+            status: GATEWAY_ATTEMPT_STATUS.PENDING,
+            providerOrderId: next.providerOrderId,
+            amountPaise: next.amountPaise,
+            currency: next.currency,
+          },
+          metadata: {
+            attemptId: next.id,
+            providerOrderId: next.providerOrderId,
+            amountPaise: next.amountPaise,
+            currency: next.currency,
+            orderId: next.orderId,
+          },
+        });
+        return next;
+      });
+      return {
+        ok: true as const,
+        checkout: safeCheckout({
+          attempt: updated,
+          keyId: configured.auth.keyId,
+          name: configured.restaurant.name,
+        }),
+        reused: false,
+      };
+    } catch {
+      return {
+        ok: false as const,
+        error: "Payment is being verified. Please don't pay again yet.",
+        status: 503,
+        retryable: true as const,
+      };
+    }
   } catch (error) {
     if (error instanceof RazorpayApiError && error.kind === "retryable") {
       const recovered = await recoverRazorpayOrder(configured.auth, attempt, {
@@ -282,7 +361,19 @@ export async function createOrReuseRazorpayCheckout(params: {
 
 async function recoverRazorpayOrder(
   auth: { keyId: string; keySecret: string },
-  attempt: { id: string; publicToken: string; amountPaise: number; providerReceipt: string | null; providerOrderId: string | null; status: string },
+  attempt: {
+    id: string;
+    publicToken: string;
+    amountPaise: number;
+    currency?: string;
+    providerReceipt: string | null;
+    providerOrderId: string | null;
+    status: string;
+    restaurantId?: string | null;
+    tenantId?: string | null;
+    branchId?: string | null;
+    orderId?: string | null;
+  },
   display: { keyId: string; name: string },
 ) {
   try {
@@ -292,12 +383,38 @@ async function recoverRazorpayOrder(
     if (!found) {
       return { ok: false as const, error: "Payment is being verified. Please don't pay again yet.", status: 503 };
     }
-    const updated = await prisma.gatewayPaymentAttempt.update({
-      where: { id: attempt.id },
-      data: {
-        providerOrderId: found.id,
-        status: GATEWAY_ATTEMPT_STATUS.PENDING,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const next = await tx.gatewayPaymentAttempt.update({
+        where: { id: attempt.id },
+        data: {
+          providerOrderId: found.id,
+          status: GATEWAY_ATTEMPT_STATUS.PENDING,
+        },
+      });
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MONEY,
+        action: AUDIT_ACTION.RAZORPAY_ORDER_RECOVERED,
+        restaurantId: next.restaurantId,
+        tenantId: next.tenantId,
+        branchId: next.branchId,
+        resourceType: "GatewayPaymentAttempt",
+        resourceId: next.id,
+        correlationId: next.id,
+        after: {
+          status: GATEWAY_ATTEMPT_STATUS.PENDING,
+          providerOrderId: next.providerOrderId,
+          amountPaise: next.amountPaise,
+          currency: next.currency,
+        },
+        metadata: {
+          attemptId: next.id,
+          providerOrderId: next.providerOrderId,
+          amountPaise: next.amountPaise,
+          currency: next.currency,
+          orderId: next.orderId,
+        },
+      });
+      return next;
     });
     return {
       ok: true as const,
@@ -638,11 +755,47 @@ export async function verifyRazorpayCheckoutCallback(params: {
       restaurantId: attempt.restaurantId,
       attemptId: attempt.id,
     });
+    const { tryAppendPlatformAuditEvent } = await import("@/platform/forensics/platform-audit-service");
+    const { AUDIT_ACTION, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } = await import(
+      "@/platform/forensics/constants"
+    );
+    void tryAppendPlatformAuditEvent({
+      eventKind: AUDIT_EVENT_KIND.SECURITY,
+      severity: AUDIT_SEVERITY.WARN,
+      category: AUDIT_CATEGORY.SECURITY,
+      action: AUDIT_ACTION.RAZORPAY_SIGNATURE_INVALID,
+      outcome: "DENIED",
+      restaurantId: attempt.restaurantId,
+      resourceType: "GatewayPaymentAttempt",
+      resourceId: attempt.id,
+      correlationId: attempt.id,
+    });
+    void tryAppendPlatformAuditEvent({
+      category: AUDIT_CATEGORY.MONEY,
+      action: AUDIT_ACTION.RAZORPAY_CALLBACK_REJECTED,
+      outcome: "DENIED",
+      restaurantId: attempt.restaurantId,
+      resourceType: "GatewayPaymentAttempt",
+      resourceId: attempt.id,
+      correlationId: attempt.id,
+    });
     return { ok: false as const, error: "Invalid payment signature", status: 401 };
   }
-  await prisma.gatewayPaymentAttempt.update({
-    where: { id: attempt.id },
-    data: { status: GATEWAY_ATTEMPT_STATUS.AUTHORIZED, verifiedAt: new Date() },
+  await prisma.$transaction(async (tx) => {
+    await tx.gatewayPaymentAttempt.update({
+      where: { id: attempt.id },
+      data: { status: GATEWAY_ATTEMPT_STATUS.AUTHORIZED, verifiedAt: new Date() },
+    });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.MONEY,
+      action: AUDIT_ACTION.RAZORPAY_CALLBACK_VERIFIED,
+      restaurantId: attempt.restaurantId,
+      resourceType: "GatewayPaymentAttempt",
+      resourceId: attempt.id,
+      correlationId: attempt.id,
+      after: { status: GATEWAY_ATTEMPT_STATUS.AUTHORIZED },
+      metadata: { providerOrderId: attempt.providerOrderId, providerPaymentId: params.razorpayPaymentId },
+    });
   });
   return settleRazorpayCapture({
     restaurantId: attempt.restaurantId,
@@ -710,6 +863,7 @@ export async function refundAutomaticPayment(params: {
       idempotencyKey,
       provider: RAZORPAY_PROVIDER,
       providerPaymentId: existing.providerRefundId ?? undefined,
+      skipRefundRequested: true,
     });
   }
 
@@ -724,14 +878,31 @@ export async function refundAutomaticPayment(params: {
   let refundAttempt = existing;
   if (!refundAttempt) {
     try {
-      refundAttempt = await prisma.gatewayRefundAttempt.create({
-        data: {
+      refundAttempt = await prisma.$transaction(async (tx) => {
+        const created = await tx.gatewayRefundAttempt.create({
+          data: {
+            restaurantId: params.restaurantId,
+            paymentId: payment.id,
+            amountPaise,
+            status: GATEWAY_REFUND_STATUS.PENDING,
+            idempotencyKey,
+          },
+        });
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.REFUND_REQUESTED,
           restaurantId: params.restaurantId,
-          paymentId: payment.id,
-          amountPaise,
-          status: GATEWAY_REFUND_STATUS.PENDING,
-          idempotencyKey,
-        },
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: created.id,
+          metadata: {
+            paymentId: payment.id,
+            gatewayRefundAttemptId: created.id,
+            amountPaise,
+            requestId: getForensicContext()?.requestId ?? null,
+          },
+        });
+        return created;
       });
     } catch (error) {
       if (!isUniqueConstraintError(error)) throw error;
@@ -753,9 +924,24 @@ export async function refundAutomaticPayment(params: {
       idempotencyKey,
     });
     if (refund.status === "pending") {
-      await prisma.gatewayRefundAttempt.update({
-        where: { id: refundAttempt.id },
-        data: { status: GATEWAY_REFUND_STATUS.PENDING, providerRefundId: refund.id },
+      await prisma.$transaction(async (tx) => {
+        await tx.gatewayRefundAttempt.update({
+          where: { id: refundAttempt.id },
+          data: { status: GATEWAY_REFUND_STATUS.PENDING, providerRefundId: refund.id },
+        });
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.REFUND_PROVIDER_PENDING,
+          restaurantId: params.restaurantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          metadata: {
+            amountPaise,
+            providerRefundId: refund.id,
+            gatewayRefundAttemptId: refundAttempt.id,
+          },
+        });
       });
       return {
         ok: false as const,
@@ -765,13 +951,29 @@ export async function refundAutomaticPayment(params: {
       };
     }
     if (refund.status === "failed" || !providerRefundCompleted(refund.status)) {
-      await prisma.gatewayRefundAttempt.update({
-        where: { id: refundAttempt.id },
-        data: {
-          status: GATEWAY_REFUND_STATUS.FAILED,
-          failureMessage: "Provider refund failed",
-          providerRefundId: refund.id,
-        },
+      await prisma.$transaction(async (tx) => {
+        await tx.gatewayRefundAttempt.update({
+          where: { id: refundAttempt.id },
+          data: {
+            status: GATEWAY_REFUND_STATUS.FAILED,
+            failureMessage: "Provider refund failed",
+            providerRefundId: refund.id,
+          },
+        });
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.REFUND_FAILED,
+          outcome: "FAILED",
+          restaurantId: params.restaurantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          metadata: {
+            amountPaise,
+            providerRefundId: refund.id,
+            gatewayRefundAttemptId: refundAttempt.id,
+          },
+        });
       });
       return { ok: false as const, error: "Provider refund failed", status: 502 };
     }
@@ -786,15 +988,41 @@ export async function refundAutomaticPayment(params: {
       idempotencyKey,
       provider: RAZORPAY_PROVIDER,
       providerPaymentId: refund.id,
+      skipRefundRequested: true,
     });
   } catch (error) {
     if (error instanceof RazorpayApiError && error.kind === "retryable") {
-      await prisma.gatewayRefundAttempt.update({
-        where: { id: refundAttempt.id },
-        data: {
-          status: GATEWAY_REFUND_STATUS.PENDING,
-          failureMessage: error.message,
-        },
+      await prisma.$transaction(async (tx) => {
+        await tx.gatewayRefundAttempt.update({
+          where: { id: refundAttempt.id },
+          data: {
+            status: GATEWAY_REFUND_STATUS.PENDING,
+            failureMessage: error.message,
+          },
+        });
+        await appendPlatformAuditEventInTx(tx, {
+          eventKind: AUDIT_EVENT_KIND.ERROR,
+          severity: AUDIT_SEVERITY.ERROR,
+          category: AUDIT_CATEGORY.SYSTEM,
+          action: AUDIT_ACTION.RAZORPAY_REFUND_API_FAILED,
+          outcome: "FAILED",
+          restaurantId: params.restaurantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          errorCode: "RAZORPAY_REFUND_RETRYABLE",
+          errorMessage: error.message,
+          metadata: { pending: true, gatewayRefundAttemptId: refundAttempt.id },
+        });
+        await appendPlatformAuditEventInTx(tx, {
+          category: AUDIT_CATEGORY.MONEY,
+          action: AUDIT_ACTION.REFUND_PROVIDER_PENDING,
+          restaurantId: params.restaurantId,
+          resourceType: "Payment",
+          resourceId: payment.id,
+          correlationId: payment.id,
+          metadata: { gatewayRefundAttemptId: refundAttempt.id, amountPaise },
+        });
       });
       return {
         ok: false as const,
@@ -803,12 +1031,37 @@ export async function refundAutomaticPayment(params: {
         pending: true as const,
       };
     }
-    await prisma.gatewayRefundAttempt.update({
-      where: { id: refundAttempt.id },
-      data: {
-        status: GATEWAY_REFUND_STATUS.FAILED,
-        failureMessage: error instanceof Error ? error.message : "Provider refund failed",
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.gatewayRefundAttempt.update({
+        where: { id: refundAttempt.id },
+        data: {
+          status: GATEWAY_REFUND_STATUS.FAILED,
+          failureMessage: error instanceof Error ? error.message : "Provider refund failed",
+        },
+      });
+      await appendPlatformAuditEventInTx(tx, {
+        eventKind: AUDIT_EVENT_KIND.ERROR,
+        severity: AUDIT_SEVERITY.ERROR,
+        category: AUDIT_CATEGORY.SYSTEM,
+        action: AUDIT_ACTION.RAZORPAY_REFUND_API_FAILED,
+        outcome: "FAILED",
+        restaurantId: params.restaurantId,
+        resourceType: "Payment",
+        resourceId: payment.id,
+        correlationId: payment.id,
+        errorMessage: error instanceof Error ? error.message : "Provider refund failed",
+        metadata: { gatewayRefundAttemptId: refundAttempt.id },
+      });
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.MONEY,
+        action: AUDIT_ACTION.REFUND_FAILED,
+        outcome: "FAILED",
+        restaurantId: params.restaurantId,
+        resourceType: "Payment",
+        resourceId: payment.id,
+        correlationId: payment.id,
+        metadata: { amountPaise, gatewayRefundAttemptId: refundAttempt.id },
+      });
     });
     return { ok: false as const, error: "Provider refund failed", status: 502 };
   }

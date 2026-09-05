@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { listPrintJobs, printQueueSummary, publicPrintJob } from "@/domains/printing/print-job-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -17,3 +18,5 @@ export async function GET(req: NextRequest) {
     counts,
   });
 }
+
+export const GET = withForensicApiRoute(handleGET);

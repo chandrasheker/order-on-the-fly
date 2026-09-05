@@ -6,8 +6,9 @@ import {
   resolveRequestRestaurant,
 } from "@/platform/tenant-scope";
 import { logApiRequest } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(
+async function handleGET(
   req: NextRequest,
   { params }: { params: Promise<{ token: string }> },
 ) {
@@ -23,5 +24,20 @@ export async function GET(
     requireRestaurant: scope.requireRestaurant,
   });
   if (!receipt) return opaqueNotFoundJson();
+  const { tryAppendPlatformAuditEvent } = await import("@/platform/forensics/platform-audit-service");
+  const { AUDIT_ACTION, AUDIT_ACTOR_TYPE, AUDIT_CATEGORY } = await import("@/platform/forensics/constants");
+  const { setForensicActor, setForensicResource } = await import("@/platform/forensics/request-context");
+  setForensicActor({ type: AUDIT_ACTOR_TYPE.CUSTOMER });
+  setForensicResource({ type: "Bill", label: receipt.order?.billNumber ?? null });
+  void tryAppendPlatformAuditEvent({
+    category: AUDIT_CATEGORY.MONEY,
+    action: AUDIT_ACTION.PUBLIC_RECEIPT_ACCESSED,
+    actorType: AUDIT_ACTOR_TYPE.CUSTOMER,
+    restaurantId: scope.restaurantId,
+    resourceType: "Bill",
+    resourceLabel: receipt.order?.billNumber ?? null,
+  });
   return NextResponse.json({ receipt });
 }
+
+export const GET = withForensicApiRoute(handleGET);

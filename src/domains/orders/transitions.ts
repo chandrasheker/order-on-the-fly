@@ -10,6 +10,8 @@ import { syncOrderStatus } from "@/lib/order-service";
 import { clearAlertsForOrderItem } from "@/lib/order-service";
 import { publishPlatformEvent } from "@/platform/event-bus";
 import type { OrderItemStatus } from "@/generated/prisma/client";
+import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
+import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
 
 export { InvalidOrderTransitionError };
 
@@ -73,14 +75,44 @@ export async function transitionOrderItem(params: {
     data.isOverdue = false;
   }
 
-  await prisma.orderItem.update({ where: { id: params.itemId }, data });
+  const previousOrder = await prisma.order.findUnique({
+    where: { id: params.orderId },
+    select: { status: true },
+  });
+  const orderStatus = await prisma.$transaction(async (tx) => {
+    await tx.orderItem.update({ where: { id: params.itemId }, data });
+    const allItems = await tx.orderItem.findMany({ where: { orderId: params.orderId } });
+    const nextStatus = deriveOrderStatus(allItems.map((row) => row.status));
+    await tx.order.update({ where: { id: params.orderId }, data: { status: nextStatus } });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.ORDER,
+      action: AUDIT_ACTION.ORDER_ITEM_UPDATED,
+      restaurantId: params.restaurantId,
+      tenantId: params.tenantId,
+      branchId: params.branchId,
+      resourceType: "OrderItem",
+      resourceId: params.itemId,
+      correlationId: params.orderId,
+      before: { status: from, quantity: item.quantity },
+      after: { status: to, quantity: item.quantity },
+    });
+    if (previousOrder && previousOrder.status !== nextStatus) {
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.ORDER,
+        action: AUDIT_ACTION.ORDER_STATUS_CHANGED,
+        restaurantId: params.restaurantId,
+        resourceType: "Order",
+        resourceId: params.orderId,
+        correlationId: params.orderId,
+        before: { status: previousOrder.status },
+        after: { status: nextStatus },
+      });
+    }
+    return nextStatus;
+  });
   if (params.transition === "mark-unavailable" || params.transition === "mark-served") {
     await clearAlertsForOrderItem(params.itemId);
   }
-
-  const allItems = await prisma.orderItem.findMany({ where: { orderId: params.orderId } });
-  const orderStatus = deriveOrderStatus(allItems.map((i) => i.status));
-  await prisma.order.update({ where: { id: params.orderId }, data: { status: orderStatus } });
   await syncOrderStatus(params.orderId);
 
   const order = item.order;

@@ -21,8 +21,9 @@ import {
   publicRestaurantPayload,
 } from "@/lib/server-app-url";
 import { getTenantBaseDomain } from "@/platform/host";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const admin = await requirePlatformAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -48,7 +49,9 @@ export async function GET() {
   });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -125,7 +128,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function PATCH(req: NextRequest) {
+export const POST = withForensicApiRoute(handlePOST);
+
+async function handlePATCH(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -176,3 +181,5 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: message }, { status });
   }
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

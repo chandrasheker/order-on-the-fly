@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { acknowledgePrintJob } from "@/domains/printing/print-job-service";
 import { isLegacyPrintPushEnabled } from "@/lib/print-constants";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const production = process.env.NODE_ENV === "production";
   const secret = process.env.PRINTER_AGENT_SECRET;
 
@@ -30,3 +31,5 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, jobId: job.id, status: job.status });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

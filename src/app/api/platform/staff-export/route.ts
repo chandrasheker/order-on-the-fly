@@ -11,8 +11,9 @@ import {
 } from "@/lib/staff-slots";
 import { roleForSlotKey } from "@/lib/staff-permissions";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   logApiRequest("platform/staff-export", "GET");
   const admin = await requirePlatformAdmin();
   if (!admin) {
@@ -118,3 +119,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Export failed" }, { status: 500 });
   }
 }
+
+export const GET = withForensicApiRoute(handleGET);

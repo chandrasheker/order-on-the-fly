@@ -5,6 +5,9 @@ import type { Role } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { classifyRequestHost, platformRoutesAllowedOnHost, sessionAllowedFromHeaders } from "@/platform/host";
 import { getJwtSecretBytes } from "@/lib/jwt-secret";
+import { AUDIT_ACTION, AUDIT_ACTOR_TYPE, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } from "@/platform/forensics/constants";
+import { markForensicSecurityDenied, setForensicActor, setForensicTenant } from "@/platform/forensics/request-context";
+import { tryAppendPlatformAuditEvent } from "@/platform/forensics/platform-audit-service";
 
 function jwtSecret() {
   return getJwtSecretBytes();
@@ -167,9 +170,34 @@ export async function getSession(): Promise<SessionUser | null> {
   }
 
   if (!(await sessionAllowedOnRequestHost(sessionUser))) {
+    markForensicSecurityDenied();
+    void tryAppendPlatformAuditEvent({
+      eventKind: AUDIT_EVENT_KIND.SECURITY,
+      severity: AUDIT_SEVERITY.WARN,
+      category: AUDIT_CATEGORY.SECURITY,
+      action: AUDIT_ACTION.SESSION_REJECTED,
+      outcome: "DENIED",
+      actorType: AUDIT_ACTOR_TYPE.STAFF,
+      actorId: sessionUser.id,
+      actorName: sessionUser.name,
+      actorRole: sessionUser.role,
+      actorSessionId: sessionUser.staffSessionId,
+      restaurantId: sessionUser.restaurantId,
+    });
     return null;
   }
 
+  setForensicActor({
+    type: AUDIT_ACTOR_TYPE.STAFF,
+    id: sessionUser.id,
+    name: sessionUser.name,
+    role: sessionUser.role,
+    sessionId: sessionUser.staffSessionId,
+  });
+  setForensicTenant({
+    tenantId: user.tenantId ?? user.restaurant.tenantId,
+    restaurantId: sessionUser.restaurantId,
+  });
   return sessionUser;
 }
 
@@ -183,7 +211,24 @@ export async function getPlatformAdminSession(): Promise<PlatformAdminSession | 
 export async function requireSession(roles?: Role[]) {
   const session = await getSession();
   if (!session) return null;
-  if (roles && !roles.includes(session.role)) return null;
+  if (roles && !roles.includes(session.role)) {
+    markForensicSecurityDenied();
+    void tryAppendPlatformAuditEvent({
+      eventKind: AUDIT_EVENT_KIND.SECURITY,
+      severity: AUDIT_SEVERITY.WARN,
+      category: AUDIT_CATEGORY.SECURITY,
+      action: AUDIT_ACTION.ROLE_PERMISSION_DENIED,
+      outcome: "DENIED",
+      actorType: AUDIT_ACTOR_TYPE.STAFF,
+      actorId: session.id,
+      actorName: session.name,
+      actorRole: session.role,
+      actorSessionId: session.staffSessionId,
+      restaurantId: session.restaurantId,
+      metadata: { requiredRoles: roles },
+    });
+    return null;
+  }
   return session;
 }
 
@@ -225,6 +270,13 @@ export async function requireTenantAdmin() {
   if (!resolution.ok || resolution.kind !== "tenant") return null;
   const session = await getTenantAdminSession();
   if (!session || session.tenantId !== resolution.tenant.tenantId) return null;
+  setForensicActor({
+    type: AUDIT_ACTOR_TYPE.TENANT_ADMIN,
+    id: session.id,
+    name: session.name,
+    role: "TENANT_ADMIN",
+  });
+  setForensicTenant({ tenantId: session.tenantId });
   return { session, tenant: resolution.tenant };
 }
 
@@ -238,7 +290,16 @@ export async function requirePlatformAdmin() {
   if (!platformRoutesAllowedOnHost(classifyRequestHost(headerList))) {
     return null;
   }
-  return getPlatformAdminSession();
+  const admin = await getPlatformAdminSession();
+  if (admin) {
+    setForensicActor({
+      type: AUDIT_ACTOR_TYPE.PLATFORM_ADMIN,
+      id: admin.id,
+      name: admin.name,
+      role: "PLATFORM_ADMIN",
+    });
+  }
+  return admin;
 }
 
 export function canManageMenu(role: Role) {

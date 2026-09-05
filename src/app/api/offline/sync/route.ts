@@ -5,8 +5,9 @@ import { createChannelOrder } from "@/lib/aggregator-order-service";
 import { prisma } from "@/lib/prisma";
 import { tenantContextFromSession } from "@/platform/tenant-context";
 import type { OrderChannel } from "@/generated/prisma/client";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -89,3 +90,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sync failed" }, { status: 500 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

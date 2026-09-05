@@ -9,10 +9,11 @@ import { isFeatureEnabled } from "@/lib/feature-flags";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import type { OrderChannel } from "@/generated/prisma/client";
 import { rejectIfSlugEscapesHost } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 const CHANNELS: OrderChannel[] = ["SWIGGY", "ZOMATO", "TAKEAWAY", "DELIVERY"];
 
-export async function POST(
+async function handlePOST(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
@@ -79,3 +80,5 @@ export async function POST(
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

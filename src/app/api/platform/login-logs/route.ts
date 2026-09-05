@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePlatformAdmin } from "@/lib/auth";
 import { listLoginAuditLogs } from "@/lib/login-audit-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const admin = await requirePlatformAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -22,3 +23,5 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ logs });
 }
+
+export const GET = withForensicApiRoute(handleGET);

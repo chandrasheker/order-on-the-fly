@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, canManageMenu } from "@/lib/auth";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function PATCH(
+async function handlePATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -35,3 +36,5 @@ export async function PATCH(
 
   return NextResponse.json({ error: "Invalid action" }, { status: 400 });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,7 +18,9 @@ export async function GET() {
   return NextResponse.json({ alerts });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,3 +45,5 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

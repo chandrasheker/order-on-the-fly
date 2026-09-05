@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 import {
   listReconciliations,
   recordCashCount,
   runDailyReconciliation,
 } from "@/domains/payments/reconciliation-service";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -14,7 +15,9 @@ export async function GET() {
   return NextResponse.json({ reconciliations: rows });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -31,3 +34,5 @@ export async function POST(req: NextRequest) {
   const row = await runDailyReconciliation(session.restaurantId, date);
   return NextResponse.json({ reconciliation: row });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

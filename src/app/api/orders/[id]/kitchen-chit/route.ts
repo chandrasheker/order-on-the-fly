@@ -3,8 +3,9 @@ import { requireSession } from "@/lib/auth";
 import { buildKitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { prisma } from "@/lib/prisma";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(
+async function handleGET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -32,3 +33,5 @@ export async function GET(
 
   return NextResponse.json({ chit });
 }
+
+export const GET = withForensicApiRoute(handleGET);

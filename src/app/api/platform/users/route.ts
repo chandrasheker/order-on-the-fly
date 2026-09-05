@@ -3,10 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword, requirePlatformAdmin } from "@/lib/auth";
 import type { Role } from "@/generated/prisma/client";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+import { applyStaffUserMutationInTx } from "@/lib/staff-user-mutation";
 
 const STAFF_ROLES: Role[] = ["OWNER", "MANAGER", "COOK", "SERVER"];
 
-export async function GET() {
+async function handleGET() {
   const admin = await requirePlatformAdmin();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -33,7 +35,9 @@ export async function GET() {
   });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   logApiRequest("platform/users", "PATCH");
   const admin = await requirePlatformAdmin();
   if (!admin) {
@@ -99,13 +103,9 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "No updates provided" }, { status: 400 });
     }
 
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data,
-      include: {
-        restaurant: { select: { id: true, name: true, slug: true } },
-      },
-    });
+    const user = await prisma.$transaction((tx) =>
+      applyStaffUserMutationInTx(tx, { userId, existing, data }),
+    );
 
     logInfo("platform/users", "Staff user updated by platform admin", {
       adminId: admin.id,
@@ -129,3 +129,5 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
   }
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

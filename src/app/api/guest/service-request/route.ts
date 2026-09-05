@@ -4,6 +4,7 @@ import { isFeatureEnabled } from "@/lib/feature-flags";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import type { GuestServiceType } from "@/generated/prisma/client";
 import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 const VALID_TYPES: GuestServiceType[] = [
   "CALL_WAITER",
@@ -13,7 +14,7 @@ const VALID_TYPES: GuestServiceType[] = [
   "OTHER",
 ];
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   try {
     const { tableToken, sessionKey, type, message } = await req.json();
 
@@ -59,3 +60,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withForensicApiRoute(handlePOST);

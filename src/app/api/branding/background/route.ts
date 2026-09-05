@@ -3,12 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import { featureDisabledResponse } from "@/lib/feature-guard";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 import {
   removeBackgroundImageFile,
   resolveBackgroundImagePublicUrl,
 } from "@/lib/background-image-storage";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -52,7 +53,9 @@ export async function GET() {
   });
 }
 
-export async function PATCH(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -74,3 +77,5 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ error: "Use file upload to set the guest background." }, { status: 400 });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

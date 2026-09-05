@@ -233,7 +233,19 @@ export async function resolveTenantFromHost(
   lookup: HostTenantLookup = defaultLookup,
 ): Promise<HostTenantResolution> {
   const host = classifyRequestHost(asHeaderReader(headersOrRequest));
-  return resolveTenantFromClassifiedHost(host, lookup);
+  const resolution = await resolveTenantFromClassifiedHost(host, lookup);
+  if (resolution.ok && resolution.kind === "restaurant") {
+    const { setForensicTenant } = await import("@/platform/forensics/request-context");
+    setForensicTenant({
+      tenantId: resolution.context.tenantId,
+      restaurantId: resolution.context.restaurantId,
+      branchId: resolution.context.branchId,
+    });
+  } else if (resolution.ok && resolution.kind === "tenant") {
+    const { setForensicTenant } = await import("@/platform/forensics/request-context");
+    setForensicTenant({ tenantId: resolution.tenant.tenantId });
+  }
+  return resolution;
 }
 
 export async function resolveTenantFromHeaders(

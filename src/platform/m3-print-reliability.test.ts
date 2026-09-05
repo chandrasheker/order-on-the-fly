@@ -633,6 +633,7 @@ describe("M3 print reliability", () => {
           },
           body: JSON.stringify({ version: "0.1.0" }),
         }),
+        { params: Promise.resolve({}) },
       );
       assert.equal(claimRes.status, 409);
       const stillPending = await prisma.printJob.findUnique({ where: { id: job.id } });
@@ -650,6 +651,7 @@ describe("M3 print reliability", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ ackToken: job.ackToken }),
         }),
+        { params: Promise.resolve({}) },
       );
       assert.equal(ackRes.status, 409);
     } finally {
@@ -982,7 +984,7 @@ describe("M3 print reliability", () => {
         body: JSON.stringify({ ackToken: "anything" }),
         headers: { "content-type": "application/json" },
       });
-      const res = await ackPost(req);
+      const res = await ackPost(req, { params: Promise.resolve({}) });
       assert.equal(res.status, 401);
     } finally {
       env.PRINT_DELIVERY_MODE = previousMode;

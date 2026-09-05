@@ -9,8 +9,9 @@ import {
   updateMenuCategory,
 } from "@/lib/menu-setup-service";
 import { scheduleMenuSync } from "@/lib/aggregator-sync-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -23,7 +24,9 @@ export async function GET() {
   });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -58,7 +61,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function PATCH(req: NextRequest) {
+export const POST = withForensicApiRoute(handlePOST);
+
+async function handlePATCH(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -84,7 +89,9 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-export async function DELETE(req: NextRequest) {
+export const PATCH = withForensicApiRoute(handlePATCH);
+
+async function handleDELETE(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -105,3 +112,5 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
+
+export const DELETE = withForensicApiRoute(handleDELETE);

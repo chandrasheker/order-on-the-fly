@@ -25,12 +25,13 @@ import {
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import { loadOrderByIdForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 import { hasOnlyForeignOrderItemIds, scopedOrderItemIds } from "@/lib/order-item-guard";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 import {
   requireOwnedOrderItem,
   requireOwnedOrderItemWithoutPayment,
 } from "@/lib/staff-order-item-actions";
 
-export async function PATCH(
+async function handlePATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -477,3 +478,5 @@ export async function PATCH(
 
   return NextResponse.json({ error: "Invalid action" }, { status: 400 });
 }
+
+export const PATCH = withForensicApiRoute(handlePATCH);

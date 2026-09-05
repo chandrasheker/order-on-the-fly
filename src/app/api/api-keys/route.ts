@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { createApiKey, listApiKeys, revokeApiKey } from "@/lib/api-key-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET() {
+async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -10,7 +11,9 @@ export async function GET() {
   return NextResponse.json({ keys });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -29,7 +32,9 @@ export async function POST(req: NextRequest) {
   );
 }
 
-export async function DELETE(req: NextRequest) {
+export const POST = withForensicApiRoute(handlePOST);
+
+async function handleDELETE(req: NextRequest) {
   const session = await requireSession(["OWNER", "MANAGER"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -39,3 +44,5 @@ export async function DELETE(req: NextRequest) {
   await revokeApiKey(session.restaurantId, id);
   return NextResponse.json({ ok: true });
 }
+
+export const DELETE = withForensicApiRoute(handleDELETE);

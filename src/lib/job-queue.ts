@@ -1,6 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import { logInfo, logWarn } from "@/lib/logger";
 import type { JobStatus } from "@/generated/prisma/client";
+import { AUDIT_ACTION, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } from "@/platform/forensics/constants";
+import { tryAppendPlatformAuditEvent } from "@/platform/forensics/platform-audit-service";
+import {
+  getForensicContext,
+  runWithWorkerForensicContext,
+  setForensicCorrelationId,
+  setForensicResource,
+  setForensicTenant,
+} from "@/platform/forensics/request-context";
 
 export type JobType =
   | "push_notification"
@@ -98,8 +107,19 @@ async function handleJob(type: JobType, payload: Record<string, unknown>) {
 }
 
 export async function processJobById(id: string) {
+  if (!getForensicContext()) {
+    return runWithWorkerForensicContext(`background-job:${id}`, () => processJobByIdInner(id));
+  }
+  return processJobByIdInner(id);
+}
+
+async function processJobByIdInner(id: string) {
   const job = await prisma.backgroundJob.findUnique({ where: { id } });
   if (!job || job.status === "COMPLETED" || job.status === "PROCESSING") return job;
+
+  setForensicCorrelationId(job.id);
+  setForensicTenant({ restaurantId: job.restaurantId });
+  setForensicResource({ type: "BackgroundJob", id: job.id, label: job.type });
 
   await prisma.backgroundJob.update({
     where: { id },
@@ -116,6 +136,20 @@ export async function processJobById(id: string) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const failed = job.attempts + 1 >= job.maxAttempts;
+    await tryAppendPlatformAuditEvent({
+      eventKind: AUDIT_EVENT_KIND.ERROR,
+      severity: failed ? AUDIT_SEVERITY.ERROR : AUDIT_SEVERITY.WARN,
+      category: AUDIT_CATEGORY.SYSTEM,
+      action: failed ? AUDIT_ACTION.BACKGROUND_JOB_FAILED : AUDIT_ACTION.BACKGROUND_JOB_RETRY,
+      outcome: "FAILED",
+      correlationId: job.id,
+      restaurantId: job.restaurantId,
+      resourceType: "BackgroundJob",
+      resourceId: job.id,
+      resourceLabel: job.type,
+      error: err,
+      metadata: { jobType: job.type, attempt: job.attempts + 1, failed },
+    });
     return await prisma.backgroundJob.update({
       where: { id },
       data: {

@@ -383,6 +383,32 @@ export async function createOrderForTable(params: {
         table: true,
       },
     });
+    const { appendPlatformAuditEventInTx } = await import("@/platform/forensics/platform-audit-service");
+    const { AUDIT_ACTION, AUDIT_CATEGORY } = await import("@/platform/forensics/constants");
+    const { auditOrderSnapshot } = await import("@/platform/forensics/snapshots");
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.ORDER,
+      action: AUDIT_ACTION.ORDER_CREATED,
+      restaurantId: created.restaurantId,
+      tenantId: created.tenantId,
+      branchId: created.branchId,
+      floorId: created.floorId,
+      resourceType: "Order",
+      resourceId: created.id,
+      correlationId: created.id,
+      after: auditOrderSnapshot(created),
+      metadata: { tableId: created.tableId, itemCount: created.items.length },
+    });
+    if (promo?.code) {
+      await appendPlatformAuditEventInTx(tx, {
+        category: AUDIT_CATEGORY.ORDER,
+        action: AUDIT_ACTION.PROMO_APPLIED,
+        restaurantId: created.restaurantId,
+        resourceType: "Order",
+        resourceId: created.id,
+        after: { promoCode: promo.code, discountAmount: promoDiscount },
+      });
+    }
     await enqueueKitchenChitForOrderInTx(tx, {
       restaurantId: table.restaurantId,
       tenantId: hierarchy.tenantId,

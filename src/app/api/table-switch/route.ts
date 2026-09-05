@@ -4,6 +4,7 @@ import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { authorizeGuestTableSwitchRead, readDiningTokenFromRequest } from "@/lib/dining-access";
 import { todayDateString } from "@/lib/utils";
 import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 function serializeRequest(request: Awaited<ReturnType<typeof findLatestCustomerRequest>>) {
   if (!request) return null;
@@ -40,7 +41,7 @@ async function findLatestCustomerRequest(
   });
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const tableToken = req.nextUrl.searchParams.get("tableToken");
   const sessionKey = req.nextUrl.searchParams.get("sessionKey");
 
@@ -65,7 +66,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ request: serializeRequest(latest) });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const { tableToken, sessionKey, targetTableNumber, note, customerName } = await req.json();
 
   if (!tableToken || !sessionKey || targetTableNumber === undefined) {
@@ -163,3 +166,5 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ request: serializeRequest(request) }, { status: 201 });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

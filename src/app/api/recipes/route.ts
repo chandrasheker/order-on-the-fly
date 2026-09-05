@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession, canManageMenu } from "@/lib/auth";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { listIngredients, upsertIngredient, upsertRecipeLine, getRecipeForMenuItem } from "@/lib/recipe-service";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -22,7 +23,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ ingredients });
 }
 
-export async function POST(req: NextRequest) {
+export const GET = withForensicApiRoute(handleGET);
+
+async function handlePOST(req: NextRequest) {
   const session = await requireSession();
   if (!session || !canManageMenu(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -53,3 +56,5 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ingredient });
 }
+
+export const POST = withForensicApiRoute(handlePOST);

@@ -3,8 +3,9 @@ import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { createOrReuseRazorpayCheckout } from "@/lib/gateway-payment-service";
 import { loadOrderByIdForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 import { logApiRequest } from "@/lib/logger";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   logApiRequest("payments/gateway/create", "POST");
   const body = await req.json().catch(() => ({}));
   const orderId = typeof body.orderId === "string" ? body.orderId : "";
@@ -32,3 +33,5 @@ export async function POST(req: NextRequest) {
   }
   return NextResponse.json({ checkout: result.checkout, reused: result.reused });
 }
+
+export const POST = withForensicApiRoute(handlePOST);
