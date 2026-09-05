@@ -233,8 +233,22 @@ export function RestaurantDetailPanels({
           <div>Failed gateway attempts <Link href={row.hrefs.paymentsFailed} className="text-violet-300">{row.money.failedGatewayAttempts}</Link></div>
           <div>Refund pending {row.money.refundPending}</div>
           <div>Refund failures {row.money.refundFailures}</div>
-          <div>Reconciliation variance <Money paise={row.money.reconciliationVariancePaise} compact={false} /></div>
-          <div>Cash variance <Money paise={row.money.cashVariancePaise} compact={false} /></div>
+          <div>
+            Reconciliation variance{" "}
+            {row.money.reconciliationVariancePaise == null ? (
+              <strong>No reconciliation data</strong>
+            ) : (
+              <strong><Money paise={row.money.reconciliationVariancePaise} compact={false} /></strong>
+            )}
+          </div>
+          <div>
+            Cash variance{" "}
+            {row.money.cashVariancePaise == null ? (
+              <strong>No reconciliation data</strong>
+            ) : (
+              <strong><Money paise={row.money.cashVariancePaise} compact={false} /></strong>
+            )}
+          </div>
         </dl>
       </Card>
     );
@@ -318,7 +332,7 @@ export function RestaurantDetailPanels({
         <Link href={row.hrefs.errors}>
           <Card className="p-4">
             <p className="text-xs uppercase tracking-wide text-zinc-500">API errors</p>
-            <p className="text-2xl font-semibold mt-1">{row.reliability.requestFailed + row.reliability.http5xx}</p>
+            <p className="text-2xl font-semibold mt-1">{row.reliability.failedRequests}</p>
           </Card>
         </Link>
       </div>

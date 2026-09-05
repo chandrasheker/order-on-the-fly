@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 import { getCommandCenter } from "@/platform/command-center/metrics-service";
-import { requireApexPlatformAdmin } from "@/platform/command-center/platform-admin-gate";
+import { bindTenantCommandForensics, requireApexPlatformAdmin } from "@/platform/command-center/platform-admin-gate";
 import { resolveTimeRange } from "@/platform/command-center/time-range";
 
 async function handleGET(req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
@@ -10,6 +10,7 @@ async function handleGET(req: NextRequest, { params }: { params: Promise<{ tenan
   const { tenantId } = await params;
   const search = req.nextUrl.searchParams;
   try {
+    await bindTenantCommandForensics(tenantId);
     const payload = await getCommandCenter({
       tenantId,
       range: resolveTimeRange({
@@ -28,4 +29,4 @@ async function handleGET(req: NextRequest, { params }: { params: Promise<{ tenan
   }
 }
 
-export const GET = withForensicApiRoute(handleGET, { suppressRequestEvent: true });
+export const GET = withForensicApiRoute(handleGET);

@@ -34,4 +34,4 @@ export const COMMAND_CENTER_THRESHOLDS = {
 export type KitchenLoadLevel = "NORMAL" | "BUSY" | "HIGH" | "OVERWHELMED";
 export type ServiceLoadLevel = "NORMAL" | "BUSY" | "HIGH";
 export type BinaryHealthLevel = "HEALTHY" | "ATTENTION";
-export type PrintingHealthLevel = "HEALTHY" | "DEGRADED" | "OFFLINE";
+export type PrintingHealthLevel = "HEALTHY" | "DEGRADED" | "OFFLINE" | "NOT_CONFIGURED";

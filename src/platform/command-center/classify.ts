@@ -114,8 +114,8 @@ export function classifyMoneyHealth(input: {
   failedGatewayAttempts: number;
   refundPending: number;
   refundFailures: number;
-  reconciliationVariancePaise: number;
-  cashVariancePaise: number;
+  reconciliationVariancePaise: number | null;
+  cashVariancePaise: number | null;
 }): ClassifiedStatus<BinaryHealthLevel> {
   const reasons: string[] = [];
   if (input.pendingGatewayAttempts > 0) {
@@ -126,10 +126,10 @@ export function classifyMoneyHealth(input: {
   }
   if (input.refundPending > 0) reasons.push(`${input.refundPending} refund${input.refundPending === 1 ? "" : "s"} pending`);
   if (input.refundFailures > 0) reasons.push(`${input.refundFailures} refund failure${input.refundFailures === 1 ? "" : "s"}`);
-  if (input.reconciliationVariancePaise !== 0) {
+  if (input.reconciliationVariancePaise != null && input.reconciliationVariancePaise !== 0) {
     reasons.push(`Reconciliation variance ${input.reconciliationVariancePaise} paise`);
   }
-  if (input.cashVariancePaise !== 0) {
+  if (input.cashVariancePaise != null && input.cashVariancePaise !== 0) {
     reasons.push(`Cash variance ${input.cashVariancePaise} paise`);
   }
   return {
@@ -148,22 +148,41 @@ export function classifyPrintingHealth(input: {
   ambiguous: number;
   queueDepth: number;
   lastError: string | null;
+  deliveryMode?: "agent-pull" | "legacy-push";
 }): ClassifiedStatus<PrintingHealthLevel> {
   const reasons: string[] = [];
   let level: PrintingHealthLevel = "HEALTHY";
-  if (input.enabledAgentCount > 0 && input.onlineAgentCount === 0) {
+  const legacyPush = input.deliveryMode === "legacy-push";
+
+  if (input.failures > 0) reasons.push(`${input.failures} confirmed print failure${input.failures === 1 ? "" : "s"}`);
+  if (input.ambiguous > 0) reasons.push(`${input.ambiguous} AMBIGUOUS print job${input.ambiguous === 1 ? "" : "s"}`);
+  if (input.lastError) reasons.push(input.lastError);
+
+  if (legacyPush) {
+    if (input.failures > 0 || input.ambiguous > 0) {
+      level = "DEGRADED";
+    } else {
+      level = "NOT_CONFIGURED";
+      reasons.push("legacy-push delivery — printer-agent health does not apply");
+    }
+  } else if (input.enabledAgentCount === 0) {
+    if (input.failures > 0 || input.ambiguous > 0) {
+      level = "DEGRADED";
+    } else {
+      level = "NOT_CONFIGURED";
+      reasons.push("No enabled printer agents");
+    }
+  } else if (input.onlineAgentCount === 0) {
     level = "OFFLINE";
-    reasons.push(
+    reasons.unshift(
       input.lastSeenAt
         ? `Printer agent last seen ${formatAgo(input.lastSeenAgoMs)}`
         : "Enabled printer agent has never been seen",
     );
   } else if (input.failures > 0 || input.ambiguous > 0 || input.lastError) {
     level = "DEGRADED";
-    if (input.failures > 0) reasons.push(`${input.failures} confirmed print failure${input.failures === 1 ? "" : "s"}`);
-    if (input.ambiguous > 0) reasons.push(`${input.ambiguous} AMBIGUOUS print job${input.ambiguous === 1 ? "" : "s"}`);
-    if (input.lastError) reasons.push(input.lastError);
   }
+
   if (input.queueDepth > 0 && level === "HEALTHY") {
     reasons.push(`${input.queueDepth} job${input.queueDepth === 1 ? "" : "s"} in queue`);
   }
@@ -178,6 +197,7 @@ export function classifyPrintingHealth(input: {
 export function classifyReliability(input: {
   requestFailed: number;
   http5xx: number;
+  failedRequests: number;
   uniqueFingerprints: number;
   securityDenials: number;
   jobFailures: number;
@@ -186,10 +206,9 @@ export function classifyReliability(input: {
 }): ClassifiedStatus<BinaryHealthLevel> {
   const t = COMMAND_CENTER_THRESHOLDS.reliability;
   const reasons: string[] = [];
-  if (input.requestFailed >= t.requestFailedAttention) {
-    reasons.push(`${input.requestFailed} REQUEST_FAILED`);
+  if (input.failedRequests >= t.requestFailedAttention) {
+    reasons.push(`${input.failedRequests} failed request${input.failedRequests === 1 ? "" : "s"}`);
   }
-  if (input.http5xx >= t.fiveXxAttention) reasons.push(`${input.http5xx} 5xx requests`);
   if (input.uniqueFingerprints >= t.uniqueFingerprintsAttention) {
     reasons.push(`${input.uniqueFingerprints} unique error fingerprints`);
   }

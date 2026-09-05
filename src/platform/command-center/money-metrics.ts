@@ -39,7 +39,7 @@ export function ledgerRevenueFromPayments(payments: LedgerPaymentWithMethod[]) {
     }
   }
 
-  const netCapturedPaise = Math.max(0, subtractPaise(capturedGrossPaise, refundsPaise));
+  const netCapturedPaise = subtractPaise(capturedGrossPaise, refundsPaise);
   return {
     capturedGrossPaise,
     refundsPaise,
@@ -49,6 +49,20 @@ export function ledgerRevenueFromPayments(payments: LedgerPaymentWithMethod[]) {
     automaticGatewayPaise,
     paymentCount,
     capturedOrderCount: capturedOrderIds.size,
-    avgCapturedOrderPaise: capturedOrderIds.size > 0 ? Math.round(netCapturedPaise / capturedOrderIds.size) : null,
+    avgCapturedOrderPaise:
+      capturedOrderIds.size > 0 ? Math.round(capturedGrossPaise / capturedOrderIds.size) : null,
   };
+}
+
+export function staffCollectedFromPayments(
+  payments: Array<LedgerPaymentWithMethod & { collectedByUserId?: string | null; collectedByName?: string | null }>,
+) {
+  let paymentsCollected = 0;
+  let revenueCollectedPaise = 0;
+  for (const payment of payments) {
+    if (!isCapturedPayment(payment)) continue;
+    paymentsCollected += 1;
+    revenueCollectedPaise = addPaise(revenueCollectedPaise, toPaise(payment.amount));
+  }
+  return { paymentsCollected, revenueCollectedPaise };
 }

@@ -128,8 +128,8 @@ export type RestaurantCommandRow = {
     failedGatewayAttempts: number;
     refundPending: number;
     refundFailures: number;
-    reconciliationVariancePaise: number;
-    cashVariancePaise: number;
+    reconciliationVariancePaise: number | null;
+    cashVariancePaise: number | null;
     health: ClassifiedStatus<BinaryHealthLevel>;
   };
   printing: {
@@ -149,6 +149,7 @@ export type RestaurantCommandRow = {
   reliability: {
     requestFailed: number;
     http5xx: number;
+    failedRequests: number;
     uniqueFingerprints: number;
     jobFailures: number;
     providerFailures: number;

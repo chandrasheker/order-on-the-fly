@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { financialsForOrder } from "@/lib/order-financials";
+import { financialsForOrder, isCapturedPayment } from "@/lib/order-financials";
 import { addPaise, toPaise } from "@/lib/money";
-import { PRINT_AGENT_ONLINE_MS, PRINT_ERROR } from "@/lib/print-constants";
+import { PRINT_AGENT_ONLINE_MS, PRINT_ERROR, printDeliveryMode } from "@/lib/print-constants";
 import { ACTIVE_GATEWAY_ATTEMPT_STATUSES, GATEWAY_ATTEMPT_STATUS, GATEWAY_REFUND_STATUS } from "@/lib/gateway-constants";
 import { getActiveStaffSessionsByRestaurants } from "@/lib/staff-session-service";
 import {
@@ -141,8 +141,10 @@ export async function getCommandCenter(params: {
     periodPrints,
     printQueue,
     agents,
-    gatewayAttempts,
-    refundAttempts,
+    currentGatewayAttempts,
+    periodGatewayAttempts,
+    currentRefundAttempts,
+    periodRefundAttempts,
     reconciliations,
     tables,
     sessionsByRestaurant,
@@ -230,13 +232,36 @@ export async function getCommandCenter(params: {
       : Promise.resolve([]),
     ids.length
       ? prisma.gatewayPaymentAttempt.findMany({
-          where: { restaurantId: { in: ids }, createdAt: { gte: range.from, lte: range.to } },
+          where: {
+            restaurantId: { in: ids },
+            status: { in: [...ACTIVE_GATEWAY_ATTEMPT_STATUSES] },
+          },
+          select: { restaurantId: true, status: true },
+        })
+      : Promise.resolve([]),
+    ids.length
+      ? prisma.gatewayPaymentAttempt.findMany({
+          where: {
+            restaurantId: { in: ids },
+            createdAt: { gte: range.from, lte: range.to },
+            status: GATEWAY_ATTEMPT_STATUS.FAILED,
+          },
           select: { restaurantId: true, status: true },
         })
       : Promise.resolve([]),
     ids.length
       ? prisma.gatewayRefundAttempt.findMany({
-          where: { restaurantId: { in: ids }, createdAt: { gte: range.from, lte: range.to } },
+          where: { restaurantId: { in: ids }, status: GATEWAY_REFUND_STATUS.PENDING },
+          select: { restaurantId: true, status: true },
+        })
+      : Promise.resolve([]),
+    ids.length
+      ? prisma.gatewayRefundAttempt.findMany({
+          where: {
+            restaurantId: { in: ids },
+            createdAt: { gte: range.from, lte: range.to },
+            status: GATEWAY_REFUND_STATUS.FAILED,
+          },
           select: { restaurantId: true, status: true },
         })
       : Promise.resolve([]),
@@ -282,8 +307,10 @@ export async function getCommandCenter(params: {
     const prints = periodPrints.filter((row) => row.restaurantId === restaurant.id);
     const queue = printQueue.filter((row) => row.restaurantId === restaurant.id);
     const restaurantAgents = agents.filter((row) => row.restaurantId === restaurant.id);
-    const attempts = gatewayAttempts.filter((row) => row.restaurantId === restaurant.id);
-    const refunds = refundAttempts.filter((row) => row.restaurantId === restaurant.id);
+    const currentAttempts = currentGatewayAttempts.filter((row) => row.restaurantId === restaurant.id);
+    const periodFailedAttempts = periodGatewayAttempts.filter((row) => row.restaurantId === restaurant.id);
+    const currentRefunds = currentRefundAttempts.filter((row) => row.restaurantId === restaurant.id);
+    const periodFailedRefunds = periodRefundAttempts.filter((row) => row.restaurantId === restaurant.id);
     const restaurantTables = tables.filter((row) => row.restaurantId === restaurant.id);
     const sessions = sessionsByRestaurant.get(restaurant.id) ?? [];
     const reliability = reliabilityByRestaurant.get(restaurant.id);
@@ -392,20 +419,20 @@ export async function getCommandCenter(params: {
       avgAckMs: ackMs.length ? ackMs.reduce((a, b) => a + b, 0) / ackMs.length : null,
     });
 
-    const pendingGateway = attempts.filter((row) =>
-      (ACTIVE_GATEWAY_ATTEMPT_STATUSES as readonly string[]).includes(row.status),
-    ).length;
-    const failedGateway = attempts.filter((row) => row.status === GATEWAY_ATTEMPT_STATUS.FAILED).length;
-    const refundPending = refunds.filter((row) => row.status === GATEWAY_REFUND_STATUS.PENDING).length;
-    const refundFailures = refunds.filter((row) => row.status === GATEWAY_REFUND_STATUS.FAILED).length;
+    const pendingGateway = currentAttempts.length;
+    const failedGateway = periodFailedAttempts.length;
+    const refundPending = currentRefunds.length;
+    const refundFailures = periodFailedRefunds.length;
     const recon = latestRecon.get(restaurant.id);
+    const reconciliationVariancePaise = recon ? toPaise(recon.variance) : null;
+    const cashVariancePaise = recon?.cashVariance != null ? toPaise(recon.cashVariance) : null;
     const paymentsHealth = classifyMoneyHealth({
       pendingGatewayAttempts: pendingGateway,
       failedGatewayAttempts: failedGateway,
       refundPending,
       refundFailures,
-      reconciliationVariancePaise: recon ? toPaise(recon.variance) : 0,
-      cashVariancePaise: recon?.cashVariance != null ? toPaise(recon.cashVariance) : 0,
+      reconciliationVariancePaise,
+      cashVariancePaise,
     });
 
     const enabledAgents = restaurantAgents.filter((agent) => agent.enabled && !agent.revokedAt);
@@ -431,12 +458,14 @@ export async function getCommandCenter(params: {
       ambiguous,
       queueDepth: queue.length,
       lastError: enabledAgents.find((agent) => agent.lastError)?.lastError ?? null,
+      deliveryMode: printDeliveryMode(),
     });
 
     const reliabilitySerialized = serializeReliability(
       reliability ?? {
         requestFailed: 0,
         http5xx: 0,
+        failedRequests: 0,
         uniqueFingerprints: new Set(),
         jobFailures: 0,
         providerFailures: 0,
@@ -463,15 +492,16 @@ export async function getCommandCenter(params: {
 
     const staffMap = new Map<string, StaffAcc>();
     const servedOrdersByStaff = new Map<string, Set<string>>();
+    for (const payment of payments) {
+      if (!payment.collectedByUserId || !payment.collectedByName) continue;
+      if (!isCapturedPayment(payment)) continue;
+      const row = bumpStaff(staffMap, payment.collectedByUserId, payment.collectedByName, "STAFF");
+      row.paymentsCollected += 1;
+      row.revenueCollectedPaise = addPaise(row.revenueCollectedPaise, toPaise(payment.amount));
+    }
     for (const order of nonCancelled) {
       if (order.placedByUserId && order.placedByName) {
         bumpStaff(staffMap, order.placedByUserId, order.placedByName, "STAFF").ordersPlaced += 1;
-      }
-      for (const payment of order.payments) {
-        if (!payment.collectedByUserId || !payment.collectedByName) continue;
-        const row = bumpStaff(staffMap, payment.collectedByUserId, payment.collectedByName, "STAFF");
-        row.paymentsCollected += 1;
-        row.revenueCollectedPaise = addPaise(row.revenueCollectedPaise, toPaise(payment.amount));
       }
       for (const item of order.items) {
         if (item.preparedByUserId && item.preparedByName) {
@@ -671,8 +701,8 @@ export async function getCommandCenter(params: {
         failedGatewayAttempts: failedGateway,
         refundPending,
         refundFailures,
-        reconciliationVariancePaise: recon ? toPaise(recon.variance) : 0,
-        cashVariancePaise: recon?.cashVariance != null ? toPaise(recon.cashVariance) : 0,
+        reconciliationVariancePaise,
+        cashVariancePaise,
         health: paymentsHealth,
       },
       printing: {
@@ -766,7 +796,7 @@ export async function getCommandCenter(params: {
           percent: trendPercent(revenue.refundsPaise, prevRevenue.refundsPaise),
         },
         errors: {
-          current: reliabilitySerialized.requestFailed + reliabilitySerialized.http5xx,
+          current: reliabilitySerialized.failedRequests,
           previous: prevErrors,
           percent: null,
         },

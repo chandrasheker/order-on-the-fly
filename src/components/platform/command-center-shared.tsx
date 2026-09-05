@@ -146,7 +146,7 @@ export function RestaurantHealthTable({
     if (filter === "kitchen") return row.kitchen.load.level === "HIGH" || row.kitchen.load.level === "OVERWHELMED";
     if (filter === "service") return row.service.load.level === "HIGH" || row.service.load.level === "BUSY";
     if (filter === "payments") return row.money.health.level === "ATTENTION";
-    if (filter === "printing") return row.printing.health.level !== "HEALTHY";
+    if (filter === "printing") return row.printing.health.level === "DEGRADED" || row.printing.health.level === "OFFLINE";
     if (filter === "errors") return row.reliability.health.level === "ATTENTION";
     return true;
   });
@@ -164,7 +164,7 @@ export function RestaurantHealthTable({
       case "serving":
         return (b.service.orderToServed.average ?? 0) - (a.service.orderToServed.average ?? 0);
       case "errors":
-        return b.reliability.requestFailed + b.reliability.http5xx - (a.reliability.requestFailed + a.reliability.http5xx);
+        return b.reliability.failedRequests - a.reliability.failedRequests;
       default:
         return a.restaurantName.localeCompare(b.restaurantName);
     }
@@ -239,7 +239,7 @@ export function RestaurantHealthTable({
               </td>
               <td className="px-3 py-2">
                 <Link href={row.hrefs.errors} className="hover:text-white">
-                  {row.reliability.requestFailed + row.reliability.http5xx}
+                  {row.reliability.failedRequests}
                 </Link>
               </td>
             </tr>

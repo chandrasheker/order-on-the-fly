@@ -98,8 +98,16 @@ export function resolveTimeRange(input?: {
   }
 
   const durationMs = Math.max(1, to.getTime() - from.getTime());
-  const previousTo = new Date(from.getTime() - 1);
-  const previousFrom = new Date(previousTo.getTime() - durationMs);
+  let previousFrom: Date;
+  let previousTo: Date;
+  if (resolvedPreset === "today") {
+    const yesterdayStart = startOfLocalDay(addDays(todayStart, -1));
+    previousFrom = yesterdayStart;
+    previousTo = new Date(yesterdayStart.getTime() + (to.getTime() - from.getTime()));
+  } else {
+    previousTo = new Date(from.getTime() - 1);
+    previousFrom = new Date(previousTo.getTime() - durationMs);
+  }
   const hours = Math.max(durationMs / 3_600_000, 1 / 60);
 
   return {
