@@ -1,7 +1,11 @@
 "use client";
 
+import { Fragment, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge, Button, Card, Input, Select } from "@/components/ui";
+import { PlatformPagedListFrame, PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
+import { usePagedExpandableList } from "@/hooks/usePagedExpandableList";
 import { formatDurationMs } from "@/platform/command-center/classify";
 import { formatExactInrFromPaise, formatInrFromPaise } from "@/platform/command-center/format";
 import { formatTrendPercent } from "@/platform/command-center/time-range";
@@ -141,34 +145,43 @@ export function RestaurantHealthTable({
   filter: string;
   showTenant?: boolean;
 }) {
-  const filtered = rows.filter((row) => {
-    if (filter === "attention") return row.needsAttention;
-    if (filter === "kitchen") return row.kitchen.load.level === "HIGH" || row.kitchen.load.level === "OVERWHELMED";
-    if (filter === "service") return row.service.load.level === "HIGH" || row.service.load.level === "BUSY";
-    if (filter === "payments") return row.money.health.level === "ATTENTION";
-    if (filter === "printing") return row.printing.health.level === "DEGRADED" || row.printing.health.level === "OFFLINE";
-    if (filter === "errors") return row.reliability.health.level === "ATTENTION";
-    return true;
-  });
+  const scoped = useMemo(() => {
+    const filtered = rows.filter((row) => {
+      if (filter === "attention") return row.needsAttention;
+      if (filter === "kitchen") return row.kitchen.load.level === "HIGH" || row.kitchen.load.level === "OVERWHELMED";
+      if (filter === "service") return row.service.load.level === "HIGH" || row.service.load.level === "BUSY";
+      if (filter === "payments") return row.money.health.level === "ATTENTION";
+      if (filter === "printing") return row.printing.health.level === "DEGRADED" || row.printing.health.level === "OFFLINE";
+      if (filter === "errors") return row.reliability.health.level === "ATTENTION";
+      return true;
+    });
+    return [...filtered].sort((a, b) => {
+      switch (sort) {
+        case "orders":
+          return b.period.orders - a.period.orders;
+        case "revenue":
+          return b.revenue.netCapturedPaise - a.revenue.netCapturedPaise;
+        case "sla":
+          return (a.kitchen.sla.onTimePercent ?? 101) - (b.kitchen.sla.onTimePercent ?? 101);
+        case "overdue":
+          return b.current.overdue - a.current.overdue;
+        case "serving":
+          return (b.service.orderToServed.average ?? 0) - (a.service.orderToServed.average ?? 0);
+        case "errors":
+          return b.reliability.failedRequests - a.reliability.failedRequests;
+        default:
+          return a.restaurantName.localeCompare(b.restaurantName);
+      }
+    });
+  }, [filter, rows, sort]);
 
-  const sorted = [...filtered].sort((a, b) => {
-    switch (sort) {
-      case "orders":
-        return b.period.orders - a.period.orders;
-      case "revenue":
-        return b.revenue.netCapturedPaise - a.revenue.netCapturedPaise;
-      case "sla":
-        return (a.kitchen.sla.onTimePercent ?? 101) - (b.kitchen.sla.onTimePercent ?? 101);
-      case "overdue":
-        return b.current.overdue - a.current.overdue;
-      case "serving":
-        return (b.service.orderToServed.average ?? 0) - (a.service.orderToServed.average ?? 0);
-      case "errors":
-        return b.reliability.failedRequests - a.reliability.failedRequests;
-      default:
-        return a.restaurantName.localeCompare(b.restaurantName);
-    }
-  });
+  const getId = useCallback((row: RestaurantCommandRow) => row.restaurantId, []);
+  const getSearchText = useCallback(
+    (row: RestaurantCommandRow) => `${row.restaurantName} ${row.tenantName}`,
+    [],
+  );
+  const list = usePagedExpandableList(scoped, { getId, getSearchText });
+  const colSpan = showTenant ? 16 : 15;
 
   const header = (key: string, label: string) => (
     <button type="button" className="text-left hover:text-white" onClick={() => onSort(key)}>
@@ -178,81 +191,135 @@ export function RestaurantHealthTable({
   );
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-white/10">
-      <table className="min-w-full text-sm">
-        <thead className="bg-white/5 text-zinc-400">
-          <tr>
-            {showTenant && <th className="px-3 py-2 text-left">Tenant</th>}
-            <th className="px-3 py-2 text-left">{header("name", "Restaurant")}</th>
-            <th className="px-3 py-2 text-left">Status</th>
-            <th className="px-3 py-2 text-left">{header("orders", "Orders")}</th>
-            <th className="px-3 py-2 text-left">{header("revenue", "Revenue")}</th>
-            <th className="px-3 py-2 text-left">Active tables</th>
-            <th className="px-3 py-2 text-left">Active staff</th>
-            <th className="px-3 py-2 text-left">Kitchen backlog</th>
-            <th className="px-3 py-2 text-left">{header("overdue", "Overdue")}</th>
-            <th className="px-3 py-2 text-left">{header("sla", "On-time %")}</th>
-            <th className="px-3 py-2 text-left">{header("serving", "Avg serving")}</th>
-            <th className="px-3 py-2 text-left">Service</th>
-            <th className="px-3 py-2 text-left">Payments</th>
-            <th className="px-3 py-2 text-left">Printing</th>
-            <th className="px-3 py-2 text-left">{header("errors", "Errors")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((row) => (
-            <tr key={row.restaurantId} className="border-t border-white/5 hover:bg-white/5">
-              {showTenant && <td className="px-3 py-2 text-zinc-400">{row.tenantName}</td>}
-              <td className="px-3 py-2">
-                <Link href={row.hrefs.overview} className="text-violet-200 hover:text-white font-medium">
-                  {row.restaurantName}
-                </Link>
-                {row.needsAttention && (
-                  <div className="mt-1 text-xs text-amber-300">
-                    {row.attention.map((item) => item.subsystem).join(", ")}
-                  </div>
-                )}
-              </td>
-              <td className="px-3 py-2">
-                <HealthBadge level={row.status === "active" ? "HEALTHY" : row.status === "disabled" ? "ATTENTION" : "NORMAL"}>
-                  {row.status}
-                </HealthBadge>
-              </td>
-              <td className="px-3 py-2">{row.period.orders}</td>
-              <td className="px-3 py-2"><Money paise={row.revenue.netCapturedPaise} /></td>
-              <td className="px-3 py-2">{row.current.activeTables}</td>
-              <td className="px-3 py-2">{row.current.activeStaff}</td>
-              <td className="px-3 py-2">{row.current.kitchenBacklog}</td>
-              <td className="px-3 py-2">{row.current.overdue}</td>
-              <td className="px-3 py-2">
-                <Link href={row.hrefs.sla} className="hover:text-white">
-                  {row.kitchen.sla.label}
-                </Link>
-              </td>
-              <td className="px-3 py-2">{formatDurationMs(row.service.orderToServed.average)}</td>
-              <td className="px-3 py-2"><HealthBadge level={row.service.load.level} /></td>
-              <td className="px-3 py-2">
-                <Link href={row.hrefs.financial}><HealthBadge level={row.money.health.level} /></Link>
-              </td>
-              <td className="px-3 py-2">
-                <Link href={row.hrefs.printingAmbiguous}><HealthBadge level={row.printing.health.level} /></Link>
-              </td>
-              <td className="px-3 py-2">
-                <Link href={row.hrefs.errors} className="hover:text-white">
-                  {row.reliability.failedRequests}
-                </Link>
-              </td>
-            </tr>
-          ))}
-          {sorted.length === 0 && (
-            <tr>
-              <td colSpan={showTenant ? 15 : 14} className="px-3 py-8 text-center text-zinc-500">
-                No restaurants match this filter.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+    <div className="space-y-3">
+      <PlatformRestaurantToolbar
+        search={list.search}
+        onSearchChange={list.setSearch}
+        matching={list.matchingCount}
+        total={list.total}
+        showingFrom={list.showingFrom}
+        showingTo={list.showingTo}
+        pageSize={list.pageSize}
+        onPageSizeChange={list.setPageSize}
+        page={list.page}
+        pageCount={list.pageCount}
+        canPrev={list.canPrev}
+        canNext={list.canNext}
+        onPrev={list.goPrev}
+        onNext={list.goNext}
+        onExpandAll={list.expandAll}
+        onCollapseAll={list.collapseAll}
+        noun="restaurant"
+        placeholder={showTenant ? "Search restaurants or tenants…" : "Search restaurants…"}
+      />
+      <PlatformPagedListFrame
+        canPrev={list.canPrev}
+        canNext={list.canNext}
+        onPrev={list.goPrev}
+        onNext={list.goNext}
+        noun="restaurant"
+      >
+        <div className="overflow-x-auto rounded-2xl border border-white/10">
+          <table className="min-w-full text-sm">
+            <thead className="bg-white/5 text-zinc-400">
+              <tr>
+                <th className="px-3 py-2 text-left w-10"> </th>
+                {showTenant && <th className="px-3 py-2 text-left">Tenant</th>}
+                <th className="px-3 py-2 text-left">{header("name", "Restaurant")}</th>
+                <th className="px-3 py-2 text-left">Status</th>
+                <th className="px-3 py-2 text-left">{header("orders", "Orders")}</th>
+                <th className="px-3 py-2 text-left">{header("revenue", "Revenue")}</th>
+                <th className="px-3 py-2 text-left">Active tables</th>
+                <th className="px-3 py-2 text-left">Active staff</th>
+                <th className="px-3 py-2 text-left">Kitchen backlog</th>
+                <th className="px-3 py-2 text-left">{header("overdue", "Overdue")}</th>
+                <th className="px-3 py-2 text-left">{header("sla", "On-time %")}</th>
+                <th className="px-3 py-2 text-left">{header("serving", "Avg serving")}</th>
+                <th className="px-3 py-2 text-left">Service</th>
+                <th className="px-3 py-2 text-left">Payments</th>
+                <th className="px-3 py-2 text-left">Printing</th>
+                <th className="px-3 py-2 text-left">{header("errors", "Errors")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.visible.map((row) => {
+                const open = list.isExpanded(row.restaurantId);
+                return (
+                  <Fragment key={row.restaurantId}>
+                    <tr className="border-t border-white/5 hover:bg-white/5">
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => list.toggleExpanded(row.restaurantId)}
+                          aria-expanded={open}
+                          aria-label={`${open ? "Collapse" : "Expand"} ${row.restaurantName}`}
+                          className="text-zinc-400 hover:text-white"
+                        >
+                          {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                      </td>
+                      {showTenant && <td className="px-3 py-2 text-zinc-400">{row.tenantName}</td>}
+                      <td className="px-3 py-2">
+                        <Link href={row.hrefs.overview} className="text-violet-200 hover:text-white font-medium">
+                          {row.restaurantName}
+                        </Link>
+                        {row.needsAttention && (
+                          <div className="mt-1 text-xs text-amber-300">
+                            {row.attention.map((item) => item.subsystem).join(", ")}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <HealthBadge level={row.status === "active" ? "HEALTHY" : row.status === "disabled" ? "ATTENTION" : "NORMAL"}>
+                          {row.status}
+                        </HealthBadge>
+                      </td>
+                      <td className="px-3 py-2">{row.period.orders}</td>
+                      <td className="px-3 py-2"><Money paise={row.revenue.netCapturedPaise} /></td>
+                      <td className="px-3 py-2">{row.current.activeTables}</td>
+                      <td className="px-3 py-2">{row.current.activeStaff}</td>
+                      <td className="px-3 py-2">{row.current.kitchenBacklog}</td>
+                      <td className="px-3 py-2">{row.current.overdue}</td>
+                      <td className="px-3 py-2">
+                        <Link href={row.hrefs.sla} className="hover:text-white">
+                          {row.kitchen.sla.label}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2">{formatDurationMs(row.service.orderToServed.average)}</td>
+                      <td className="px-3 py-2"><HealthBadge level={row.service.load.level} /></td>
+                      <td className="px-3 py-2">
+                        <Link href={row.hrefs.financial}><HealthBadge level={row.money.health.level} /></Link>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Link href={row.hrefs.printingAmbiguous}><HealthBadge level={row.printing.health.level} /></Link>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Link href={row.hrefs.errors} className="hover:text-white">
+                          {row.reliability.failedRequests}
+                        </Link>
+                      </td>
+                    </tr>
+                    {open ? (
+                      <tr className="border-t border-white/5 bg-white/[0.03]">
+                        <td colSpan={colSpan} className="px-4 py-3">
+                          <AttentionList row={row} />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+              {list.matchingCount === 0 && (
+                <tr>
+                  <td colSpan={colSpan} className="px-3 py-8 text-center text-zinc-500">
+                    No restaurants match this filter.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </PlatformPagedListFrame>
     </div>
   );
 }

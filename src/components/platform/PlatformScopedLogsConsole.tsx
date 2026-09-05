@@ -127,6 +127,7 @@ export function PlatformScopedLogsConsole({
   const [selected, setSelected] = useState<ScopedAuditEvent | null>(null);
   const [failOnly, setFailOnly] = useState(Boolean(failedOnly));
   const [ambOnly, setAmbOnly] = useState(Boolean(ambiguousOnly));
+  const [restaurantSearch, setRestaurantSearch] = useState("");
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -214,15 +215,31 @@ export function PlatformScopedLogsConsole({
 
       <div className="flex flex-wrap gap-2 items-end">
         {restaurants && onRestaurantId && (
-          <div className="min-w-[180px]">
+          <div className="min-w-[220px]">
             <label className="text-xs text-zinc-500 block mb-1">Restaurant</label>
+            {restaurants.length > 10 ? (
+              <Input
+                value={restaurantSearch}
+                onChange={(e) => setRestaurantSearch(e.target.value)}
+                placeholder="Search restaurants…"
+                aria-label="Search restaurants"
+                className="mb-2"
+              />
+            ) : null}
             <Select value={restaurantId ?? ""} onChange={(e) => onRestaurantId(e.target.value)} aria-label="Restaurant">
               <option value="">All restaurants</option>
-              {restaurants.map((restaurant) => (
-                <option key={restaurant.id} value={restaurant.id}>
-                  {restaurant.name}
-                </option>
-              ))}
+              {restaurants
+                .filter((restaurant) => {
+                  const query = restaurantSearch.trim().toLowerCase();
+                  if (!query) return true;
+                  if (restaurant.id === restaurantId) return true;
+                  return restaurant.name.toLowerCase().includes(query);
+                })
+                .map((restaurant) => (
+                  <option key={restaurant.id} value={restaurant.id}>
+                    {restaurant.name}
+                  </option>
+                ))}
             </Select>
           </div>
         )}

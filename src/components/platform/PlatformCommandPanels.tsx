@@ -1,8 +1,12 @@
 "use client";
 
+import { useCallback } from "react";
 import Link from "next/link";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Card } from "@/components/ui";
 import { AttentionList, HealthBadge, Money, RestaurantHealthTable, SummaryCard, Trend } from "@/components/platform/command-center-shared";
+import { PlatformPagedListFrame, PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
+import { usePagedExpandableList } from "@/hooks/usePagedExpandableList";
 import { formatDurationMs } from "@/platform/command-center/classify";
 import type { CommandCenterPayload, RestaurantCommandRow } from "@/platform/command-center/types";
 
@@ -56,11 +60,65 @@ export function TenantOverviewStats({
 }
 
 export function TenantOperationsPanel({ command }: { command: CommandCenterPayload }) {
+  const getId = useCallback((row: RestaurantCommandRow) => row.restaurantId, []);
+  const getSearchText = useCallback((row: RestaurantCommandRow) => `${row.restaurantName} ${row.tenantName}`, []);
+  const list = usePagedExpandableList(command.restaurants, { getId, getSearchText });
   return (
-    <div className="grid gap-3">
-      {command.restaurants.map((row) => (
-        <RestaurantOperationsCard key={row.restaurantId} row={row} />
-      ))}
+    <div className="space-y-3">
+      <PlatformRestaurantToolbar
+        search={list.search}
+        onSearchChange={list.setSearch}
+        matching={list.matchingCount}
+        total={list.total}
+        showingFrom={list.showingFrom}
+        showingTo={list.showingTo}
+        pageSize={list.pageSize}
+        onPageSizeChange={list.setPageSize}
+        page={list.page}
+        pageCount={list.pageCount}
+        canPrev={list.canPrev}
+        canNext={list.canNext}
+        onPrev={list.goPrev}
+        onNext={list.goNext}
+        onExpandAll={list.expandAll}
+        onCollapseAll={list.collapseAll}
+      />
+      <PlatformPagedListFrame
+        canPrev={list.canPrev}
+        canNext={list.canNext}
+        onPrev={list.goPrev}
+        onNext={list.goNext}
+        noun="restaurant"
+      >
+        <div className="grid gap-3">
+          {list.visible.map((row) => (
+            <div key={row.restaurantId} className="space-y-0">
+              <button
+                type="button"
+                onClick={() => list.toggleExpanded(row.restaurantId)}
+                className="w-full flex items-center justify-between rounded-t-2xl px-1 py-1 text-left text-sm text-zinc-400"
+                aria-expanded={list.isExpanded(row.restaurantId)}
+              >
+                <span>{list.isExpanded(row.restaurantId) ? "Collapse" : "Expand"} {row.restaurantName}</span>
+                {list.isExpanded(row.restaurantId) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              {list.isExpanded(row.restaurantId) ? (
+                <RestaurantOperationsCard row={row} />
+              ) : (
+                <Card className="p-4 flex items-center justify-between gap-3">
+                  <div>
+                    <Link href={row.hrefs.overview} className="font-semibold hover:text-violet-200">{row.restaurantName}</Link>
+                    <p className="text-xs text-zinc-500">{row.tenantName}</p>
+                  </div>
+                  <HealthBadge level={row.needsAttention ? "ATTENTION" : "HEALTHY"}>
+                    {row.needsAttention ? "Needs attention" : row.status}
+                  </HealthBadge>
+                </Card>
+              )}
+            </div>
+          ))}
+        </div>
+      </PlatformPagedListFrame>
     </div>
   );
 }
@@ -108,32 +166,68 @@ export function TenantAnalyticsPanel({ command }: { command: CommandCenterPayloa
           </Card>
         ))}
       </div>
-      <Card className="p-4 overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="text-zinc-500">
-            <tr>
-              <th className="text-left py-1">Restaurant</th>
-              <th className="text-left py-1">Orders</th>
-              <th className="text-left py-1">Net revenue</th>
-              <th className="text-left py-1">SLA</th>
-              <th className="text-left py-1">Serve time</th>
-              <th className="text-left py-1">Refunds</th>
-            </tr>
-          </thead>
-          <tbody>
-            {command.restaurants.map((row) => (
-              <tr key={row.restaurantId} className="border-t border-white/5">
-                <td className="py-2"><Link href={row.hrefs.overview} className="text-violet-200">{row.restaurantName}</Link></td>
-                <td className="py-2">{row.period.orders} <Trend value={row.trends.orders} /></td>
-                <td className="py-2"><Money paise={row.revenue.netCapturedPaise} /> <Trend value={row.trends.netRevenuePaise} /></td>
-                <td className="py-2">{row.kitchen.sla.label} <Trend value={row.trends.onTimePercent} /></td>
-                <td className="py-2">{formatDurationMs(row.service.orderToServed.average)} <Trend value={row.trends.avgServeMs} invert /></td>
-                <td className="py-2"><Money paise={row.revenue.refundsPaise} /> <Trend value={row.trends.refundsPaise} invert /></td>
+      <AnalyticsRestaurantTable rows={command.restaurants} />
+    </div>
+  );
+}
+
+function AnalyticsRestaurantTable({ rows }: { rows: RestaurantCommandRow[] }) {
+  const getId = useCallback((row: RestaurantCommandRow) => row.restaurantId, []);
+  const getSearchText = useCallback((row: RestaurantCommandRow) => `${row.restaurantName} ${row.tenantName}`, []);
+  const list = usePagedExpandableList(rows, { getId, getSearchText });
+  return (
+    <div className="space-y-3">
+      <PlatformRestaurantToolbar
+        search={list.search}
+        onSearchChange={list.setSearch}
+        matching={list.matchingCount}
+        total={list.total}
+        showingFrom={list.showingFrom}
+        showingTo={list.showingTo}
+        pageSize={list.pageSize}
+        onPageSizeChange={list.setPageSize}
+        page={list.page}
+        pageCount={list.pageCount}
+        canPrev={list.canPrev}
+        canNext={list.canNext}
+        onPrev={list.goPrev}
+        onNext={list.goNext}
+        expandable={false}
+      />
+      <PlatformPagedListFrame
+        canPrev={list.canPrev}
+        canNext={list.canNext}
+        onPrev={list.goPrev}
+        onNext={list.goNext}
+        noun="restaurant"
+      >
+        <Card className="p-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-zinc-500">
+              <tr>
+                <th className="text-left py-1">Restaurant</th>
+                <th className="text-left py-1">Orders</th>
+                <th className="text-left py-1">Net revenue</th>
+                <th className="text-left py-1">SLA</th>
+                <th className="text-left py-1">Serve time</th>
+                <th className="text-left py-1">Refunds</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+            </thead>
+            <tbody>
+              {list.visible.map((row) => (
+                <tr key={row.restaurantId} className="border-t border-white/5">
+                  <td className="py-2"><Link href={row.hrefs.overview} className="text-violet-200">{row.restaurantName}</Link></td>
+                  <td className="py-2">{row.period.orders} <Trend value={row.trends.orders} /></td>
+                  <td className="py-2"><Money paise={row.revenue.netCapturedPaise} /> <Trend value={row.trends.netRevenuePaise} /></td>
+                  <td className="py-2">{row.kitchen.sla.label} <Trend value={row.trends.onTimePercent} /></td>
+                  <td className="py-2">{formatDurationMs(row.service.orderToServed.average)} <Trend value={row.trends.avgServeMs} invert /></td>
+                  <td className="py-2"><Money paise={row.revenue.refundsPaise} /> <Trend value={row.trends.refundsPaise} invert /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </PlatformPagedListFrame>
     </div>
   );
 }

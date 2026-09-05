@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Spinner } from "@/components/ui";
 import { PlatformShell } from "@/components/platform/PlatformShell";
+import { PlatformPagedListFrame, PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
+import { usePagedExpandableList } from "@/hooks/usePagedExpandableList";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
 
 type TenantBillingState = {
@@ -65,6 +67,13 @@ export default function PlatformBillingPage() {
   const [activatingDemo, setActivatingDemo] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const getTenantOptionId = useCallback((item: TenantOption) => item.id, []);
+  const getTenantOptionText = useCallback((item: TenantOption) => item.name, []);
+  const tenantList = usePagedExpandableList(tenantOptions, {
+    getId: getTenantOptionId,
+    getSearchText: getTenantOptionText,
+  });
 
   const fetchBilling = useCallback(async (tenantId: string) => {
     const res = await fetch(`/api/platform/billing?tenantId=${encodeURIComponent(tenantId)}`, {
@@ -241,21 +250,52 @@ export default function PlatformBillingPage() {
           set.
         </p>
 
-        <div className="flex flex-wrap gap-2">
-          {tenantOptions.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => {
-                setMessage("");
-                void selectTenant(item.id);
-              }}
-              className={`px-3 py-1.5 rounded-full text-sm ${selectedId === item.id ? "bg-violet-500" : "bg-white/5"}`}
+        {tenantOptions.length > 0 ? (
+          <div className="space-y-3">
+            <PlatformRestaurantToolbar
+              search={tenantList.search}
+              onSearchChange={tenantList.setSearch}
+              matching={tenantList.matchingCount}
+              total={tenantList.total}
+              showingFrom={tenantList.showingFrom}
+              showingTo={tenantList.showingTo}
+              pageSize={tenantList.pageSize}
+              onPageSizeChange={tenantList.setPageSize}
+              page={tenantList.page}
+              pageCount={tenantList.pageCount}
+              canPrev={tenantList.canPrev}
+              canNext={tenantList.canNext}
+              onPrev={tenantList.goPrev}
+              onNext={tenantList.goNext}
+              expandable={false}
+              noun="tenant"
+              placeholder="Search tenants…"
+            />
+            <PlatformPagedListFrame
+              canPrev={tenantList.canPrev}
+              canNext={tenantList.canNext}
+              onPrev={tenantList.goPrev}
+              onNext={tenantList.goNext}
+              noun="tenant"
             >
-              {item.name}
-            </button>
-          ))}
-        </div>
+              <div className="flex flex-wrap gap-2">
+                {tenantList.visible.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setMessage("");
+                      void selectTenant(item.id);
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-sm ${selectedId === item.id ? "bg-violet-500" : "bg-white/5"}`}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+            </PlatformPagedListFrame>
+          </div>
+        ) : null}
 
         {error ? <p className="text-sm text-red-400">{error}</p> : null}
         {message ? <p className="text-sm text-emerald-400">{message}</p> : null}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Building2, Plus, ChevronDown, ChevronUp, Layers, Users } from "lucide-react";
 import { Button, Card, Input, Badge } from "@/components/ui";
 import { ConfirmDangerDialog } from "@/components/platform/ConfirmDangerDialog";
-import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
+import { PlatformPagedListFrame, PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
 import { MULTI_RESTAURANT_SAME_NAME_ERROR, previewHostnames } from "@/lib/hostname-rules";
@@ -101,12 +101,23 @@ export function PlatformTenantOverview({
     search,
     setSearch,
     filtered: filteredRestaurants,
+    visible: visibleRestaurants,
     isExpanded,
     toggleExpanded,
     expandAll,
     collapseAll,
     total,
-    showing,
+    matchingCount,
+    showingFrom,
+    showingTo,
+    pageSize,
+    setPageSize,
+    page,
+    pageCount,
+    canPrev,
+    canNext,
+    goPrev,
+    goNext,
   } = useRestaurantSearch(mergedRestaurants);
 
   const loadOverview = useCallback(async (options?: { signal?: AbortSignal }) => {
@@ -126,6 +137,7 @@ export function PlatformTenantOverview({
 
   useEffect(() => {
     const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- platform fetch-on-mount
     void loadOverview({ signal: controller.signal });
     const interval = setInterval(() => {
       void loadOverview({ signal: controller.signal });
@@ -393,20 +405,37 @@ export function PlatformTenantOverview({
               <PlatformRestaurantToolbar
                 search={search}
                 onSearchChange={setSearch}
-                showing={showing}
+                matching={matchingCount}
                 total={total}
+                showingFrom={showingFrom}
+                showingTo={showingTo}
+                pageSize={pageSize}
+                onPageSizeChange={setPageSize}
+                page={page}
+                pageCount={pageCount}
+                canPrev={canPrev}
+                canNext={canNext}
+                onPrev={goPrev}
+                onNext={goNext}
                 onExpandAll={expandAll}
                 onCollapseAll={collapseAll}
               />
             </div>
 
+            <PlatformPagedListFrame
+              canPrev={canPrev}
+              canNext={canNext}
+              onPrev={goPrev}
+              onNext={goNext}
+              noun="restaurant"
+            >
             <div className="space-y-2">
               {filteredRestaurants.length === 0 && search.trim() && (
                 <p className="text-sm text-center text-zinc-500 py-6">
                   No restaurants match your search.
                 </p>
               )}
-              {filteredRestaurants.map((r) => {
+              {visibleRestaurants.map((r) => {
                 const open = isExpanded(r.id);
                 const enabled = r.isEnabled ?? true;
                 const sessions = r.activeSessions;
@@ -579,6 +608,7 @@ export function PlatformTenantOverview({
                 );
               })}
             </div>
+            </PlatformPagedListFrame>
           </>
         )}
       </Card>

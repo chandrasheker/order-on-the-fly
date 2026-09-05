@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Spinner, Badge } from "@/components/ui";
 import { Crown, Save, Sparkles, CheckSquare, Square, ChevronDown, ChevronUp } from "lucide-react";
 import type { FeatureKey } from "@/lib/feature-catalog";
-import { PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
+import { PlatformPagedListFrame, PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
 
@@ -36,12 +36,23 @@ export function PlatformFeaturesPanel({ tenantId }: { tenantId: string }) {
     search,
     setSearch,
     filtered: filteredRestaurants,
+    visible: visibleRestaurants,
     isExpanded,
     toggleExpanded,
     expandAll,
     collapseAll,
     total,
-    showing,
+    matchingCount,
+    showingFrom,
+    showingTo,
+    pageSize,
+    setPageSize,
+    page,
+    pageCount,
+    canPrev,
+    canNext,
+    goPrev,
+    goNext,
   } = useRestaurantSearch(restaurants);
 
   const load = useCallback(async () => {
@@ -67,7 +78,8 @@ export function PlatformFeaturesPanel({ tenantId }: { tenantId: string }) {
   }, [tenantId]);
 
   useEffect(() => {
-    load();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- platform fetch-on-mount
+    void load();
   }, [load]);
 
   const toggle = (restaurantId: string, key: FeatureKey, enabled: boolean) => {
@@ -145,8 +157,18 @@ export function PlatformFeaturesPanel({ tenantId }: { tenantId: string }) {
         <PlatformRestaurantToolbar
           search={search}
           onSearchChange={setSearch}
-          showing={showing}
+          matching={matchingCount}
           total={total}
+          showingFrom={showingFrom}
+          showingTo={showingTo}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+          page={page}
+          pageCount={pageCount}
+          canPrev={canPrev}
+          canNext={canNext}
+          onPrev={goPrev}
+          onNext={goNext}
           onExpandAll={expandAll}
           onCollapseAll={collapseAll}
         />
@@ -156,7 +178,15 @@ export function PlatformFeaturesPanel({ tenantId }: { tenantId: string }) {
         <p className="text-sm text-center text-zinc-500 py-8">No restaurants match your search.</p>
       )}
 
-      {filteredRestaurants.map((restaurant) => {
+      <PlatformPagedListFrame
+        canPrev={canPrev}
+        canNext={canNext}
+        onPrev={goPrev}
+        onNext={goNext}
+        noun="restaurant"
+      >
+      <div className="space-y-6">
+      {visibleRestaurants.map((restaurant) => {
         const premium = restaurant.features.filter((f) => f.tier === "premium");
         const roadmap = restaurant.features.filter((f) => f.tier === "roadmap");
         const toggleable = [...premium, ...roadmap];
@@ -287,6 +317,8 @@ export function PlatformFeaturesPanel({ tenantId }: { tenantId: string }) {
           </Card>
         );
       })}
+      </div>
+      </PlatformPagedListFrame>
     </div>
   );
 }
