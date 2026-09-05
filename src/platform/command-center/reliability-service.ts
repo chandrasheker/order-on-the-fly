@@ -2,36 +2,36 @@ import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTION, AUDIT_EVENT_KIND } from "@/platform/forensics/constants";
 import { forensicScopeWhere, type ForensicScope } from "@/platform/forensics/platform-audit-service";
 
-const FAILED_AUTH = new Set([
+const FAILED_AUTH = new Set<string>([
   AUDIT_ACTION.STAFF_LOGIN_FAILED,
   AUDIT_ACTION.TENANT_ADMIN_LOGIN_FAILED,
   AUDIT_ACTION.PLATFORM_ADMIN_LOGIN_FAILED,
   AUDIT_ACTION.AUTHENTICATION_FAILED,
   AUDIT_ACTION.SESSION_REJECTED,
 ]);
-const PERMISSION = new Set([
+const PERMISSION = new Set<string>([
   AUDIT_ACTION.PERMISSION_DENIED,
   AUDIT_ACTION.ROLE_PERMISSION_DENIED,
   AUDIT_ACTION.PLATFORM_AUDIT_ACCESS_DENIED,
 ]);
-const CROSS_RESTAURANT = new Set([
+const CROSS_RESTAURANT = new Set<string>([
   AUDIT_ACTION.CROSS_RESTAURANT_ACCESS_DENIED,
   AUDIT_ACTION.CROSS_TENANT_ACCESS_DENIED,
   AUDIT_ACTION.WRONG_HOST_ACCESS_DENIED,
   AUDIT_ACTION.PUBLIC_TOKEN_HOST_MISMATCH,
 ]);
-const PRINTER_AUTH = new Set([
+const PRINTER_AUTH = new Set<string>([
   AUDIT_ACTION.INVALID_PRINTER_AGENT_TOKEN,
   AUDIT_ACTION.REVOKED_PRINTER_AGENT_TOKEN,
   AUDIT_ACTION.PRINTER_AGENT_AUTH_FAILED,
 ]);
-const RAZORPAY_SIG = new Set([AUDIT_ACTION.RAZORPAY_SIGNATURE_INVALID]);
-const JOB_FAIL = new Set([AUDIT_ACTION.BACKGROUND_JOB_FAILED, AUDIT_ACTION.WEBHOOK_PROCESSING_FAILED]);
-const PROVIDER_FAIL = new Set([
+const RAZORPAY_SIG = new Set<string>([AUDIT_ACTION.RAZORPAY_SIGNATURE_INVALID]);
+const JOB_FAIL = new Set<string>([AUDIT_ACTION.BACKGROUND_JOB_FAILED, AUDIT_ACTION.WEBHOOK_PROCESSING_FAILED]);
+const PROVIDER_FAIL = new Set<string>([
   AUDIT_ACTION.PAYMENT_PROVIDER_API_FAILED,
   AUDIT_ACTION.RAZORPAY_REFUND_API_FAILED,
 ]);
-const PRINT_FAIL = new Set([AUDIT_ACTION.PRINT_JOB_FAILED, AUDIT_ACTION.PRINT_DELIVERY_FAILED]);
+const PRINT_FAIL = new Set<string>([AUDIT_ACTION.PRINT_JOB_FAILED, AUDIT_ACTION.PRINT_DELIVERY_FAILED]);
 
 export type ReliabilityCounts = {
   requestFailed: number;
@@ -108,21 +108,21 @@ function consume(
       }
     }
   }
-  if (JOB_FAIL.has(event.action as (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION])) counts.jobFailures += 1;
-  if (PROVIDER_FAIL.has(event.action as (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION])) counts.providerFailures += 1;
-  if (PRINT_FAIL.has(event.action as (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION])) counts.printFailures += 1;
+  if (JOB_FAIL.has(event.action)) counts.jobFailures += 1;
+  if (PROVIDER_FAIL.has(event.action)) counts.providerFailures += 1;
+  if (PRINT_FAIL.has(event.action)) counts.printFailures += 1;
   const security =
     event.eventKind === AUDIT_EVENT_KIND.SECURITY ||
     event.outcome === "DENIED" ||
-    FAILED_AUTH.has(event.action as never) ||
-    PERMISSION.has(event.action as never);
+    FAILED_AUTH.has(event.action) ||
+    PERMISSION.has(event.action);
   if (security) {
     counts.securityDenials += 1;
-    if (FAILED_AUTH.has(event.action as never)) counts.failedAuth += 1;
-    else if (PERMISSION.has(event.action as never)) counts.permissionDenied += 1;
-    else if (CROSS_RESTAURANT.has(event.action as never)) counts.crossRestaurant += 1;
-    else if (PRINTER_AUTH.has(event.action as never)) counts.invalidPrinterAuth += 1;
-    else if (RAZORPAY_SIG.has(event.action as never)) counts.razorpaySignature += 1;
+    if (FAILED_AUTH.has(event.action)) counts.failedAuth += 1;
+    else if (PERMISSION.has(event.action)) counts.permissionDenied += 1;
+    else if (CROSS_RESTAURANT.has(event.action)) counts.crossRestaurant += 1;
+    else if (PRINTER_AUTH.has(event.action)) counts.invalidPrinterAuth += 1;
+    else if (RAZORPAY_SIG.has(event.action)) counts.razorpaySignature += 1;
     else counts.otherSecurity += 1;
   }
 }

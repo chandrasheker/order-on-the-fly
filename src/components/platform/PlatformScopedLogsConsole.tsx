@@ -166,6 +166,7 @@ export function PlatformScopedLogsConsole({
   }, [endpoint, query]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- scoped log fetch
     void load();
   }, [load]);
 

@@ -62,7 +62,6 @@ export function resolveTimeRange(input?: {
 }): ResolvedTimeRange {
   const now = input?.now ?? new Date();
   const todayStart = startOfLocalDay(now);
-  const todayEnd = endOfLocalDay(now);
   const preset = isTimeRangePreset(input?.preset) ? input.preset : "today";
 
   let from = todayStart;

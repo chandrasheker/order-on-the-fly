@@ -123,6 +123,7 @@ export function PlatformTenantWorkspace() {
   }, [from, range, router, tenantId, to]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- platform fetch-on-mount
     void load();
   }, [load]);
 

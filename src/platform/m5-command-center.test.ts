@@ -247,7 +247,8 @@ describe("M5 scoped forensic views", () => {
     });
     const cookie = `${PLATFORM_ADMIN_COOKIE}=${token}`;
     const previous = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const env = process.env as { NODE_ENV?: string };
+    env.NODE_ENV = "production";
 
     const override = await tenantLogsGet(
       new NextRequest(`http://dvadtech.in/api/platform/tenants/${tenantA.id}/logs?tenantId=${tenantB.id}`, {
@@ -289,7 +290,8 @@ describe("M5 scoped forensic views", () => {
     );
     assert.equal(restaurantHost.status, 404);
 
-    process.env.NODE_ENV = previous;
+    if (previous === undefined) delete env.NODE_ENV;
+    else env.NODE_ENV = previous;
   });
 
   it("computes command-center revenue from captured payments, not gateway attempt amounts", async () => {

@@ -36,7 +36,7 @@ export function parseLogSearchParams(search: URLSearchParams): {
       failedOnly: search.get("failedOnly") === "1" || search.get("failed") === "1",
       ambiguousOnly: search.get("ambiguousOnly") === "1" || search.get("ambiguous") === "1",
     }),
-  ].filter(Boolean);
+  ].filter((value): value is NonNullable<typeof value> => Boolean(value));
   return {
     preset,
     aggregateErrors: search.get("aggregate") === "errors" || preset === "errors",
