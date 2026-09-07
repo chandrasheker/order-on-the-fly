@@ -1126,6 +1126,7 @@ model TenantAdmin {
   email        String
   passwordHash String
   name         String
+  authVersion  Int      @default(0)
   createdAt    DateTime @default(now())
 
   @@unique([tenantId, email])

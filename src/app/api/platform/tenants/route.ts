@@ -19,7 +19,9 @@ import {
   getRestaurantPublicBaseUrl,
   getTenantHubPublicBaseUrl,
   publicRestaurantPayload,
+  publicTenantAdminUrl,
 } from "@/lib/server-app-url";
+import { resetTenantAdminPassword } from "@/lib/tenant-admin-password";
 import { getTenantBaseDomain } from "@/platform/host";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
@@ -36,14 +38,20 @@ async function handleGET() {
         tenantName: tenant.name,
         restaurants: tenant.restaurants,
       });
+      const restaurantUrls = tenant.restaurants.map((restaurant) => ({
+        ...restaurant,
+        url: getRestaurantPublicBaseUrl(restaurant.slug),
+      }));
       return {
         ...tenant,
         hubActive,
         url: hubActive ? getTenantHubPublicBaseUrl(tenant.slug) : null,
-        restaurants: tenant.restaurants.map((restaurant) => ({
-          ...restaurant,
-          url: getRestaurantPublicBaseUrl(restaurant.slug),
-        })),
+        tenantAdminUrl: publicTenantAdminUrl({
+          hubActive,
+          tenantSlug: tenant.slug,
+          restaurants: restaurantUrls,
+        }),
+        restaurants: restaurantUrls,
       };
     }),
   });
@@ -75,6 +83,7 @@ async function handlePOST(req: NextRequest) {
           ownerPassword: String(restaurant.ownerPassword ?? ""),
         })),
       });
+      const createdRestaurants = result.restaurants.map((row) => publicRestaurantPayload(row.restaurant));
       const hubActive = tenantHubIsActive({
         tenantSlug: result.tenant.slug,
         tenantName: result.tenant.name,
@@ -88,8 +97,13 @@ async function handlePOST(req: NextRequest) {
             name: result.tenant.name,
             slug: result.tenant.slug,
             url: hubActive ? getTenantHubPublicBaseUrl(result.tenant.slug) : null,
+            tenantAdminUrl: publicTenantAdminUrl({
+              hubActive,
+              tenantSlug: result.tenant.slug,
+              restaurants: createdRestaurants,
+            }),
           },
-          restaurants: result.restaurants.map((row) => publicRestaurantPayload(row.restaurant)),
+          restaurants: createdRestaurants,
         },
         { status: 201 },
       );
@@ -106,7 +120,12 @@ async function handlePOST(req: NextRequest) {
         ownerPassword: body.ownerPassword ? String(body.ownerPassword) : undefined,
       });
       return NextResponse.json(
-        { ok: true, restaurant: publicRestaurantPayload(result.restaurant) },
+        {
+          ok: true,
+          restaurant: publicRestaurantPayload(result.restaurant),
+          hostnameChanges: result.hostnameChanges,
+          notices: result.notices,
+        },
         { status: 201 },
       );
     }
@@ -171,7 +190,26 @@ async function handlePATCH(req: NextRequest) {
     if (action === "delete_restaurant") {
       const restaurantId = String(body.restaurantId ?? "");
       const result = await deleteRestaurantEverywhere(restaurantId);
-      return NextResponse.json({ ok: true, deleted: result });
+      return NextResponse.json({
+        ok: true,
+        deleted: result,
+        hostnameChanges: result.hostnameChanges,
+        notices: result.notices,
+      });
+    }
+
+    if (action === "reset_tenant_admin_password") {
+      const tenantAdmin = await resetTenantAdminPassword({
+        tenantId: String(body.tenantId ?? ""),
+        tenantAdminId: String(body.tenantAdminId ?? ""),
+        newPassword: String(body.newPassword ?? ""),
+        actorPlatformAdminId: admin.id,
+      });
+      return NextResponse.json({
+        ok: true,
+        message: "Tenant administrator password reset successfully.",
+        tenantAdmin,
+      });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

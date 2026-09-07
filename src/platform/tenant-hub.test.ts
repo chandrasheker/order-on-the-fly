@@ -16,7 +16,6 @@ import {
   requireTenantContext,
   resolveTenantFromClassifiedHost,
 } from "@/platform/host-tenant";
-import { MULTI_RESTAURANT_SAME_NAME_ERROR } from "@/lib/hostname-rules";
 
 const dbPath = path.join(os.tmpdir(), `tabletap-hub-${process.pid}-${Date.now()}.db`);
 process.env.DATABASE_URL = `file:${dbPath}`;
@@ -26,6 +25,9 @@ let signupTenantWithRestaurants: typeof import("@/lib/tenant-onboarding-service"
 let addRestaurantToTenant: typeof import("@/lib/tenant-onboarding-service").addRestaurantToTenant;
 let renameRestaurant: typeof import("@/lib/tenant-onboarding-service").renameRestaurant;
 let getTenantOverview: typeof import("@/lib/tenant-onboarding-service").getTenantOverview;
+let deleteRestaurantEverywhere: typeof import("@/lib/tenant-lifecycle").deleteRestaurantEverywhere;
+let resolveTenantAdminHostContext: typeof import("@/lib/tenant-admin-host").resolveTenantAdminHostContext;
+let removeObsoleteSingleRestaurantTenantHubs: typeof import("@/lib/hostname-allocation").removeObsoleteSingleRestaurantTenantHubs;
 let assertPathSlugForResolution: typeof import("@/platform/tenant-scope").assertPathSlugForResolution;
 
 const suffix = `${Date.now()}`;
@@ -55,6 +57,9 @@ before(async () => {
     renameRestaurant,
     getTenantOverview,
   } = await import("@/lib/tenant-onboarding-service"));
+  ({ deleteRestaurantEverywhere } = await import("@/lib/tenant-lifecycle"));
+  ({ resolveTenantAdminHostContext } = await import("@/lib/tenant-admin-host"));
+  ({ removeObsoleteSingleRestaurantTenantHubs } = await import("@/lib/hostname-allocation"));
   ({ assertPathSlugForResolution } = await import("@/platform/tenant-scope"));
 });
 
@@ -108,12 +113,12 @@ describe("tenant hub onboarding and resolution", () => {
     });
     assert.equal(created.restaurants[0].restaurant.slug, `${created.tenant.slug}-south`);
     const hub = await prisma.hostSlug.findUnique({ where: { slug: created.tenant.slug } });
-    assert.equal(hub?.kind, "tenant_hub");
+    assert.equal(hub, null);
     clearHostTenantCache();
     const restaurant = await resolveTenantFromClassifiedHost(prod(created.restaurants[0].restaurant.slug));
     const tenant = await resolveTenantFromClassifiedHost(prod(created.tenant.slug));
     assert.equal(restaurant.ok && restaurant.kind, "restaurant");
-    assert.equal(tenant.ok && tenant.kind, "tenant");
+    assert.equal(tenant.ok, false);
   });
 
   it("creates multi-restaurant ABC South/North hosts and a tenant hub", async () => {
@@ -142,32 +147,34 @@ describe("tenant hub onboarding and resolution", () => {
     assert.equal(hub.ok && hub.kind, "tenant");
   });
 
-  it("rejects creating a multi-restaurant tenant that includes the tenant name", async () => {
-    await assert.rejects(
-      () =>
-        signupTenantWithRestaurants({
-          tenantName: `Clash${suffix}`,
-          billingEmail: `billing-clash${suffix}@example.com`,
-          restaurants: [
-            {
-              name: `Clash${suffix}`,
-              ownerEmail: `owner-clash-a${suffix}@example.com`,
-              ownerName: "Owner",
-              ownerPassword: "password12",
-            },
-            {
-              name: "North",
-              ownerEmail: `owner-clash-b${suffix}@example.com`,
-              ownerName: "Owner",
-              ownerPassword: "password12",
-            },
-          ],
-        }),
-      (error: Error) => error.message === MULTI_RESTAURANT_SAME_NAME_ERROR,
-    );
+  it("creates a same-name multi-restaurant tenant as hub plus prefixed restaurant hosts", async () => {
+    const created = await signupTenantWithRestaurants({
+      tenantName: `Clash${suffix}`,
+      billingEmail: `billing-clash${suffix}@example.com`,
+      restaurants: [
+        {
+          name: `Clash${suffix}`,
+          ownerEmail: `owner-clash-a${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+        {
+          name: "North",
+          ownerEmail: `owner-clash-b${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+      ],
+    });
+    const sameName = created.restaurants.find((row) => row.restaurant.name === `Clash${suffix}`);
+    const north = created.restaurants.find((row) => row.restaurant.name === "North");
+    assert.equal(sameName?.restaurant.slug, `${created.tenant.slug}-${created.tenant.slug}`);
+    assert.equal(north?.restaurant.slug, `${created.tenant.slug}-north`);
+    const hub = await prisma.hostSlug.findUnique({ where: { slug: created.tenant.slug } });
+    assert.equal(hub?.kind, "tenant_hub");
   });
 
-  it("blocks adding a second restaurant to a same-name single tenant until rename", async () => {
+  it("moves a same-name restaurant onto a prefixed host when a second restaurant is added", async () => {
     const created = await signupTenantWithRestaurants({
       tenantName: `Solo${suffix}`,
       billingEmail: `billing-solo${suffix}@example.com`,
@@ -180,25 +187,7 @@ describe("tenant hub onboarding and resolution", () => {
         },
       ],
     });
-
-    await assert.rejects(
-      () =>
-        addRestaurantToTenant(created.tenant.id, {
-          name: "South",
-          ownerEmail: `owner-solo-south${suffix}@example.com`,
-          ownerName: "Owner",
-          ownerPassword: "password12",
-        }),
-      (error: Error) => error.message === MULTI_RESTAURANT_SAME_NAME_ERROR,
-    );
-
-    const renamed = await renameRestaurant(created.restaurants[0].restaurant.id, "North");
-    assert.equal(renamed.restaurants[0].slug, `${created.tenant.slug}-north`);
-    clearHostTenantCache();
-    const hub = await resolveTenantFromClassifiedHost(prod(created.tenant.slug));
-    const north = await resolveTenantFromClassifiedHost(prod(`${created.tenant.slug}-north`));
-    assert.equal(hub.ok && hub.kind, "tenant");
-    assert.equal(north.ok && north.kind, "restaurant");
+    assert.equal(created.restaurants[0].restaurant.slug, created.tenant.slug);
 
     const added = await addRestaurantToTenant(created.tenant.id, {
       name: "South",
@@ -207,8 +196,23 @@ describe("tenant hub onboarding and resolution", () => {
       ownerPassword: "password12",
     });
     assert.equal(added.restaurant.slug, `${created.tenant.slug}-south`);
-    const old = await resolveTenantFromClassifiedHost(prod(created.tenant.slug));
-    assert.equal(old.ok && old.kind, "tenant");
+    assert.ok(
+      added.notices.some((notice) =>
+        notice.includes(`Restaurant hostname changed to ${created.tenant.slug}-${created.tenant.slug}.dvadtech.in`),
+      ),
+    );
+    const original = await prisma.restaurant.findUnique({ where: { id: created.restaurants[0].restaurant.id } });
+    assert.equal(original?.slug, `${created.tenant.slug}-${created.tenant.slug}`);
+    clearHostTenantCache();
+    const hub = await resolveTenantFromClassifiedHost(prod(created.tenant.slug));
+    const renamed = await resolveTenantFromClassifiedHost(prod(`${created.tenant.slug}-${created.tenant.slug}`));
+    const south = await resolveTenantFromClassifiedHost(prod(`${created.tenant.slug}-south`));
+    assert.equal(hub.ok && hub.kind, "tenant");
+    assert.equal(renamed.ok && renamed.kind, "restaurant");
+    assert.equal(south.ok && south.kind, "restaurant");
+    const leases = await prisma.hostSlug.findMany({ where: { tenantId: created.tenant.id } });
+    assert.equal(leases.filter((lease) => lease.kind === "tenant_hub").length, 1);
+    assert.equal(leases.filter((lease) => lease.kind === "restaurant").length, 2);
   });
 
   it("rejects a tenant hostname that collides with another restaurant hostname", async () => {
@@ -490,6 +494,12 @@ describe("tenant hub onboarding and resolution", () => {
           ownerName: "Owner",
           ownerPassword: "password12",
         },
+        {
+          name: "North",
+          ownerEmail: `owner-hubops-n${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
       ],
     });
     const headers = new Headers({ host: `${created.tenant.slug}.dvadtech.in` });
@@ -519,12 +529,12 @@ describe("tenant hub onboarding and resolution", () => {
     assert.equal(before.ok && before.kind, "restaurant");
 
     await renameRestaurant(created.restaurants[0].restaurant.id, "North");
-    const hub = await resolveTenantFromClassifiedHost(prod(tenantSlug));
+    const leftover = await resolveTenantFromClassifiedHost(prod(tenantSlug));
     const north = await resolveTenantFromClassifiedHost(prod(`${tenantSlug}-north`));
-    assert.equal(hub.ok && hub.kind, "tenant");
+    assert.equal(leftover.ok, false);
     assert.equal(north.ok && north.kind, "restaurant");
-    const restaurantLease = await prisma.hostSlug.findUnique({ where: { slug: tenantSlug } });
-    assert.equal(restaurantLease?.kind, "tenant_hub");
+    const leftoverLease = await prisma.hostSlug.findUnique({ where: { slug: tenantSlug } });
+    assert.equal(leftoverLease, null);
   });
 
   it("does not rewrite sibling restaurant hostnames when one restaurant is renamed", async () => {
@@ -555,5 +565,193 @@ describe("tenant hub onboarding and resolution", () => {
     assert.equal(northAfter?.slug, northSlug);
     const east = await prisma.restaurant.findUnique({ where: { id: south.restaurant.id } });
     assert.equal(east?.slug, `${created.tenant.slug}-east`);
+  });
+
+  it("adds a second restaurant to a different-name tenant without renaming the first host", async () => {
+    const created = await signupTenantWithRestaurants({
+      tenantName: `DiffSolo${suffix}`,
+      billingEmail: `billing-diffsolo${suffix}@example.com`,
+      restaurants: [
+        {
+          name: "XYZ",
+          ownerEmail: `owner-diffsolo${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+      ],
+    });
+    assert.equal(created.restaurants[0].restaurant.slug, `${created.tenant.slug}-xyz`);
+    const added = await addRestaurantToTenant(created.tenant.id, {
+      name: "South",
+      ownerEmail: `owner-diffsolo-south${suffix}@example.com`,
+      ownerName: "Owner",
+      ownerPassword: "password12",
+    });
+    assert.equal(added.restaurant.slug, `${created.tenant.slug}-south`);
+    assert.equal(added.hostnameChanges.length, 0);
+    const first = await prisma.restaurant.findUnique({ where: { id: created.restaurants[0].restaurant.id } });
+    assert.equal(first?.slug, `${created.tenant.slug}-xyz`);
+    clearHostTenantCache();
+    const hub = await resolveTenantFromClassifiedHost(prod(created.tenant.slug));
+    const xyz = await resolveTenantFromClassifiedHost(prod(`${created.tenant.slug}-xyz`));
+    const south = await resolveTenantFromClassifiedHost(prod(`${created.tenant.slug}-south`));
+    assert.equal(hub.ok && hub.kind, "tenant");
+    assert.equal(xyz.ok && xyz.kind, "restaurant");
+    assert.equal(south.ok && south.kind, "restaurant");
+  });
+
+  it("returns to a single restaurant host and drops the dedicated hub on delete", async () => {
+    const created = await signupTenantWithRestaurants({
+      tenantName: `BackSolo${suffix}`,
+      billingEmail: `billing-backsolo${suffix}@example.com`,
+      restaurants: [
+        {
+          name: `BackSolo${suffix}`,
+          ownerEmail: `owner-backsolo${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+      ],
+    });
+    const added = await addRestaurantToTenant(created.tenant.id, {
+      name: "South",
+      ownerEmail: `owner-backsolo-south${suffix}@example.com`,
+      ownerName: "Owner",
+      ownerPassword: "password12",
+    });
+    await deleteRestaurantEverywhere(added.restaurant.id);
+    clearHostTenantCache();
+    const remaining = await prisma.restaurant.findUnique({
+      where: { id: created.restaurants[0].restaurant.id },
+    });
+    assert.equal(remaining?.slug, created.tenant.slug);
+    const hub = await prisma.hostSlug.findUnique({ where: { slug: created.tenant.slug } });
+    assert.equal(hub?.kind, "restaurant");
+    const resolved = await resolveTenantFromClassifiedHost(prod(created.tenant.slug));
+    assert.equal(resolved.ok && resolved.kind, "restaurant");
+    const tenantAdmin = await resolveTenantAdminHostContext(resolved);
+    assert.ok(tenantAdmin);
+    assert.equal(tenantAdmin.tenantId, created.tenant.id);
+    assert.equal(tenantAdmin.hostKind, "restaurant");
+  });
+
+  it("allows /tenant on a single restaurant host and denies it on multi restaurant hosts", async () => {
+    const single = await signupTenantWithRestaurants({
+      tenantName: `AllowSolo${suffix}`,
+      billingEmail: `billing-allowsolo${suffix}@example.com`,
+      restaurants: [
+        {
+          name: `AllowSolo${suffix}`,
+          ownerEmail: `owner-allowsolo${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+      ],
+    });
+    const singleResolved = await resolveTenantFromClassifiedHost(prod(single.tenant.slug));
+    const singleHost = await resolveTenantAdminHostContext(singleResolved);
+    assert.ok(singleHost);
+    assert.equal(singleHost.hostKind, "restaurant");
+
+    const multi = await signupTenantWithRestaurants({
+      tenantName: `DenyMulti${suffix}`,
+      billingEmail: `billing-denymulti${suffix}@example.com`,
+      restaurants: [
+        {
+          name: "ABC",
+          ownerEmail: `owner-denymulti-a${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+        {
+          name: "XYZ",
+          ownerEmail: `owner-denymulti-x${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+      ],
+    });
+    const hub = await resolveTenantFromClassifiedHost(prod(multi.tenant.slug));
+    const restaurant = await resolveTenantFromClassifiedHost(prod(`${multi.tenant.slug}-abc`));
+    const hubHost = await resolveTenantAdminHostContext(hub);
+    const restaurantHost = await resolveTenantAdminHostContext(restaurant);
+    assert.ok(hubHost);
+    assert.equal(hubHost.hostKind, "tenant");
+    assert.equal(restaurantHost, null);
+  });
+
+  it("never grants Tenant A context from Tenant B restaurant or hub hosts", async () => {
+    const tenantA = await signupTenantWithRestaurants({
+      tenantName: `IsoA${suffix}`,
+      billingEmail: `billing-isoa${suffix}@example.com`,
+      restaurants: [
+        {
+          name: `IsoA${suffix}`,
+          ownerEmail: `owner-isoa${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+      ],
+    });
+    const tenantB = await signupTenantWithRestaurants({
+      tenantName: `IsoB${suffix}`,
+      billingEmail: `billing-isob${suffix}@example.com`,
+      restaurants: [
+        {
+          name: "South",
+          ownerEmail: `owner-isob-s${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+        {
+          name: "North",
+          ownerEmail: `owner-isob-n${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+      ],
+    });
+    const aHost = await resolveTenantAdminHostContext(
+      await resolveTenantFromClassifiedHost(prod(tenantA.tenant.slug)),
+    );
+    const bHub = await resolveTenantAdminHostContext(
+      await resolveTenantFromClassifiedHost(prod(tenantB.tenant.slug)),
+    );
+    const bRestaurant = await resolveTenantAdminHostContext(
+      await resolveTenantFromClassifiedHost(prod(`${tenantB.tenant.slug}-south`)),
+    );
+    assert.equal(aHost?.tenantId, tenantA.tenant.id);
+    assert.equal(bHub?.tenantId, tenantB.tenant.id);
+    assert.equal(bRestaurant, null);
+    assert.notEqual(aHost?.tenantId, tenantB.tenant.id);
+  });
+
+  it("removes obsolete single-restaurant tenant_hub leases without touching restaurant hosts", async () => {
+    const created = await signupTenantWithRestaurants({
+      tenantName: `StaleHub${suffix}`,
+      billingEmail: `billing-stalehub${suffix}@example.com`,
+      restaurants: [
+        {
+          name: "XYZ",
+          ownerEmail: `owner-stalehub${suffix}@example.com`,
+          ownerName: "Owner",
+          ownerPassword: "password12",
+        },
+      ],
+    });
+    const restaurantSlug = created.restaurants[0].restaurant.slug;
+    await prisma.hostSlug.create({
+      data: {
+        slug: created.tenant.slug,
+        kind: "tenant_hub",
+        tenantId: created.tenant.id,
+        restaurantId: null,
+      },
+    });
+    await removeObsoleteSingleRestaurantTenantHubs(prisma);
+    assert.equal(await prisma.hostSlug.findUnique({ where: { slug: created.tenant.slug } }), null);
+    const restaurantLease = await prisma.hostSlug.findUnique({ where: { slug: restaurantSlug } });
+    assert.equal(restaurantLease?.kind, "restaurant");
+    assert.equal(restaurantLease?.restaurantId, created.restaurants[0].restaurant.id);
   });
 });

@@ -249,6 +249,7 @@ model Restaurant {
   apiKeys               ApiKey[]
   demandForecasts       DemandForecast[]
   menuImports           MenuImport[]
+  hostSlugs             HostSlug[]
 }
 
 model User {
@@ -1045,6 +1046,38 @@ model Tenant {
   subscriptions      TenantSubscription[]
   printJobs          PrintJob[]
   printerAgents      PrinterAgent[]
+  admins             TenantAdmin[]
+  hostSlugs          HostSlug[]
+}
+
+/** Global DNS-label lease for tenant hubs and restaurants. */
+model HostSlug {
+  slug         String      @id
+  kind         String
+  tenantId     String
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([tenantId, kind])
+  @@index([restaurantId])
+}
+
+/** Tenant-host admin. Separate from restaurant OWNER and platform admin. */
+model TenantAdmin {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String
+  name         String
+  authVersion  Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@unique([tenantId, email])
+  @@index([email])
 }
 
 model TenantSubscription {

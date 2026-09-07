@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { invalidateFeatureCache } from "@/lib/feature-flags";
 import { invalidateHostTenantCache, invalidateHostTenantCacheForSlugs } from "@/platform/host-tenant";
 import { endStaffSessionsForRestaurant, endStaffSessionsForTenant } from "@/lib/staff-session-service";
+import { syncTenantRestaurantHostnames } from "@/lib/hostname-allocation";
 
 export async function setTenantEnabled(tenantId: string, isEnabled: boolean) {
   const tenantRow = await prisma.tenant.findUnique({
@@ -101,18 +102,52 @@ async function wipeRestaurantRows(restaurantId: string) {
 export async function deleteRestaurantEverywhere(restaurantId: string) {
   const restaurant = await prisma.restaurant.findUnique({
     where: { id: restaurantId },
-    select: { id: true, slug: true },
+    select: { id: true, slug: true, tenantId: true },
   });
   if (!restaurant) {
     throw new Error("Restaurant not found");
   }
 
-  await endStaffSessionsForRestaurant(restaurantId);
-  await wipeRestaurantRows(restaurantId);
+  const slugsToInvalidate = new Set<string>([restaurant.slug]);
+  if (restaurant.tenantId) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: restaurant.tenantId },
+      select: { slug: true, restaurants: { select: { slug: true } } },
+    });
+    if (tenant) {
+      slugsToInvalidate.add(tenant.slug);
+      for (const row of tenant.restaurants) slugsToInvalidate.add(row.slug);
+    }
+  }
 
-  invalidateHostTenantCache(restaurant.slug);
+  await endStaffSessionsForRestaurant(restaurantId);
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.loginAuditLog.deleteMany({ where: { restaurantId } });
+    await tx.backgroundJob.deleteMany({ where: { restaurantId } });
+    await tx.restaurant.delete({ where: { id: restaurantId } });
+
+    if (!restaurant.tenantId) {
+      return { hostnameChanges: [], notices: [] as string[] };
+    }
+
+    const hostPlan = await syncTenantRestaurantHostnames(tx, restaurant.tenantId);
+    for (const row of hostPlan.restaurants) {
+      slugsToInvalidate.add(row.previousSlug);
+      slugsToInvalidate.add(row.slug);
+    }
+    slugsToInvalidate.add(hostPlan.tenantSlug);
+    return { hostnameChanges: hostPlan.hostnameChanges, notices: hostPlan.notices };
+  });
+
+  invalidateHostTenantCacheForSlugs(slugsToInvalidate);
   invalidateFeatureCache(restaurant.id);
-  return restaurant;
+  return {
+    id: restaurant.id,
+    slug: restaurant.slug,
+    hostnameChanges: result.hostnameChanges,
+    notices: result.notices,
+  };
 }
 
 export async function deleteTenantEverywhere(tenantId: string) {

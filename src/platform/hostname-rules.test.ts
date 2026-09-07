@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  MULTI_RESTAURANT_SAME_NAME_ERROR,
-  assertMultiRestaurantNaming,
   assertUniqueRestaurantNames,
   canonicalizeName,
   hostnameInUseError,
@@ -10,6 +8,7 @@ import {
   isSingleSameNameRestaurantMode,
   plannedRestaurantHostSlug,
   previewHostnames,
+  restaurantHostnameChangedNotice,
   tenantHubIsActive,
   tenantSlugFromName,
 } from "@/lib/hostname-rules";
@@ -33,10 +32,17 @@ describe("name uniqueness rules", () => {
     assert.equal(xyz.restaurants[0].slug, "xyz-south");
   });
 
-  it("rejects a multi-restaurant tenant that reuses the tenant name", () => {
-    assert.throws(
-      () => assertMultiRestaurantNaming("ABC", ["ABC", "North"]),
-      (error: Error) => error.message === MULTI_RESTAURANT_SAME_NAME_ERROR,
+  it("allows a multi-restaurant tenant to reuse the tenant name for one restaurant", () => {
+    const preview = previewHostnames({
+      tenantName: "ABC",
+      restaurantNames: ["ABC", "North"],
+      baseDomain: "dvadtech.in",
+    });
+    assert.equal(preview.tenantHubActive, true);
+    assert.equal(preview.tenantUrl, "https://abc.dvadtech.in");
+    assert.deepEqual(
+      preview.restaurants.map((restaurant) => restaurant.slug),
+      ["abc-abc", "abc-north"],
     );
   });
 });
@@ -59,10 +65,11 @@ describe("hostname generation", () => {
     });
     assert.equal(preview.tenantSlug, "abc");
     assert.equal(preview.tenantHubActive, false);
+    assert.equal(preview.tenantUrl, null);
     assert.equal(preview.restaurants[0].url, "https://abc.dvadtech.in");
   });
 
-  it("single different-name restaurant uses tenant-restaurant slug", () => {
+  it("single different-name restaurant uses tenant-restaurant slug and no hub", () => {
     const preview = previewHostnames({
       tenantName: "ABC",
       restaurantNames: ["South"],
@@ -70,7 +77,8 @@ describe("hostname generation", () => {
     });
     assert.equal(preview.restaurants[0].slug, "abc-south");
     assert.equal(preview.restaurants[0].url, "https://abc-south.dvadtech.in");
-    assert.equal(preview.tenantUrl, "https://abc.dvadtech.in");
+    assert.equal(preview.tenantHubActive, false);
+    assert.equal(preview.tenantUrl, null);
   });
 
   it("multiple restaurants allocate tenant hub plus prefixed restaurant hosts", () => {
@@ -112,7 +120,7 @@ describe("hostname generation", () => {
     );
   });
 
-  it("single same-name mode ends after a restaurant rename", () => {
+  it("single same-name mode ends after a restaurant rename but hub stays inactive at count 1", () => {
     assert.ok(
       isSingleSameNameRestaurantMode({
         tenantSlug: "abc",
@@ -126,7 +134,11 @@ describe("hostname generation", () => {
         tenantName: "ABC",
         restaurants: [{ name: "North", slug: "abc-north" }],
       }),
-      true,
+      false,
+    );
+    assert.equal(
+      restaurantHostnameChangedNotice("abc-abc.dvadtech.in"),
+      "Restaurant hostname changed to abc-abc.dvadtech.in. Reprint/reissue QR codes that contain the old hostname.",
     );
   });
 });

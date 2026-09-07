@@ -7,12 +7,18 @@ import { ConfirmDangerDialog } from "@/components/platform/ConfirmDangerDialog";
 import { PlatformPagedListFrame, PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
-import { MULTI_RESTAURANT_SAME_NAME_ERROR, previewHostnames } from "@/lib/hostname-rules";
+import { previewHostnames, restaurantHostnameChangedNotice } from "@/lib/hostname-rules";
 
 type ActiveSessions = {
   total: number;
   byRole: { OWNER: number; MANAGER: number; COOK: number; SERVER: number };
   users: Array<{ name: string; email: string; role: string; lastSeenAt: string }>;
+};
+
+type TenantAdminRow = {
+  id: string;
+  name: string;
+  email: string;
 };
 
 type TenantRestaurant = {
@@ -75,7 +81,13 @@ export function PlatformTenantOverview({
   const [overview, setOverview] = useState<{
     stats?: Record<string, number>;
     restaurants?: TenantRestaurant[];
+    admins?: TenantAdminRow[];
   } | null>(null);
+  const [resetAdminId, setResetAdminId] = useState<string | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [confirmResetPassword, setConfirmResetPassword] = useState("");
+  const [resettingAdmin, setResettingAdmin] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
   const [addRestaurant, setAddRestaurant] = useState({
     name: "",
     ownerEmail: "",
@@ -165,7 +177,8 @@ export function PlatformTenantOverview({
         setMessage(json.error || "Failed");
         return;
       }
-      setMessage(`Added ${json.restaurant.name}`);
+      const notices = Array.isArray(json.notices) ? json.notices.filter((n: unknown) => typeof n === "string") : [];
+      setMessage([`Added ${json.restaurant.name}`, ...notices].join(" "));
       setCreatedRestaurantUrl(String(json.restaurant?.url ?? ""));
       setAddRestaurant({ name: "", ownerEmail: "", ownerName: "Owner", tableCount: "6" });
       onRestaurantsChange();
@@ -221,6 +234,8 @@ export function PlatformTenantOverview({
         setMessage(json.error || "Could not delete restaurant.");
         return;
       }
+      const notices = Array.isArray(json.notices) ? json.notices.filter((n: unknown) => typeof n === "string") : [];
+      if (notices.length) setMessage(notices.join(" "));
       setConfirmRestaurant(null);
       onRestaurantsChange();
       void loadOverview();
@@ -229,6 +244,41 @@ export function PlatformTenantOverview({
       setMessage("Network error — try again.");
     } finally {
       setDeletingRestaurantId(null);
+    }
+  };
+
+  const resetTenantAdmin = async (adminId: string) => {
+    setResetMessage("");
+    if (resetPassword !== confirmResetPassword) {
+      setResetMessage("Passwords do not match.");
+      return;
+    }
+    setResettingAdmin(true);
+    try {
+      const res = await fetch("/api/platform/tenants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reset_tenant_admin_password",
+          tenantId,
+          tenantAdminId: adminId,
+          newPassword: resetPassword,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResetMessage(json.error || "Could not reset password.");
+        return;
+      }
+      setResetMessage("Tenant administrator password reset successfully.");
+      setResetPassword("");
+      setConfirmResetPassword("");
+      setResetAdminId(null);
+    } catch (error) {
+      swallowPollingFetchError(error);
+      setResetMessage("Network error — try again.");
+    } finally {
+      setResettingAdmin(false);
     }
   };
 
@@ -293,7 +343,15 @@ export function PlatformTenantOverview({
               : "Tenant is disabled — every restaurant under it is disabled and staff access is blocked. Re-enabling the tenant does not automatically re-enable restaurants."}
           </p>
           {tenantHubActive && tenantUrl && (
-            <p className="text-xs text-orange-300 mt-2 break-all">Tenant dashboard: {tenantUrl}</p>
+            <p className="text-xs text-orange-300 mt-2 break-all">
+              Tenant Command Center: {tenantUrl}
+            </p>
+          )}
+          {!tenantHubActive && restaurants.length === 1 && (
+            <p className="text-xs text-orange-300 mt-2 break-all">
+              Restaurant & Tenant Admin:{" "}
+              {restaurants[0].url || restaurantHostPreview(restaurants[0].slug, tenantBaseDomain)}
+            </p>
           )}
           <div className="flex flex-wrap gap-2 mt-3">
             <Input
@@ -322,9 +380,14 @@ export function PlatformTenantOverview({
                   });
                   return (
                     <>
-                      {preview.tenantUrl && (
+                      {preview.tenantHubActive && preview.tenantUrl && (
                         <p className="text-orange-300">
-                          Tenant dashboard will become {preview.tenantUrl}
+                          Tenant Command Center will become {preview.tenantUrl}
+                        </p>
+                      )}
+                      {!preview.tenantHubActive && preview.restaurants.length === 1 && (
+                        <p className="text-orange-300">
+                          Restaurant & Tenant Admin will become {preview.restaurants[0].url}
                         </p>
                       )}
                       {preview.restaurants.map((restaurant) => (
@@ -365,11 +428,83 @@ export function PlatformTenantOverview({
         </div>
       </Card>
 
+      <Card className="p-4 space-y-3">
+        <h3 className="font-semibold">Tenant Administrator</h3>
+        {(overview?.admins ?? []).length === 0 ? (
+          <p className="text-sm text-zinc-500">No tenant administrator is configured.</p>
+        ) : (
+          (overview?.admins ?? []).map((adminRow) => (
+            <div key={adminRow.id} className="space-y-2 rounded-xl border border-white/10 p-3">
+              <p className="text-sm">
+                Name: <span className="text-zinc-200">{adminRow.name}</span>
+              </p>
+              <p className="text-sm">
+                Email: <span className="text-zinc-200">{adminRow.email}</span>
+              </p>
+              {resetAdminId === adminRow.id ? (
+                <div className="grid md:grid-cols-2 gap-2">
+                  <Input
+                    type="password"
+                    placeholder="New password"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                  />
+                  <Input
+                    type="password"
+                    placeholder="Confirm password"
+                    value={confirmResetPassword}
+                    onChange={(e) => setConfirmResetPassword(e.target.value)}
+                  />
+                  <div className="md:col-span-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={resettingAdmin || !resetPassword}
+                      onClick={() => void resetTenantAdmin(adminRow.id)}
+                    >
+                      {resettingAdmin ? "Saving…" : "Save password"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={resettingAdmin}
+                      onClick={() => {
+                        setResetAdminId(null);
+                        setResetPassword("");
+                        setConfirmResetPassword("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button type="button" size="sm" variant="secondary" onClick={() => {
+                  setResetAdminId(adminRow.id);
+                  setResetMessage("");
+                  setResetPassword("");
+                  setConfirmResetPassword("");
+                }}>
+                  Reset Password
+                </Button>
+              )}
+            </div>
+          ))
+        )}
+        {resetMessage && (
+          <p className={`text-sm ${resetMessage.includes("successfully") ? "text-emerald-400" : "text-red-400"}`}>
+            {resetMessage}
+          </p>
+        )}
+      </Card>
+
       <p className="text-sm text-zinc-400">
         Restaurants belonging to <span className="text-zinc-200">{tenantName}</span>. Disable a
         restaurant to stop orders and staff logins for that location only. Delete permanently
-        wipes that restaurant and all of its records. A tenant with one restaurant may share the
-        tenant name; adding another restaurant requires a different tenant name first.
+        wipes that restaurant and all of its records. A tenant with one restaurant uses that
+        restaurant hostname for both restaurant operations and tenant administration. Adding a
+        second restaurant activates a dedicated tenant command-center hostname.
       </p>
 
       {stats && (
@@ -650,9 +785,20 @@ export function PlatformTenantOverview({
                   baseDomain: tenantBaseDomain,
                 });
                 const created = preview.restaurants[preview.restaurants.length - 1];
-                return `Restaurant URL: ${created?.url || created?.slug}`;
+                const existing = restaurants[0];
+                const renamed = existing
+                  ? preview.restaurants.find((row) => row.name === existing.name)
+                  : undefined;
+                const lines = [`Restaurant URL: ${created?.url || created?.slug}`];
+                if (preview.tenantHubActive && preview.tenantUrl) {
+                  lines.unshift(`Tenant Command Center: ${preview.tenantUrl}`);
+                }
+                if (existing && renamed && renamed.slug !== existing.slug) {
+                  lines.push(restaurantHostnameChangedNotice(`${renamed.slug}.${tenantBaseDomain || "dvadtech.in"}`));
+                }
+                return lines.join(" ");
               } catch (err) {
-                return err instanceof Error ? err.message : MULTI_RESTAURANT_SAME_NAME_ERROR;
+                return err instanceof Error ? err.message : "Invalid restaurant name";
               }
             })()}
           </p>
