@@ -194,8 +194,8 @@ function Detail({ label, value }: { label: string; value: ReactNode }) {
 export function TenantHubHome() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTab = (searchParams.get("tab") as TenantTab) || "overview";
-  const [tab, setTab] = useState<TenantTab>(TABS.some((item) => item.id === initialTab) ? initialTab : "overview");
+  const tabFromUrl = (searchParams.get("tab") as TenantTab) || "overview";
+  const tab = TABS.some((item) => item.id === tabFromUrl) ? tabFromUrl : "overview";
   const [overview, setOverview] = useState<Overview | null>(null);
   const [admin, setAdmin] = useState<{ name: string; email: string } | null>(null);
   const [command, setCommand] = useState<CommandCenterPayload | null>(null);
@@ -274,11 +274,6 @@ export function TenantHubHome() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  useEffect(() => {
-    const next = (searchParams.get("tab") as TenantTab) || "overview";
-    if (TABS.some((item) => item.id === next)) setTab(next);
-  }, [searchParams]);
-
   const logout = async () => {
     await fetch("/api/tenant-admin/auth/logout", { method: "POST" });
     router.push("/tenant/login");
@@ -327,10 +322,7 @@ export function TenantHubHome() {
             <button
               key={id}
               type="button"
-              onClick={() => {
-                setTab(id);
-                replaceParams({ tab: id });
-              }}
+              onClick={() => replaceParams({ tab: id })}
               className={cn(
                 "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors",
                 tab === id
