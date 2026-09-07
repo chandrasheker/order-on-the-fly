@@ -42,10 +42,11 @@ export default function PlatformLogsPage() {
       wide
       admin={admin}
       title="Platform Logs"
-      subtitle="Append-only forensic evidence with no tenant or restaurant business scope"
+      subtitle="Append-only forensic evidence with no tenant or restaurant scope"
       backHref="/platform"
       backLabel="Command center"
-      breadcrumb={[{ label: "Command center", href: "/platform" }, { label: "Platform Logs" }]}
+      activeItem="logs"
+      breadcrumb={[{ label: "Overview", href: "/platform" }, { label: "Logs" }]}
     >
       <PlatformScopedLogsConsole
         endpoint="/api/platform/logs"

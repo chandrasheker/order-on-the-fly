@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Spinner, Button } from "@/components/ui";
+import { Spinner } from "@/components/ui";
 import { Activity, Crown, LayoutGrid, ScrollText, Shield, Store, Users } from "lucide-react";
 import { PlatformShell } from "@/components/platform/PlatformShell";
 import { PlatformStaffSetupPanel } from "@/components/platform/PlatformStaffSetupPanel";
@@ -199,37 +199,18 @@ export function PlatformTenantWorkspace() {
       backHref="/platform"
       backLabel="All tenants"
       breadcrumb={[
-        { label: "All tenants", href: "/platform" },
+        { label: "Overview", href: "/platform" },
         { label: tenant.name },
       ]}
       actions={
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={tenant.isEnabled ? "secondary" : "success"}
-            disabled={togglingTenant || deletingTenant}
-            onClick={() => void toggleTenant(!tenant.isEnabled)}
-          >
-            {togglingTenant ? "…" : tenant.isEnabled ? "Disable tenant" : "Enable tenant"}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="danger"
-            disabled={deletingTenant}
-            onClick={() => setConfirmDeleteTenant(true)}
-          >
-            Delete tenant
-          </Button>
-          <Link
-            href={`/platform/billing?tenantId=${tenant.id}`}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border bg-white/5 border-white/10 text-zinc-300 hover:text-white"
-          >
-            Billing
-          </Link>
-        </div>
+        <Link
+          href={`/platform/billing?tenantId=${tenant.id}`}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border bg-white/5 border-white/10 text-zinc-300 hover:text-white"
+        >
+          Billing
+        </Link>
       }
+      activeItem="tenants"
     >
       <div className="space-y-6">
         <div className="flex flex-wrap gap-2 border-b border-white/5 pb-4">
@@ -284,6 +265,9 @@ export function PlatformTenantWorkspace() {
               tenantHubActive={Boolean(tenant.hubActive)}
               tenantEnabled={tenant.isEnabled}
               tenantBaseDomain={tenantBaseDomain}
+              tenantPlan={tenant.plan}
+              tenantSubscriptionStatus={tenant.subscriptionStatus}
+              tenantBillingEmail={tenant.billingEmail}
               restaurants={tenant.restaurants}
               onRestaurantsChange={() => void load()}
               onTenantToggle={toggleTenant}

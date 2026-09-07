@@ -230,11 +230,12 @@ export default function PlatformBillingPage() {
     <PlatformShell
       admin={admin}
       title="Billing"
-      subtitle={tenant ? tenant.name : "Subscription plans per tenant"}
+      subtitle={tenant ? tenant.name : "Plans and demo packs per tenant"}
       backHref={backTenantId ? `/platform/tenants/${backTenantId}` : "/platform"}
       backLabel={backTenantId ? "Tenant overview" : "All tenants"}
+      activeItem="billing"
       breadcrumb={[
-        { label: "All tenants", href: "/platform" },
+        { label: "Overview", href: "/platform" },
         ...(tenant
           ? [{ label: tenant.name, href: `/platform/tenants/${tenant.id}` }]
           : backTenantId
@@ -244,11 +245,6 @@ export default function PlatformBillingPage() {
       ]}
     >
       <div className="space-y-6 max-w-3xl">
-        <p className="text-sm text-zinc-400">
-          Billing is managed per tenant. Enable the one-time 7-day demo pack first, or choose a paid
-          plan after the demo ends. Restaurants under the tenant share one subscription and feature
-          set.
-        </p>
 
         {tenantOptions.length > 0 ? (
           <div className="space-y-3">

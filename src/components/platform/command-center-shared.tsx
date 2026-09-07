@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useMemo } from "react";
+import { Fragment, useCallback, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge, Button, Card, Input, Select } from "@/components/ui";
@@ -138,12 +138,16 @@ export function RestaurantHealthTable({
   onSort,
   filter,
   showTenant,
+  density = "full",
+  filters,
 }: {
   rows: RestaurantCommandRow[];
   sort: string;
   onSort: (key: string) => void;
   filter: string;
   showTenant?: boolean;
+  density?: "full" | "console";
+  filters?: ReactNode;
 }) {
   const scoped = useMemo(() => {
     const filtered = rows.filter((row) => {
@@ -181,7 +185,8 @@ export function RestaurantHealthTable({
     [],
   );
   const list = usePagedExpandableList(scoped, { getId, getSearchText });
-  const colSpan = showTenant ? 16 : 15;
+  const compact = density === "console";
+  const colSpan = compact ? (showTenant ? 9 : 8) : showTenant ? 16 : 15;
 
   const header = (key: string, label: string) => (
     <button type="button" className="text-left hover:text-white" onClick={() => onSort(key)}>
@@ -192,26 +197,32 @@ export function RestaurantHealthTable({
 
   return (
     <div className="space-y-3">
-      <PlatformRestaurantToolbar
-        search={list.search}
-        onSearchChange={list.setSearch}
-        matching={list.matchingCount}
-        total={list.total}
-        showingFrom={list.showingFrom}
-        showingTo={list.showingTo}
-        pageSize={list.pageSize}
-        onPageSizeChange={list.setPageSize}
-        page={list.page}
-        pageCount={list.pageCount}
-        canPrev={list.canPrev}
-        canNext={list.canNext}
-        onPrev={list.goPrev}
-        onNext={list.goNext}
-        onExpandAll={list.expandAll}
-        onCollapseAll={list.collapseAll}
-        noun="restaurant"
-        placeholder={showTenant ? "Search restaurants or tenants…" : "Search restaurants…"}
-      />
+      <div className={cn(filters ? "flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between" : undefined)}>
+        <div className="min-w-0 flex-1">
+          <PlatformRestaurantToolbar
+            search={list.search}
+            onSearchChange={list.setSearch}
+            matching={list.matchingCount}
+            total={list.total}
+            showingFrom={list.showingFrom}
+            showingTo={list.showingTo}
+            pageSize={list.pageSize}
+            onPageSizeChange={list.setPageSize}
+            page={list.page}
+            pageCount={list.pageCount}
+            canPrev={list.canPrev}
+            canNext={list.canNext}
+            onPrev={list.goPrev}
+            onNext={list.goNext}
+            onExpandAll={compact ? undefined : list.expandAll}
+            onCollapseAll={compact ? undefined : list.collapseAll}
+            expandable={!compact}
+            noun="restaurant"
+            placeholder={showTenant ? "Search restaurants or tenants…" : "Search restaurants…"}
+          />
+        </div>
+        {filters ? <div className="xl:pt-1">{filters}</div> : null}
+      </div>
       <PlatformPagedListFrame
         canPrev={list.canPrev}
         canNext={list.canNext}
@@ -227,15 +238,15 @@ export function RestaurantHealthTable({
                 {showTenant && <th className="px-3 py-2 text-left">Tenant</th>}
                 <th className="px-3 py-2 text-left">{header("name", "Restaurant")}</th>
                 <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-left">{header("orders", "Orders")}</th>
-                <th className="px-3 py-2 text-left">{header("revenue", "Revenue")}</th>
-                <th className="px-3 py-2 text-left">Active tables</th>
-                <th className="px-3 py-2 text-left">Active staff</th>
-                <th className="px-3 py-2 text-left">Kitchen backlog</th>
-                <th className="px-3 py-2 text-left">{header("overdue", "Overdue")}</th>
-                <th className="px-3 py-2 text-left">{header("sla", "On-time %")}</th>
-                <th className="px-3 py-2 text-left">{header("serving", "Avg serving")}</th>
-                <th className="px-3 py-2 text-left">Service</th>
+                {!compact && <th className="px-3 py-2 text-left">{header("orders", "Orders")}</th>}
+                {!compact && <th className="px-3 py-2 text-left">{header("revenue", "Revenue")}</th>}
+                <th className="px-3 py-2 text-left">Active</th>
+                {!compact && <th className="px-3 py-2 text-left">Active staff</th>}
+                <th className="px-3 py-2 text-left">Kitchen</th>
+                {!compact && <th className="px-3 py-2 text-left">{header("overdue", "Overdue")}</th>}
+                {!compact && <th className="px-3 py-2 text-left">{header("sla", "On-time %")}</th>}
+                {!compact && <th className="px-3 py-2 text-left">{header("serving", "Avg serving")}</th>}
+                {!compact && <th className="px-3 py-2 text-left">Service</th>}
                 <th className="px-3 py-2 text-left">Payments</th>
                 <th className="px-3 py-2 text-left">Printing</th>
                 <th className="px-3 py-2 text-left">{header("errors", "Errors")}</th>
@@ -274,19 +285,29 @@ export function RestaurantHealthTable({
                           {row.status}
                         </HealthBadge>
                       </td>
-                      <td className="px-3 py-2">{row.period.orders}</td>
-                      <td className="px-3 py-2"><Money paise={row.revenue.netCapturedPaise} /></td>
-                      <td className="px-3 py-2">{row.current.activeTables}</td>
-                      <td className="px-3 py-2">{row.current.activeStaff}</td>
-                      <td className="px-3 py-2">{row.current.kitchenBacklog}</td>
-                      <td className="px-3 py-2">{row.current.overdue}</td>
-                      <td className="px-3 py-2">
-                        <Link href={row.hrefs.sla} className="hover:text-white">
-                          {row.kitchen.sla.label}
-                        </Link>
+                      {!compact && <td className="px-3 py-2">{row.period.orders}</td>}
+                      {!compact && <td className="px-3 py-2"><Money paise={row.revenue.netCapturedPaise} /></td>}
+                      <td className="px-3 py-2 text-zinc-300">
+                        {row.current.activeTables} tbl · {row.current.activeStaff} staff
                       </td>
-                      <td className="px-3 py-2">{formatDurationMs(row.service.orderToServed.average)}</td>
-                      <td className="px-3 py-2"><HealthBadge level={row.service.load.level} /></td>
+                      {!compact && <td className="px-3 py-2">{row.current.activeStaff}</td>}
+                      <td className="px-3 py-2">
+                        {compact ? (
+                          <HealthBadge level={row.kitchen.load.level} />
+                        ) : (
+                          row.current.kitchenBacklog
+                        )}
+                      </td>
+                      {!compact && <td className="px-3 py-2">{row.current.overdue}</td>}
+                      {!compact && (
+                        <td className="px-3 py-2">
+                          <Link href={row.hrefs.sla} className="hover:text-white">
+                            {row.kitchen.sla.label}
+                          </Link>
+                        </td>
+                      )}
+                      {!compact && <td className="px-3 py-2">{formatDurationMs(row.service.orderToServed.average)}</td>}
+                      {!compact && <td className="px-3 py-2"><HealthBadge level={row.service.load.level} /></td>}
                       <td className="px-3 py-2">
                         <Link href={row.hrefs.financial}><HealthBadge level={row.money.health.level} /></Link>
                       </td>
