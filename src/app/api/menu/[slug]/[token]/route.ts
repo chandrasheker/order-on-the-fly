@@ -46,6 +46,9 @@ async function handleGET(
         paymentGatewaySecretEnc: true,
         paymentWebhookSecret: true,
         paymentWebhookSecretEnc: true,
+        serviceMode: true,
+        pickupLocationLabel: true,
+        hybridDefaultFulfillment: true,
       },
     });
 
@@ -158,6 +161,7 @@ async function handleGET(
         upiVpa: restaurant.upiVpa ?? null,
         upiMerchantName: restaurant.upiMerchantName ?? restaurant.name,
         automaticUpiEnabled: isRazorpayAutomaticReady(restaurant),
+        ...((await import("@/lib/fulfillment/resolve")).publicServiceMode(restaurant)),
       },
       table: { id: table.id, number: table.number, qrToken: table.qrToken },
       paymentBlocked,

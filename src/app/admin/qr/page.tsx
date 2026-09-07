@@ -7,6 +7,7 @@ import { Button, Card, Spinner, Input } from "@/components/ui";
 import { ArrowLeft, Download, Printer, QrCode, Users, CircleDollarSign, ImageIcon } from "lucide-react";
 import Link from "next/link";
 import { isDineInTable } from "@/lib/order-channel";
+import { ServiceModeCard } from "@/components/admin/ServiceModeCard";
 
 interface QRData {
   id: string;
@@ -350,6 +351,7 @@ export default function QRPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+        <ServiceModeCard />
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-3">
             <Printer className="w-5 h-5 text-violet-400" />

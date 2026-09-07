@@ -128,10 +128,10 @@ export async function createOrReuseRazorpayCheckout(params: {
 
   const order = await prisma.order.findFirst({
     where: { id: params.orderId, restaurantId: params.restaurantId, tableId: params.tableId },
-    select: { id: true, status: true, tenantId: true, branchId: true },
+    select: { id: true, status: true, tenantId: true, branchId: true, fulfillmentMode: true },
   });
   if (!order) return { ok: false as const, error: "Order not found", status: 404 };
-  if (order.status !== "SERVED") {
+  if (order.status !== "SERVED" && order.fulfillmentMode !== "SELF_PICKUP") {
     return { ok: false as const, error: "Order must be fully served before payment", status: 400 };
   }
 

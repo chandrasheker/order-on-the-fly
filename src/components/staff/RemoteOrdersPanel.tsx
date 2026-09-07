@@ -80,6 +80,8 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
   const [success, setSuccess] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
+  const [serviceMode, setServiceMode] = useState<string>("FULL_SERVICE");
+  const [staffFulfillment, setStaffFulfillment] = useState<"TABLE_SERVICE" | "SELF_PICKUP">("TABLE_SERVICE");
 
   const {
     tableId,
@@ -103,6 +105,16 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
   );
 
   const readyForMenu = meta.needsTable ? Boolean(tableId) : true;
+
+  useEffect(() => {
+    void fetch("/api/restaurant/service-mode")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!json?.settings) return;
+        setServiceMode(json.settings.serviceMode);
+        setStaffFulfillment(json.settings.hybridDefaultFulfillment ?? "TABLE_SERVICE");
+      });
+  }, []);
 
   const loadTables = useCallback(async () => {
     try {
@@ -213,7 +225,12 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
           res = await fetch("/api/orders/staff", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...payload, tableId, openTable: true }),
+            body: JSON.stringify({
+              ...payload,
+              tableId,
+              openTable: true,
+              fulfillmentMode: serviceMode === "HYBRID" ? staffFulfillment : undefined,
+            }),
           });
         }
       } catch {
@@ -355,6 +372,26 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
           </div>
         </div>
 
+        {serviceMode === "HYBRID" && !meta.channel && (
+          <div className="flex gap-3 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                checked={staffFulfillment === "TABLE_SERVICE"}
+                onChange={() => setStaffFulfillment("TABLE_SERVICE")}
+              />
+              Table Service
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                checked={staffFulfillment === "SELF_PICKUP"}
+                onChange={() => setStaffFulfillment("SELF_PICKUP")}
+              />
+              Self Pickup
+            </label>
+          </div>
+        )}
         {mode === "delivery" && (
           <Input
             placeholder="Delivery address / notes"

@@ -22,6 +22,9 @@ import { PromoCodeInput } from "@/components/customer/PromoCodeInput";
 import { ComboMealsSection } from "@/components/customer/ComboMealsSection";
 import { CustomerPageBackground } from "@/components/customer/CustomerPageBackground";
 import { isClientOffline, isNetworkFetchError } from "@/lib/client-fetch";
+import { useSelfPickupAlerts } from "@/hooks/useSelfPickupAlerts";
+import { useCustomerPush } from "@/hooks/useCustomerPush";
+import type { OrderFulfillmentMode, RestaurantServiceMode } from "@/lib/fulfillment/constants";
 
 interface Props {
   slug: string;
@@ -39,6 +42,10 @@ interface RestaurantData {
   upiVpa?: string | null;
   upiMerchantName?: string | null;
   automaticUpiEnabled?: boolean;
+  serviceMode?: RestaurantServiceMode;
+  pickupLocationLabel?: string;
+  hybridDefaultFulfillment?: OrderFulfillmentMode;
+  allowedFulfillmentModes?: OrderFulfillmentMode[];
 }
 
 interface MenuFeatures {
@@ -83,6 +90,7 @@ export function OrderPageClient({ slug, token }: Props) {
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [showNameInput, setShowNameInput] = useState(true);
   const [orderError, setOrderError] = useState("");
+  const [fulfillmentChoice, setFulfillmentChoice] = useState<OrderFulfillmentMode | "">("");
   const [tabPaymentPending, setTabPaymentPending] = useState(false);
   const [tabRemaining, setTabRemaining] = useState<number | null>(null);
   const [showThankYou, setShowThankYou] = useState(false);
@@ -92,6 +100,13 @@ export function OrderPageClient({ slug, token }: Props) {
   const ordersAbortRef = useRef<AbortController | null>(null);
   const { customerName, setCustomerName, items, promoCode, setPromoCode, clearCart } = useCartStore();
   const tableSession = useTableSession(token, slug);
+  useSelfPickupAlerts(orders);
+  useCustomerPush({
+    enabled: Boolean(data?.restaurant.serviceMode && data.restaurant.serviceMode !== "FULL_SERVICE"),
+    tableId: data?.table.id,
+    tableToken: token,
+    sessionKey: tableSession.sessionKey,
+  });
 
   useCartDraftSync({
     enabled: tableSession.diningVerified && Boolean(data?.table.id),
@@ -189,7 +204,9 @@ export function OrderPageClient({ slug, token }: Props) {
     for (const order of orders) {
       const isPaid = Boolean(order.paidAt);
       const wasTracked = trackedUnpaidOrderIds.current.has(order.id);
+      const isPickup = (order as { fulfillmentMode?: string }).fulfillmentMode === "SELF_PICKUP";
       const isUnpaidBill =
+        !isPickup &&
         order.status === "SERVED" &&
         !isPaid &&
         customerOrderBillTotal(order.items) > 0;
@@ -249,6 +266,9 @@ export function OrderPageClient({ slug, token }: Props) {
             modifierOptionIds: i.modifierOptionIds,
           })),
           comboMeals: comboCart,
+          fulfillmentMode: data?.restaurant.serviceMode === "HYBRID"
+            ? fulfillmentChoice || data.restaurant.hybridDefaultFulfillment
+            : undefined,
         }),
       });
       if (res.ok) {
@@ -449,6 +469,7 @@ export function OrderPageClient({ slug, token }: Props) {
             tableToken={token}
             sessionKey={tableSession.sessionKey}
             enabled={Boolean(data.features.callWaiter)}
+            serviceMode={data.restaurant.serviceMode}
           />
         )}
 
@@ -501,6 +522,8 @@ export function OrderPageClient({ slug, token }: Props) {
             tabRemaining={tabRemaining}
             onRefresh={fetchOrders}
             onPaymentRequested={() => setTabPaymentPending(true)}
+            serviceMode={data.restaurant.serviceMode}
+            pickupLocationLabel={data.restaurant.pickupLocationLabel}
           />
         )}
 
@@ -544,6 +567,44 @@ export function OrderPageClient({ slug, token }: Props) {
           <p className="text-sm text-center text-orange-300">
             {comboCart.length} combo{comboCart.length > 1 ? "s" : ""} ready to order
           </p>
+        )}
+
+        {data.restaurant.serviceMode === "SELF_SERVICE" && canOrder && (
+          <p className="text-sm text-center text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+            Payment must be completed before collection from {data.restaurant.pickupLocationLabel || "the pickup counter"}.
+          </p>
+        )}
+
+        {data.restaurant.serviceMode === "HYBRID" && canOrder && (
+          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+            <p className="font-medium">How would you like your order?</p>
+            <label className="flex items-start gap-3">
+              <input
+                type="radio"
+                checked={(fulfillmentChoice || data.restaurant.hybridDefaultFulfillment) === "TABLE_SERVICE"}
+                onChange={() => setFulfillmentChoice("TABLE_SERVICE")}
+                className="mt-1"
+              />
+              <span>
+                <span className="block font-medium">Serve at my table</span>
+                <span className="text-sm text-zinc-400">Staff will bring your order when it is ready.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3">
+              <input
+                type="radio"
+                checked={(fulfillmentChoice || data.restaurant.hybridDefaultFulfillment) === "SELF_PICKUP"}
+                onChange={() => setFulfillmentChoice("SELF_PICKUP")}
+                className="mt-1"
+              />
+              <span>
+                <span className="block font-medium">I&apos;ll collect from the counter</span>
+                <span className="text-sm text-zinc-400">
+                  We&apos;ll notify you when the order is ready. Payment must be completed before collection.
+                </span>
+              </span>
+            </label>
+          </div>
         )}
 
         <div id="customer-menu">

@@ -58,6 +58,7 @@ import { useStaffPush } from "@/hooks/useStaffPush";
 import type { ReceiptPayload } from "@/lib/receipt-service";
 import { isClientOffline, isNetworkFetchError, swallowPollingFetchError } from "@/lib/client-fetch";
 import { CookKitchenDashboard } from "@/components/staff/CookKitchenDashboard";
+import { PickupQueuePanel } from "@/components/staff/PickupQueuePanel";
 
 interface OrderItem {
   id: string;
@@ -79,6 +80,8 @@ interface Order {
   id: string;
   orderNumber: number;
   customerName: string | null;
+  fulfillmentMode?: string;
+  pickupCode?: string | null;
   status: string;
   alarmTriggered: boolean;
   paidAt?: string | null;
@@ -950,6 +953,12 @@ export function StaffDashboard() {
 
         {viewMode === "active" && (
           <>
+            <div className="mb-6">
+              <PickupQueuePanel
+                canCollect={canPerformOrderAction(role!, "collect-order")}
+                onCollected={() => void fetchDashboard()}
+              />
+            </div>
             <div className="flex gap-2 mb-4">
               {(["all", "overdue", "alarm"] as const).map((f) => (
                 <button
@@ -1335,6 +1344,7 @@ function ActiveOrderCard({
           </div>
           <p className="text-sm text-zinc-400">
             #{order.orderNumber}
+            {order.fulfillmentMode === "SELF_PICKUP" ? " · SELF PICKUP" : ""}
             {order.customerName && ` · ${order.customerName}`}
           </p>
           {order.placedByName && (
@@ -1384,8 +1394,8 @@ function ActiveOrderCard({
                       </Button>
                     )}
                     {canServe && (
-                      <Button size="sm" variant="success" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "serve-item")}>
-                        <CheckCircle2 className="w-3 h-3" /> Serve
+                      <Button size="sm" variant="success" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, order.fulfillmentMode === "SELF_PICKUP" ? "collect-order" : "serve-item")}>
+                        <CheckCircle2 className="w-3 h-3" /> {order.fulfillmentMode === "SELF_PICKUP" ? "Collect" : "Serve"}
                       </Button>
                     )}
                   </div>
@@ -1423,9 +1433,20 @@ function ActiveOrderCard({
         })}
       </div>
 
-      {canServeAll && (
-        <Button variant="primary" size="sm" className="w-full" onClick={() => onUpdate(order.id, "", "serve-all")}>
-          Mark All Served
+      {(canServeAll || (order.fulfillmentMode === "SELF_PICKUP" && canPerformOrderAction(role, "collect-order"))) && (
+        <Button
+          variant="primary"
+          size="sm"
+          className="w-full"
+          onClick={() =>
+            onUpdate(
+              order.id,
+              "",
+              order.fulfillmentMode === "SELF_PICKUP" ? "collect-order" : "serve-all",
+            )
+          }
+        >
+          {order.fulfillmentMode === "SELF_PICKUP" ? "Mark Collected" : "Mark All Served"}
         </Button>
       )}
     </motion.div>

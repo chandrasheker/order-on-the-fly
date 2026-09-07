@@ -56,13 +56,25 @@ export async function autoCompleteZeroBillOrder(orderId: string) {
       where: { id: orderId },
       select: { tableId: true },
     });
-    if (orderRow) await maybeAutoCloseTableAfterPayment(orderRow.tableId);
+    if (orderRow && order.fulfillmentMode !== "SELF_PICKUP") {
+      await maybeAutoCloseTableAfterPayment(orderRow.tableId);
+    }
   }
 }
 
 export async function syncOrderStatus(orderId: string) {
-  const items = await prisma.orderItem.findMany({ where: { orderId } });
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+  if (!order) return;
+  const items = order.items;
   const openItems = items.filter((i) => isOrderItemOpen(i.status));
+
+  const { areRequiredItemsReady, persistReadyAtIfNeeded } = await import("@/lib/fulfillment/collection");
+  if (areRequiredItemsReady(items)) {
+    await persistReadyAtIfNeeded(prisma, order);
+  }
 
   if (openItems.length === 0) {
     await prisma.order.update({
@@ -72,6 +84,10 @@ export async function syncOrderStatus(orderId: string) {
     await autoCompleteZeroBillOrder(orderId);
     await finalizeOrderIfSettled(orderId);
     scheduleAggregatorStatusPush(orderId);
+    if (order.fulfillmentMode === "SELF_PICKUP") {
+      const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
+      await evaluateSelfPickupNotifications(orderId);
+    }
     return;
   }
 
@@ -88,6 +104,10 @@ export async function syncOrderStatus(orderId: string) {
 
   if (status === "READY") {
     scheduleAggregatorStatusPush(orderId);
+  }
+  if (order.fulfillmentMode === "SELF_PICKUP") {
+    const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
+    await evaluateSelfPickupNotifications(orderId);
   }
 }
 
@@ -146,6 +166,16 @@ export class OrderCreationError extends Error {
   }
 }
 
+function rethrowFulfillmentError(error: unknown) {
+  if (error && typeof error === "object" && "name" in error && error.name === "FulfillmentSelectionError") {
+    throw new OrderCreationError(
+      error instanceof Error ? error.message : "That fulfillment mode is not available.",
+      400,
+      "INVALID_FULFILLMENT",
+    );
+  }
+}
+
 export async function createOrderForTable(params: {
   tableId: string;
   restaurantId: string;
@@ -159,6 +189,7 @@ export async function createOrderForTable(params: {
   placedByUserId?: string | null;
   placedByName?: string | null;
   promoCode?: string | null;
+  requestedFulfillmentMode?: unknown;
 }) {
   const {
     tableId,
@@ -173,6 +204,7 @@ export async function createOrderForTable(params: {
     placedByUserId,
     placedByName,
     promoCode,
+    requestedFulfillmentMode,
   } = params;
 
   if (!items.length && !comboMeals.length) {
@@ -352,6 +384,23 @@ export async function createOrderForTable(params: {
   });
 
   const hierarchy = await resolveHierarchyForTable(table.id);
+  const { fulfillmentCreateFields, assertRequestedFulfillmentAllowed } = await import(
+    "@/lib/fulfillment/resolve"
+  );
+  try {
+    assertRequestedFulfillmentAllowed({
+      serviceMode: table.restaurant.serviceMode,
+      requested: requestedFulfillmentMode,
+    });
+  } catch (error) {
+    rethrowFulfillmentError(error);
+    throw error;
+  }
+  const fulfillment = fulfillmentCreateFields({
+    serviceMode: table.restaurant.serviceMode,
+    hybridDefaultFulfillment: table.restaurant.hybridDefaultFulfillment,
+    requested: requestedFulfillmentMode,
+  });
 
   const { enqueueKitchenChitForOrderInTx } = await import("@/domains/printing/print-job-service");
   const order = await prisma.$transaction(async (tx) => {
@@ -376,6 +425,8 @@ export async function createOrderForTable(params: {
         promoCode: promo?.code ?? null,
         promoDiscount,
         discountAmount: promoDiscount,
+        fulfillmentMode: fulfillment.fulfillmentMode,
+        pickupCode: fulfillment.pickupCode,
         items: { create: orderItemsData },
       },
       include: {
@@ -397,7 +448,30 @@ export async function createOrderForTable(params: {
       resourceId: created.id,
       correlationId: created.id,
       after: auditOrderSnapshot(created),
-      metadata: { tableId: created.tableId, itemCount: created.items.length },
+      metadata: {
+        tableId: created.tableId,
+        itemCount: created.items.length,
+        fulfillmentMode: created.fulfillmentMode,
+        pickupNumber: created.orderNumber,
+      },
+    });
+    await appendPlatformAuditEventInTx(tx, {
+      category: AUDIT_CATEGORY.ORDER,
+      action: AUDIT_ACTION.ORDER_FULFILLMENT_SELECTED,
+      restaurantId: created.restaurantId,
+      tenantId: created.tenantId,
+      branchId: created.branchId,
+      floorId: created.floorId,
+      resourceType: "Order",
+      resourceId: created.id,
+      correlationId: created.id,
+      after: { fulfillmentMode: created.fulfillmentMode, pickupNumber: created.orderNumber },
+      metadata: {
+        restaurantId: created.restaurantId,
+        orderId: created.id,
+        fulfillmentMode: created.fulfillmentMode,
+        pickupNumber: created.orderNumber,
+      },
     });
     if (promo?.code) {
       await appendPlatformAuditEventInTx(tx, {
@@ -416,6 +490,7 @@ export async function createOrderForTable(params: {
       orderId: created.id,
       orderNumber: created.orderNumber,
       tableNumber: table.number,
+      fulfillmentMode: created.fulfillmentMode,
       items: created.items.map((item) => ({
         name: item.itemName,
         quantity: item.quantity,

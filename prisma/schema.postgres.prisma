@@ -209,6 +209,9 @@ model Restaurant {
   paymentWebhookSecretEnc String?
   pushAlertsEnabled     Boolean        @default(true)
   smsAlertsEnabled      Boolean        @default(true)
+  serviceMode           String         @default("FULL_SERVICE")
+  pickupLocationLabel   String         @default("Pickup Counter")
+  hybridDefaultFulfillment String      @default("TABLE_SERVICE")
   tenantId              String?
   tenant                Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   createdAt             DateTime       @default(now())
@@ -452,10 +455,18 @@ model Order {
   bills          Bill[]
   printJobs      PrintJob[]
   gatewayPaymentAttempts GatewayPaymentAttempt[]
+  fulfillmentMode    String      @default("TABLE_SERVICE")
+  pickupCode         String?
+  readyAt            DateTime?
+  collectedAt        DateTime?
+  readyPaymentRequiredNotifiedAt DateTime?
+  readyForCollectionNotifiedAt DateTime?
+  collectionReminderNotifiedAt DateTime?
 
   @@index([restaurantId, date])
   @@index([tableId])
   @@index([restaurantId, orderChannel, externalOrderId])
+  @@index([restaurantId, fulfillmentMode, status])
 }
 
 model AggregatorConnection {
@@ -873,12 +884,15 @@ model PushSubscription {
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   userId       String?
+  audience     String     @default("STAFF")
+  tableId      String?
   endpoint     String     @unique
   p256dh       String
   auth         String
   createdAt    DateTime   @default(now())
 
   @@index([restaurantId])
+  @@index([restaurantId, audience, tableId])
 }
 
 model PaymentWebhookEvent {

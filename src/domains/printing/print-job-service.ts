@@ -172,6 +172,7 @@ export async function enqueueKitchenChitForOrderInTx(
     orderId: string;
     orderNumber: number;
     tableNumber: number;
+    fulfillmentMode?: string;
     items?: Array<{ name: string; quantity: number; notes?: string | null }>;
     createdAt?: Date | string;
   },
@@ -188,6 +189,7 @@ export async function enqueueKitchenChitForOrderInTx(
       orderId: params.orderId,
       orderNumber: params.orderNumber,
       tableNumber: params.tableNumber,
+      fulfillmentMode: params.fulfillmentMode ?? "TABLE_SERVICE",
       items: params.items ?? [],
       createdAt: params.createdAt ?? new Date().toISOString(),
     },

@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { financialsForOrder, isCapturedPayment } from "@/lib/order-financials";
+import {
+  areRequiredItemsReady,
+  outstandingAmountPaiseForCollection,
+  settlementItemsForOrder,
+} from "@/lib/fulfillment/collection";
 import { addPaise, toPaise } from "@/lib/money";
 import { PRINT_AGENT_ONLINE_MS, PRINT_ERROR, printDeliveryMode } from "@/lib/print-constants";
 import { ACTIVE_GATEWAY_ATTEMPT_STATUSES, GATEWAY_ATTEMPT_STATUS, GATEWAY_REFUND_STATUS } from "@/lib/gateway-constants";
@@ -103,6 +108,7 @@ export async function getCommandCenter(params: {
       isEnabled: true,
       kitchenPaused: true,
       kitchenAutoPauseOverdueThreshold: true,
+      serviceMode: true,
       tenantId: true,
       tenant: { select: { id: true, name: true, slug: true, isEnabled: true } },
     },
@@ -192,7 +198,14 @@ export async function getCommandCenter(params: {
       : Promise.resolve([]),
     ids.length
       ? prisma.order.findMany({
-          where: { restaurantId: { in: ids }, status: { not: "CANCELLED" }, paidAt: null },
+          where: {
+            restaurantId: { in: ids },
+            status: { not: "CANCELLED" },
+            OR: [
+              { paidAt: null },
+              { fulfillmentMode: "SELF_PICKUP", collectedAt: null },
+            ],
+          },
           include: { items: true, payments: true },
         })
       : Promise.resolve([]),
@@ -326,12 +339,37 @@ export async function getCommandCenter(params: {
     const prevRevenue = ledgerRevenueFromPayments(prevPayments);
     const outstandingPaise = unpaid.reduce((sum, order) => {
       const finances = financialsForOrder({
-        items: order.items,
+        items: settlementItemsForOrder(order.fulfillmentMode, order.items),
         discountAmount: order.discountAmount,
         payments: order.payments,
       });
       return addPaise(sum, finances.amountDuePaise);
     }, 0);
+
+    const pickupOrders = nonCancelled.filter((order) => order.fulfillmentMode === "SELF_PICKUP");
+    const tableServiceOrders = nonCancelled.filter((order) => order.fulfillmentMode !== "SELF_PICKUP");
+    const livePickup = unpaid.filter(
+      (order) => order.fulfillmentMode === "SELF_PICKUP" && order.status !== "CANCELLED" && !order.collectedAt,
+    );
+    const readyPickup = livePickup.filter((order) => areRequiredItemsReady(order.items));
+    const readyUnpaidPickup = readyPickup.filter(
+      (order) => outstandingAmountPaiseForCollection(order) > 0,
+    );
+    const readyUnpaidOutstandingPaise = readyUnpaidPickup.reduce(
+      (sum, order) => addPaise(sum, outstandingAmountPaiseForCollection(order)),
+      0,
+    );
+    let oldestReadyWaitingMs: number | null = null;
+    for (const order of readyPickup) {
+      const readyAt = order.readyAt ?? order.updatedAt;
+      const age = now.getTime() - readyAt.getTime();
+      if (oldestReadyWaitingMs == null || age > oldestReadyWaitingMs) oldestReadyWaitingMs = age;
+    }
+    const readyToCollectedMs = pickupOrders
+      .filter((order) => order.readyAt && order.collectedAt)
+      .map((order) => order.collectedAt!.getTime() - order.readyAt!.getTime())
+      .filter((value) => value >= 0);
+    const pickupTotal = pickupOrders.length + tableServiceOrders.length;
 
     const pendingItems = liveItems.filter((item) => item.status === "PENDING");
     const preparingItems = liveItems.filter((item) => item.status === "PREPARING");
@@ -691,6 +729,18 @@ export async function getCommandCenter(params: {
         avgAckMs: ackMs.length ? ackMs.reduce((a, b) => a + b, 0) / ackMs.length : null,
         avgResolveMs: resolveMs.length ? resolveMs.reduce((a, b) => a + b, 0) / resolveMs.length : null,
         oldestPendingMs,
+      },
+      fulfillment: {
+        serviceMode: restaurant.serviceMode ?? "FULL_SERVICE",
+        tableServiceOrders: tableServiceOrders.length,
+        selfPickupOrders: pickupOrders.length,
+        selfPickupPercent: pickupTotal ? Math.round((pickupOrders.length / pickupTotal) * 100) : null,
+        tableServicePercent: pickupTotal ? Math.round((tableServiceOrders.length / pickupTotal) * 100) : null,
+        readyWaiting: readyPickup.filter((order) => !order.collectedAt).length,
+        readyUnpaidOrders: readyUnpaidPickup.length,
+        readyUnpaidOutstandingPaise,
+        oldestReadyWaitingMs,
+        readyToCollected: durationStats(readyToCollectedMs),
       },
       money: {
         capturedGrossPaise: revenue.capturedGrossPaise,

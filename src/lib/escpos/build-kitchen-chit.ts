@@ -20,6 +20,14 @@ export function buildEscPosKitchenChit(chit: KitchenChitPayload) {
     .line(`#${chit.orderNumber} · ${chit.locationLabel}`)
     .bold(false);
 
+  if (chit.fulfillmentMode === "SELF_PICKUP") {
+    encoder.align("center").bold(true).line("====================");
+    encoder.line(`SELF PICKUP #${chit.pickupNumber ?? chit.orderNumber}`);
+    encoder.line("====================").bold(false).align("left");
+  } else {
+    encoder.bold(true).line("TABLE SERVICE").bold(false);
+  }
+
   if (chit.externalOrderId) {
     encoder.line(`Ref: ${chit.externalOrderId.slice(0, LINE_WIDTH)}`);
   }

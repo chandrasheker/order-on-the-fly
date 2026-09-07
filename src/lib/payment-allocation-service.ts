@@ -5,7 +5,8 @@ import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audi
 import { auditPaymentSnapshot } from "@/platform/forensics/snapshots";
 import { setForensicCorrelationId, setForensicResource } from "@/platform/forensics/request-context";
 import { clearPaymentAlerts } from "@/lib/payment-service";
-import { orderItemLineTotal } from "@/lib/utils";
+import { orderItemBillableTotal, orderItemLineTotal } from "@/lib/utils";
+import { isSelfPickupOrder, settlementItemsForOrder } from "@/lib/fulfillment/collection";
 import { fromPaise, maxPaise, minPaise, toPaise } from "@/lib/money";
 import {
   FINANCIAL_PAID_EPSILON,
@@ -51,6 +52,7 @@ function computeSummaryFromOrder(
     tableId: string;
     status: string;
     paidAt: Date | null;
+    fulfillmentMode?: string | null;
     items: OrderItemRow[];
     discountAmount?: number | null;
     restaurant?: { receiptGstEnabled: boolean; receiptGstRate: number };
@@ -79,8 +81,9 @@ function computeSummaryFromOrder(
   },
   paidByItem: Map<string, number>,
 ) {
+  const selfPickup = isSelfPickupOrder(order);
   const itemSummaries = order.items.map((item) => {
-    const lineTotal = orderItemLineTotal(item);
+    const lineTotal = selfPickup ? orderItemBillableTotal(item) : orderItemLineTotal(item);
     const paid = paidByItem.get(item.id) ?? 0;
     return {
       id: item.id,
@@ -94,7 +97,7 @@ function computeSummaryFromOrder(
   });
 
   let financials: OrderFinancialSummary = financialsForOrder({
-    items: order.items,
+    items: settlementItemsForOrder(order.fulfillmentMode, order.items),
     discountAmount: order.discountAmount,
     payments: order.payments,
     gstEnabled: order.restaurant?.receiptGstEnabled,
@@ -137,7 +140,9 @@ function computeSummaryFromOrder(
     discountAmount: financials.orderDiscount,
     gstAmount: financials.gstAmount,
     financials,
-    fullyPaid: order.status === "SERVED" && financials.amountDue <= FINANCIAL_PAID_EPSILON,
+    fullyPaid:
+      financials.amountDue <= FINANCIAL_PAID_EPSILON &&
+      (selfPickup || order.status === "SERVED"),
     items: itemSummaries,
     payments: order.payments.map((p) => ({
       id: p.id,
@@ -221,11 +226,16 @@ function buildAllocations(
   itemIds: string[] | undefined,
   amount: number,
   paidByItem: Map<string, number>,
+  fulfillmentMode?: string | null,
 ) {
+  const selfPickup = fulfillmentMode === "SELF_PICKUP";
+  const lineAmount = (item: OrderItemRow) =>
+    selfPickup ? orderItemBillableTotal(item) : orderItemLineTotal(item);
   const targets = items.filter((item) => {
-    if (item.status !== "SERVED") return false;
+    if (item.status === "UNAVAILABLE") return false;
+    if (item.status !== "SERVED" && !selfPickup) return false;
     if (itemIds && itemIds.length > 0 && !itemIds.includes(item.id)) return false;
-    const lineTotal = orderItemLineTotal(item);
+    const lineTotal = lineAmount(item);
     const alreadyPaid = paidByItem.get(item.id) ?? 0;
     return lineTotal - alreadyPaid > 0.01;
   });
@@ -239,7 +249,7 @@ function buildAllocations(
 
   for (const item of targets) {
     if (remainingPaise <= 0) break;
-    const lineTotalPaise = toPaise(orderItemLineTotal(item));
+    const lineTotalPaise = toPaise(lineAmount(item));
     const alreadyPaidPaise = toPaise(paidByItem.get(item.id) ?? 0);
     const itemRemainingPaise = maxPaise(0, lineTotalPaise - alreadyPaidPaise);
     const allocPaise = minPaise(itemRemainingPaise, remainingPaise);
@@ -258,7 +268,9 @@ function buildAllocations(
       last.amount = fromPaise(toPaise(last.amount) + remainingPaise);
       remainingPaise = 0;
     } else {
-      const fallback = items.find((item) => item.status === "SERVED");
+      const fallback = items.find((item) =>
+        selfPickup ? item.status !== "UNAVAILABLE" : item.status === "SERVED",
+      );
       if (fallback) {
         allocations.push({
           orderItemId: fallback.id,
@@ -277,7 +289,7 @@ function buildAllocations(
   const applied = fromPaise(toPaise(amount) - remainingPaise);
   const selectedCap = itemIds?.length
     ? targets.reduce((sum, item) => {
-        const lineTotal = orderItemLineTotal(item);
+        const lineTotal = lineAmount(item);
         const alreadyPaid = paidByItem.get(item.id) ?? 0;
         return sum + Math.max(0, lineTotal - alreadyPaid);
       }, 0)
@@ -299,10 +311,10 @@ export async function finalizeOrderIfSettled(
 ) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { id: true, paidAt: true, tableId: true, status: true },
+    select: { id: true, paidAt: true, tableId: true, status: true, fulfillmentMode: true },
   });
   if (!order || order.paidAt) return false;
-  if (order.status !== "SERVED") return false;
+  if (order.status !== "SERVED" && order.fulfillmentMode !== "SELF_PICKUP") return false;
 
   const summary = await getOrderPaymentSummary(orderId);
   if (!summary) return false;
@@ -329,8 +341,13 @@ export async function finalizeOrderIfSettled(
   if (orderRow) {
     const { onTabPaymentProgress } = await import("@/lib/payment-service");
     await onTabPaymentProgress(orderRow.tableId);
-    const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
-    await maybeAutoCloseTableAfterPayment(orderRow.tableId);
+    if (order.fulfillmentMode !== "SELF_PICKUP") {
+      const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
+      await maybeAutoCloseTableAfterPayment(orderRow.tableId);
+    } else {
+      const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
+      await evaluateSelfPickupNotifications(orderId);
+    }
   }
   return true;
 }
@@ -366,7 +383,10 @@ export async function recordOrderPayment(params: {
       if (!order) {
         return { ok: false as const, error: "Order not found", status: 404 };
       }
-      if (order.status !== "SERVED") {
+      if (order.status === "CANCELLED") {
+        return { ok: false as const, error: "Cancelled orders cannot be paid", status: 409 };
+      }
+      if (order.status !== "SERVED" && order.fulfillmentMode !== "SELF_PICKUP") {
         return {
           ok: false as const,
           error: "Order must be fully served before payment",
@@ -473,7 +493,13 @@ export async function recordOrderPayment(params: {
         cashChange = fromPaise(maxPaise(0, toPaise(cashTendered) - toPaise(amount)));
       }
 
-      const built = buildAllocations(order.items, params.itemIds, amount, paidByItem);
+      const built = buildAllocations(
+        order.items,
+        params.itemIds,
+        amount,
+        paidByItem,
+        order.fulfillmentMode,
+      );
       if (!built.ok) {
         return { ok: false as const, error: built.error, status: 400 };
       }
@@ -654,8 +680,17 @@ export async function recordOrderPayment(params: {
       await clearPaymentAlerts(result.orderId);
       const { onTabPaymentProgress } = await import("@/lib/payment-service");
       await onTabPaymentProgress(result.tableId);
-      const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
-      await maybeAutoCloseTableAfterPayment(result.tableId);
+      const paidOrder = await prisma.order.findUnique({
+        where: { id: result.orderId },
+        select: { fulfillmentMode: true },
+      });
+      if (paidOrder?.fulfillmentMode === "SELF_PICKUP") {
+        const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
+        await evaluateSelfPickupNotifications(result.orderId);
+      } else {
+        const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
+        await maybeAutoCloseTableAfterPayment(result.tableId);
+      }
     }
 
     return {
@@ -1050,8 +1085,17 @@ export async function confirmManualUpiPayment(params: {
       await clearPaymentAlerts(result.orderId);
       const { onTabPaymentProgress } = await import("@/lib/payment-service");
       await onTabPaymentProgress(result.tableId);
-      const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
-      await maybeAutoCloseTableAfterPayment(result.tableId);
+      const paidOrder = await prisma.order.findUnique({
+        where: { id: result.orderId },
+        select: { fulfillmentMode: true },
+      });
+      if (paidOrder?.fulfillmentMode === "SELF_PICKUP") {
+        const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
+        await evaluateSelfPickupNotifications(result.orderId);
+      } else {
+        const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
+        await maybeAutoCloseTableAfterPayment(result.tableId);
+      }
     }
 
     const summary = result.orderId ? await getOrderPaymentSummary(result.orderId) : null;

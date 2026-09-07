@@ -125,7 +125,7 @@ async function handlePOST(req: NextRequest) {
       );
     }
 
-    const { tableId, customerName, openTable } = body;
+    const { tableId, customerName, openTable, fulfillmentMode } = body;
 
     if (!tableId || !items?.length) {
       return NextResponse.json({ error: "Table and items are required" }, { status: 400 });
@@ -144,6 +144,7 @@ async function handlePOST(req: NextRequest) {
       customerName,
       placedByUserId: session.id,
       placedByName: session.name,
+      requestedFulfillmentMode: fulfillmentMode,
       items: items.map((item: { menuItemId: string; quantity: number; notes?: string }) => ({
         menuItemId: item.menuItemId,
         quantity: item.quantity,

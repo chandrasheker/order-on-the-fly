@@ -301,8 +301,20 @@ export function RestaurantHealthTable({
                     </tr>
                     {open ? (
                       <tr className="border-t border-white/5 bg-white/[0.03]">
-                        <td colSpan={colSpan} className="px-4 py-3">
+                        <td colSpan={colSpan} className="px-4 py-3 space-y-3">
                           <AttentionList row={row} />
+                          {row.fulfillment && (
+                            <div className="text-xs text-zinc-400 space-y-1">
+                              <p>
+                                READY BUT UNPAID · Orders {row.fulfillment.readyUnpaidOrders} · Outstanding{" "}
+                                <Money paise={row.fulfillment.readyUnpaidOutstandingPaise} />
+                              </p>
+                              <p>
+                                Fulfillment mix · {row.fulfillment.selfPickupPercent ?? 0}% Self Pickup ·{" "}
+                                {row.fulfillment.tableServicePercent ?? 0}% Table Service
+                              </p>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ) : null}

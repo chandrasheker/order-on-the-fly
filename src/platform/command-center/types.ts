@@ -119,6 +119,18 @@ export type RestaurantCommandRow = {
     avgResolveMs: number | null;
     oldestPendingMs: number | null;
   };
+  fulfillment: {
+    serviceMode: string;
+    tableServiceOrders: number;
+    selfPickupOrders: number;
+    selfPickupPercent: number | null;
+    tableServicePercent: number | null;
+    readyWaiting: number;
+    readyUnpaidOrders: number;
+    readyUnpaidOutstandingPaise: number;
+    oldestReadyWaitingMs: number | null;
+    readyToCollected: DurationStats;
+  };
   money: {
     capturedGrossPaise: number;
     refundsPaise: number;
