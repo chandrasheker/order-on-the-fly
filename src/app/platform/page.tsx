@@ -311,9 +311,13 @@ function PlatformHomePageInner() {
                     {tenantList.visible.map((tenant) => {
                       const status = tenantStatus(tenant, command);
                       return (
-                        <tr key={tenant.id} className="border-t border-white/5 hover:bg-white/[0.03]">
+                        <tr
+                          key={tenant.id}
+                          className="border-t border-white/5 hover:bg-white/[0.03] cursor-pointer"
+                          onClick={() => router.push(`/platform/tenants/${tenant.id}`)}
+                        >
                           <td className="px-4 py-3">
-                            <Link href={`/platform/tenants/${tenant.id}`} className="block min-w-0">
+                            <Link href={`/platform/tenants/${tenant.id}`} className="block min-w-0" onClick={(event) => event.stopPropagation()}>
                               <p className="font-medium text-zinc-100">{tenant.name}</p>
                               <p className="text-xs text-zinc-500 truncate">
                                 {tenant.slug}

@@ -420,78 +420,6 @@ export function PlatformTenantOverview({
         )}
       </PlatformSection>
 
-      <PlatformSection title="Tenant Administrator" description="Name, email, and password reset. Restaurant OWNER credentials stay separate.">
-      <Card className="p-4 space-y-3">
-        {(overview?.admins ?? []).length === 0 ? (
-          <p className="text-sm text-zinc-500">No tenant administrator is configured.</p>
-        ) : (
-          (overview?.admins ?? []).map((adminRow) => (
-            <div key={adminRow.id} className="space-y-2 rounded-xl border border-white/10 p-3">
-              <p className="text-sm">
-                Name: <span className="text-zinc-200">{adminRow.name}</span>
-              </p>
-              <p className="text-sm">
-                Email: <span className="text-zinc-200">{adminRow.email}</span>
-              </p>
-              {resetAdminId === adminRow.id ? (
-                <div className="grid md:grid-cols-2 gap-2">
-                  <Input
-                    type="password"
-                    placeholder="New password"
-                    value={resetPassword}
-                    onChange={(e) => setResetPassword(e.target.value)}
-                  />
-                  <Input
-                    type="password"
-                    placeholder="Confirm password"
-                    value={confirmResetPassword}
-                    onChange={(e) => setConfirmResetPassword(e.target.value)}
-                  />
-                  <div className="md:col-span-2 flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={resettingAdmin || !resetPassword}
-                      onClick={() => void resetTenantAdmin(adminRow.id)}
-                    >
-                      {resettingAdmin ? "Saving…" : "Save password"}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={resettingAdmin}
-                      onClick={() => {
-                        setResetAdminId(null);
-                        setResetPassword("");
-                        setConfirmResetPassword("");
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <Button type="button" size="sm" variant="secondary" onClick={() => {
-                  setResetAdminId(adminRow.id);
-                  setResetMessage("");
-                  setResetPassword("");
-                  setConfirmResetPassword("");
-                }}>
-                  Reset Password
-                </Button>
-              )}
-            </div>
-          ))
-        )}
-        {resetMessage && (
-          <p className={`text-sm ${resetMessage.includes("successfully") ? "text-emerald-400" : "text-red-400"}`}>
-            {resetMessage}
-          </p>
-        )}
-      </Card>
-      </PlatformSection>
-
       <PlatformSection title="Restaurants" description="Enable or disable a location. Adding a second restaurant activates a dedicated tenant hostname.">
       <Card className="p-5">
         <div className="flex items-center gap-2 mb-4">
@@ -797,6 +725,78 @@ export function PlatformTenantOverview({
               Staff sign in
             </a>
           </div>
+        )}
+      </Card>
+      </PlatformSection>
+
+      <PlatformSection title="Tenant Administrator" description="Name, email, and password reset. Restaurant OWNER credentials stay separate.">
+      <Card className="p-4 space-y-3">
+        {(overview?.admins ?? []).length === 0 ? (
+          <p className="text-sm text-zinc-500">No tenant administrator is configured.</p>
+        ) : (
+          (overview?.admins ?? []).map((adminRow) => (
+            <div key={adminRow.id} className="space-y-2 rounded-xl border border-white/10 p-3">
+              <p className="text-sm">
+                Name: <span className="text-zinc-200">{adminRow.name}</span>
+              </p>
+              <p className="text-sm">
+                Email: <span className="text-zinc-200">{adminRow.email}</span>
+              </p>
+              {resetAdminId === adminRow.id ? (
+                <div className="grid md:grid-cols-2 gap-2">
+                  <Input
+                    type="password"
+                    placeholder="New password"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                  />
+                  <Input
+                    type="password"
+                    placeholder="Confirm password"
+                    value={confirmResetPassword}
+                    onChange={(e) => setConfirmResetPassword(e.target.value)}
+                  />
+                  <div className="md:col-span-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={resettingAdmin || !resetPassword}
+                      onClick={() => void resetTenantAdmin(adminRow.id)}
+                    >
+                      {resettingAdmin ? "Saving…" : "Save password"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={resettingAdmin}
+                      onClick={() => {
+                        setResetAdminId(null);
+                        setResetPassword("");
+                        setConfirmResetPassword("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button type="button" size="sm" variant="secondary" onClick={() => {
+                  setResetAdminId(adminRow.id);
+                  setResetMessage("");
+                  setResetPassword("");
+                  setConfirmResetPassword("");
+                }}>
+                  Reset Password
+                </Button>
+              )}
+            </div>
+          ))
+        )}
+        {resetMessage && (
+          <p className={`text-sm ${resetMessage.includes("successfully") ? "text-emerald-400" : "text-red-400"}`}>
+            {resetMessage}
+          </p>
         )}
       </Card>
       </PlatformSection>
