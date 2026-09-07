@@ -208,6 +208,51 @@ npx tsx prisma/seed.ts
 
 See **[AGGREGATOR_SETUP.md](./AGGREGATOR_SETUP.md)** for all path overrides.
 
+### Menu media (M6)
+
+Restaurants can attach **one optional food photo** per menu item. TableTap decodes the upload, strips EXIF, resizes to at most 1600×1600, and stores WebP.
+
+| Variable | Purpose |
+|----------|---------|
+| `MENU_MEDIA_STORAGE` | `local` (default) or `s3` |
+| `MENU_MEDIA_LOCAL_DIR` | Persistent directory (default `.data/menu-media`). Not `/tmp`, not `public/` |
+| `MENU_MEDIA_S3_BUCKET` | Bucket name when `s3` |
+| `MENU_MEDIA_S3_REGION` | Region (also used by R2/MinIO) |
+| `MENU_MEDIA_S3_ENDPOINT` | Optional custom endpoint for R2 / MinIO |
+| `MENU_MEDIA_S3_ACCESS_KEY_ID` | Server-side only |
+| `MENU_MEDIA_S3_SECRET_ACCESS_KEY` | Server-side only |
+| `MENU_MEDIA_S3_FORCE_PATH_STYLE` | `1` when the provider requires path-style URLs |
+
+Accepted input: JPEG, PNG, WebP. Maximum upload size: **5 MiB**.
+
+Orphan cleanup (dry-run by default; 24-hour grace):
+
+```bash
+npm run menu-media:cleanup
+npm run menu-media:cleanup -- --apply
+```
+
+### Assisted menu import (M6)
+
+OWNER/MANAGER can upload an existing menu as one PDF or a set of JPG/JPEG/PNG/WebP pages. TableTap extracts a **review draft only**. Live `MenuCategory` / `MenuItem` rows are created after an explicit **Apply Import**. Source documents stay in a private `menu-imports` storage namespace and are never customer food photos.
+
+Selectable text PDFs extract locally even when `MENU_IMPORT_PROVIDER` is unset. Photo and scanned pages are read locally (best-effort OCR) into the same review draft. Optional `mock` (deterministic/test) or `openai` plus `MENU_IMPORT_API_KEY` can replace that local path. The app still starts if those are missing.
+
+| Variable | Purpose |
+|----------|---------|
+| `MENU_IMPORT_PROVIDER` | `none` (default), `mock`, or `openai` |
+| `MENU_IMPORT_API_KEY` | Server-side only. Missing key does not prevent the app from starting |
+| `MENU_IMPORT_MODEL` | Optional model id (default `gpt-4o-mini` for openai) |
+| `MENU_IMPORT_BASE_URL` | Optional OpenAI-compatible base URL |
+| `MENU_IMPORT_TIMEOUT_MS` | Provider timeout (default 45000, max 120000) |
+
+Limits: 20 pages/images, 10 MiB per file, 50 MiB total (Next.js proxy allows 55mb for multipart overhead). Password-protected PDFs are rejected. Cleanup of temporary sources (7 days after applied/cancelled, 30 days abandoned):
+
+```bash
+npm run menu-import:cleanup
+npm run menu-import:cleanup -- --apply
+```
+
 ### Docker Compose
 
 | Variable | Default | Purpose |

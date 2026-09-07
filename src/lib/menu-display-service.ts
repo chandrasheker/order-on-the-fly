@@ -33,6 +33,7 @@ export async function getRestaurantDisplayMenu(slug: string) {
           isVeg: true,
           isSpicy: true,
           prepTimeMinutes: true,
+          imageUrl: true,
         },
       },
     },

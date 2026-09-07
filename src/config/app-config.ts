@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { assertJwtSecretForEnv, isNextJsProductionBuild } from "@/lib/jwt-secret";
 import { isValidTenantBaseDomain } from "@/platform/host";
+import { publicMenuMediaConfig, resolveMenuMediaConfig, type PublicMenuMediaConfig } from "@/lib/menu-media/config";
+import { publicMenuImportConfig } from "@/lib/menu-import/config";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -28,11 +30,26 @@ const envSchema = z.object({
   TENANT_PUBLIC_PROTOCOL: z.enum(["http", "https"]).optional(),
   TENANT_PUBLIC_PORT: z.string().optional(),
   TRUST_FORWARDED_HOST: z.enum(["0", "1"]).optional(),
+  MENU_MEDIA_STORAGE: z.enum(["local", "s3"]).optional(),
+  MENU_MEDIA_LOCAL_DIR: z.string().optional(),
+  MENU_MEDIA_S3_BUCKET: z.string().optional(),
+  MENU_MEDIA_S3_REGION: z.string().optional(),
+  MENU_MEDIA_S3_ENDPOINT: z.string().optional(),
+  MENU_MEDIA_S3_ACCESS_KEY_ID: z.string().optional(),
+  MENU_MEDIA_S3_SECRET_ACCESS_KEY: z.string().optional(),
+  MENU_MEDIA_S3_FORCE_PATH_STYLE: z.enum(["0", "1"]).optional(),
+  MENU_IMPORT_PROVIDER: z.string().optional(),
+  MENU_IMPORT_API_KEY: z.string().optional(),
+  MENU_IMPORT_MODEL: z.string().optional(),
+  MENU_IMPORT_BASE_URL: z.string().optional(),
+  MENU_IMPORT_TIMEOUT_MS: z.string().optional(),
 });
 
 export type AppConfig = z.infer<typeof envSchema> & {
   isProduction: boolean;
   isPostgres: boolean;
+  menuMedia: PublicMenuMediaConfig;
+  menuImport: { provider: string; configured: boolean; textAvailable: boolean; model?: string };
 };
 
 let cached: AppConfig | null = null;
@@ -59,10 +76,14 @@ export function loadAppConfig(options?: { strict?: boolean }): AppConfig {
   }
 
   const dbUrl = process.env.DATABASE_URL ?? "file:./dev.db";
+  const menuMedia = publicMenuMediaConfig(resolveMenuMediaConfig(process.env));
   cached = {
     ...parsed.data,
+    MENU_IMPORT_API_KEY: undefined,
     isProduction,
     isPostgres: dbUrl.startsWith("postgres"),
+    menuMedia,
+    menuImport: publicMenuImportConfig(process.env),
   };
   return cached;
 }

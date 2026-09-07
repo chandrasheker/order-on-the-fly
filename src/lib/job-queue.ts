@@ -17,13 +17,15 @@ export type JobType =
   | "print_job"
   | "analytics"
   | "recipe_deduct"
-  | "platform_event";
+  | "platform_event"
+  | "menu_import_process";
 
 export async function enqueueJob(params: {
   type: JobType;
   payload: Record<string, unknown>;
   restaurantId?: string;
   scheduledAt?: Date;
+  maxAttempts?: number;
 }) {
   const row = await prisma.backgroundJob.create({
     data: {
@@ -32,6 +34,7 @@ export async function enqueueJob(params: {
       restaurantId: params.restaurantId ?? null,
       scheduledAt: params.scheduledAt ?? new Date(),
       status: "PENDING",
+      ...(params.maxAttempts != null ? { maxAttempts: params.maxAttempts } : {}),
     },
   });
 
@@ -99,6 +102,11 @@ async function handleJob(type: JobType, payload: Record<string, unknown>) {
         String(payload.restaurantId),
         payload.items as Array<{ menuItemId: string; quantity: number }>,
       );
+      break;
+    }
+    case "menu_import_process": {
+      const { processMenuImportJob } = await import("@/lib/menu-import/process");
+      await processMenuImportJob(String(payload.importId));
       break;
     }
     default:

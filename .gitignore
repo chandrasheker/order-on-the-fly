@@ -58,6 +58,7 @@ prisma/dev.db
 /data/payments/
 /data/backgrounds/
 /.data/
+*.traineddata
 .printer-agent-state/
 printer-agent/.printer-agent-state/
 

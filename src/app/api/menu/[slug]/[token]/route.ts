@@ -11,6 +11,7 @@ import { resolveTenantFromHost } from "@/platform/host-tenant";
 import { assertPathSlugForResolution, opaqueNotFoundJson } from "@/platform/tenant-scope";
 import { isRazorpayAutomaticReady } from "@/lib/automatic-gateway";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+import { omitMenuItemStorageKey } from "@/lib/menu-media/keys";
 
 async function handleGET(
   req: NextRequest,
@@ -133,7 +134,7 @@ async function handleGET(
     const enrichedCategories = categories.map((cat) => ({
       ...cat,
       items: cat.items.map((item) => ({
-        ...item,
+        ...omitMenuItemStorageKey(item),
         modifierGroups: modifiersByItem.get(item.id) ?? [],
       })),
     }));

@@ -160,6 +160,11 @@ Production validation is not relaxed for localhost. `{slug}.localhost` is as str
 | `TRUST_FORWARDED_HOST` | `1` to read a single `X-Forwarded-Host` (proxy-only) |
 | `RESTAURANT_CONFIG` | Which tenant/restaurants to seed |
 | `DATABASE_URL` | Shared database for all tenants |
+| `MENU_MEDIA_STORAGE` | `local` or `s3` for M6 menu-item food photos |
+| `MENU_MEDIA_LOCAL_DIR` | Persistent local media directory (default `.data/menu-media`) |
+| `MENU_MEDIA_S3_*` | Bucket/region/keys/optional endpoint for S3-compatible storage |
+
+Menu photos are served at `/api/menu/media/{menuItemId}?v={revision}` and are hostname-scoped: `abc.dvadtech.in` cannot read XYZ’s images. Uploads stay on the restaurant host and use the existing OWNER/MANAGER menu permission. Cleanup: `npm run menu-media:cleanup` (dry-run) or `-- --apply`. JPEG/PNG/WebP, 5 MiB max.
 
 Existing slugs that are not valid DNS labels are **not** auto-renamed. Run `npm run slugs:check` and migrate those restaurants explicitly.
 

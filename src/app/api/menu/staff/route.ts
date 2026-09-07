@@ -4,6 +4,7 @@ import { canPlaceOfflineOrder } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+import { omitMenuItemStorageKey } from "@/lib/menu-media/keys";
 
 async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
@@ -26,7 +27,12 @@ async function handleGET() {
   });
 
   return NextResponse.json({
-    categories: categories.filter((category) => category.items.length > 0),
+    categories: categories
+      .filter((category) => category.items.length > 0)
+      .map((category) => ({
+        ...category,
+        items: category.items.map((item) => omitMenuItemStorageKey(item)),
+      })),
   });
 }
 

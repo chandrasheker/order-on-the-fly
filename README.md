@@ -68,7 +68,7 @@ domain / LAN IP so QR codes point to the correct URL.
 | Area | Tier | What you get |
 |------|------|----------------|
 | **Deploy** | Core | `npm run setup`, `restaurant.config.json`, Postgres/SQLite |
-| **Guest ordering** | Core | QR + rotating check-in codes, session limits, table open/close |
+| **Guest ordering** | Core | QR + rotating check-in codes, session limits, table open/close, optional menu-item food photos and assisted existing-menu import (M6) |
 | **Staff dashboard** | Core | Live orders, prep timers, overdue alerts, payment pending |
 | **Kitchen (KDS)** | Premium | `/kitchen` — station-routed tickets |
 | **Floor plan** | Premium | `/staff/floor` — table map, timers, server assignment |

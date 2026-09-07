@@ -11,6 +11,7 @@ type DisplayItem = {
   price: number;
   isVeg: boolean;
   isSpicy: boolean;
+  imageUrl?: string | null;
 };
 
 type DisplayCategory = {
@@ -161,6 +162,16 @@ export function MenuDisplayBoard({
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
+                      {!printMode && item.imageUrl ? (
+                        <div className="relative w-16 h-16 shrink-0 overflow-hidden rounded-xl bg-white/5">
+                          <img
+                            src={item.imageUrl}
+                            alt={item.name}
+                            loading="lazy"
+                            className="absolute inset-0 h-full w-full object-cover"
+                          />
+                        </div>
+                      ) : null}
                       <div className="min-w-0">
                         <h3 className={`font-semibold text-lg ${printMode ? "text-black" : ""}`}>
                           {item.name}

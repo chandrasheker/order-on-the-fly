@@ -8,6 +8,8 @@ import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
 import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
 import { auditMenuItemSnapshot } from "@/platform/forensics/snapshots";
 import { setForensicResource } from "@/platform/forensics/request-context";
+import { deleteManagedMenuMediaBestEffort } from "@/lib/menu-media/service";
+import { omitMenuItemStorageKey } from "@/lib/menu-media/keys";
 
 async function handleGET() {
   const session = await requireSession();
@@ -25,7 +27,12 @@ async function handleGET() {
     orderBy: { sortOrder: "asc" },
   });
 
-  return NextResponse.json({ categories });
+  return NextResponse.json({
+    categories: categories.map((category) => ({
+      ...category,
+      items: category.items.map((item) => omitMenuItemStorageKey(item)),
+    })),
+  });
 }
 
 export const GET = withForensicApiRoute(handleGET);
@@ -174,6 +181,7 @@ async function handleDELETE(req: NextRequest) {
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
   }
 
+  const storageKey = item.imageStorageKey;
   await prisma.$transaction(async (tx) => {
     const snapshot = auditMenuItemSnapshot(item);
     await appendPlatformAuditEventInTx(tx, {
@@ -187,6 +195,7 @@ async function handleDELETE(req: NextRequest) {
     });
     await tx.menuItem.delete({ where: { id: itemId } });
   });
+  await deleteManagedMenuMediaBestEffort(storageKey);
   scheduleMenuSync(session.restaurantId);
   return NextResponse.json({ success: true });
 }
