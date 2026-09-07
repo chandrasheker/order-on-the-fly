@@ -26,6 +26,7 @@ let staffLogin: typeof import("@/app/api/auth/login/route").POST;
 const suffix = `${Date.now()}`;
 const sharedPassword = "shared12";
 const nextPassword = "newpass12";
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 before(async () => {
   execFileSync(
@@ -117,6 +118,7 @@ describe("platform TenantAdmin password reset", () => {
         method: "POST",
         body: { email, password: sharedPassword },
       }),
+      emptyRouteContext,
     );
     assert.equal(beforeLogin.status, 200);
 
@@ -134,6 +136,7 @@ describe("platform TenantAdmin password reset", () => {
         method: "POST",
         body: { email, password: sharedPassword },
       }),
+      emptyRouteContext,
     );
     assert.equal(oldRejected.status, 401);
 
@@ -142,6 +145,7 @@ describe("platform TenantAdmin password reset", () => {
         method: "POST",
         body: { email, password: nextPassword },
       }),
+      emptyRouteContext,
     );
     assert.equal(newAccepted.status, 200);
 
@@ -150,6 +154,7 @@ describe("platform TenantAdmin password reset", () => {
         method: "POST",
         body: { email, password: sharedPassword },
       }),
+      emptyRouteContext,
     );
     assert.equal(ownerLogin.status, 200);
   });
@@ -191,6 +196,7 @@ describe("platform TenantAdmin password reset", () => {
         method: "POST",
         body: { email, password: sharedPassword },
       }),
+      emptyRouteContext,
     );
     const staffCookie = staff.headers.get("set-cookie") ?? "";
     const staffMatch = staffCookie.match(new RegExp(`${STAFF_SESSION_COOKIE}=([^;]+)`));
@@ -202,6 +208,7 @@ describe("platform TenantAdmin password reset", () => {
         tenantAdminId: created.tenantAdmin.id,
         newPassword: "nope123",
       }),
+      emptyRouteContext,
     );
     const asTenantAdmin = await tenantsPatch(
       platformRequest(
@@ -213,6 +220,7 @@ describe("platform TenantAdmin password reset", () => {
         },
         `${TENANT_ADMIN_COOKIE}=${tenantToken}`,
       ),
+      emptyRouteContext,
     );
     const asStaff = await tenantsPatch(
       platformRequest(
@@ -224,6 +232,7 @@ describe("platform TenantAdmin password reset", () => {
         },
         staffMatch ? `${STAFF_SESSION_COOKIE}=${staffMatch[1]}` : "",
       ),
+      emptyRouteContext,
     );
     assert.equal(anonymous.status, 401);
     assert.equal(asTenantAdmin.status, 401);
@@ -263,6 +272,7 @@ describe("platform TenantAdmin password reset", () => {
         method: "POST",
         body: { email, password: nextPassword },
       }),
+      emptyRouteContext,
     );
     assert.equal(relogin.status, 200);
   });
