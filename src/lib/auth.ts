@@ -250,9 +250,7 @@ export async function verifyTenantAdminToken(token: string): Promise<TenantAdmin
   }
 }
 
-export async function getTenantAdminSession(): Promise<TenantAdminSession | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(TENANT_ADMIN_COOKIE)?.value;
+export async function loadTenantAdminSession(token: string | undefined): Promise<TenantAdminSession | null> {
   if (!token) return null;
   const payload = await verifyTenantAdminToken(token);
   if (!payload) return null;
@@ -279,6 +277,15 @@ export async function getTenantAdminSession(): Promise<TenantAdminSession | null
     name: admin.name,
     tenantId: admin.tenantId,
   };
+}
+
+export async function getTenantAdminSession(): Promise<TenantAdminSession | null> {
+  try {
+    const cookieStore = await cookies();
+    return loadTenantAdminSession(cookieStore.get(TENANT_ADMIN_COOKIE)?.value);
+  } catch {
+    return null;
+  }
 }
 
 export async function requireTenantAdmin() {

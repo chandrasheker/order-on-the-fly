@@ -26,6 +26,7 @@ import {
   syncTenantHostLeases,
   syncTenantRestaurantHostnames,
 } from "@/lib/hostname-allocation";
+import { slotCountsFromRestaurant } from "@/lib/staff-slots";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -542,17 +543,34 @@ export async function listTenantsWithRestaurants() {
   return tenants;
 }
 
+function toIso(value: Date | null | undefined) {
+  return value ? value.toISOString() : null;
+}
+
 export async function getTenantOverview(tenantId: string) {
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
     include: {
       restaurants: {
+        orderBy: { name: "asc" },
         include: {
           _count: { select: { orders: true, users: true, tables: true } },
+          branches: {
+            orderBy: { name: "asc" },
+            include: { floors: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] } },
+          },
+          users: {
+            select: { id: true, name: true, email: true, role: true, slotKey: true, createdAt: true },
+            orderBy: [{ role: "asc" }, { name: "asc" }],
+          },
         },
       },
-      admins: { select: { id: true, name: true, email: true }, orderBy: { createdAt: "asc" } },
+      admins: {
+        select: { id: true, name: true, email: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      },
       subscriptions: { orderBy: { createdAt: "desc" }, take: 12 },
+      hostSlugs: { orderBy: { slug: "asc" }, select: { slug: true, kind: true } },
     },
   });
   if (!tenant) return null;
@@ -574,8 +592,52 @@ export async function getTenantOverview(tenantId: string) {
     name: restaurant.name,
     slug: restaurant.slug,
     isEnabled: restaurant.isEnabled,
+    createdAt: restaurant.createdAt.toISOString(),
+    serviceMode: restaurant.serviceMode,
+    pickupLocationLabel: restaurant.pickupLocationLabel,
+    hybridDefaultFulfillment: restaurant.hybridDefaultFulfillment,
+    staffConfigured: restaurant.staffConfigured,
+    slotCounts: slotCountsFromRestaurant(restaurant),
+    kitchenPaused: restaurant.kitchenPaused,
+    kitchenPauseMessage: restaurant.kitchenPauseMessage,
+    kitchenAutoPauseOverdueThreshold: restaurant.kitchenAutoPauseOverdueThreshold,
+    receiptAddress: restaurant.receiptAddress,
+    receiptPhone: restaurant.receiptPhone,
+    receiptGstin: restaurant.receiptGstin,
+    receiptGstEnabled: restaurant.receiptGstEnabled,
+    receiptGstRate: restaurant.receiptGstRate,
+    receiptFooter: restaurant.receiptFooter,
+    upiVpa: restaurant.upiVpa,
+    upiMerchantName: restaurant.upiMerchantName,
+    paymentGatewayProvider: restaurant.paymentGatewayProvider,
+    pushAlertsEnabled: restaurant.pushAlertsEnabled,
+    smsAlertsEnabled: restaurant.smsAlertsEnabled,
+    logoUrl: restaurant.logoUrl,
     _count: restaurant._count,
     activeSessions: summarizeActiveSessions(activeByRestaurant.get(restaurant.id) ?? []),
+    branches: restaurant.branches.map((branch) => ({
+      id: branch.id,
+      name: branch.name,
+      slug: branch.slug,
+      address: branch.address,
+      isDefault: branch.isDefault,
+      timezone: branch.timezone,
+      floors: branch.floors.map((floor) => ({
+        id: floor.id,
+        name: floor.name,
+        slug: floor.slug,
+        isDefault: floor.isDefault,
+        sortOrder: floor.sortOrder,
+      })),
+    })),
+    staff: restaurant.users.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      slotKey: user.slotKey,
+      createdAt: user.createdAt.toISOString(),
+    })),
   }));
 
   return {
@@ -586,16 +648,37 @@ export async function getTenantOverview(tenantId: string) {
       plan: tenant.plan,
       subscriptionStatus: tenant.subscriptionStatus,
       isEnabled: tenant.isEnabled,
+      billingEmail: tenant.billingEmail,
+      createdAt: tenant.createdAt.toISOString(),
+      updatedAt: tenant.updatedAt.toISOString(),
+      demoExpiresAt: toIso(tenant.demoExpiresAt),
+      demoPackUsedAt: toIso(tenant.demoPackUsedAt),
       hubActive: tenantHubIsActive({
         tenantSlug: tenant.slug,
         tenantName: tenant.name,
         restaurants: tenant.restaurants,
       }),
     },
-    admins: tenant.admins,
+    admins: tenant.admins.map((admin) => ({
+      id: admin.id,
+      name: admin.name,
+      email: admin.email,
+      createdAt: admin.createdAt.toISOString(),
+    })),
+    subscriptions: tenant.subscriptions.map((subscription) => ({
+      id: subscription.id,
+      plan: subscription.plan,
+      status: subscription.status,
+      currentPeriodEnd: toIso(subscription.currentPeriodEnd),
+      createdAt: subscription.createdAt.toISOString(),
+      updatedAt: subscription.updatedAt.toISOString(),
+    })),
+    hostSlugs: tenant.hostSlugs.map((row) => ({ slug: row.slug, kind: row.kind })),
     restaurants: restaurantsWithSessions,
     stats: {
       restaurantCount: tenant.restaurants.length,
+      enabledRestaurants: tenant.restaurants.filter((restaurant) => restaurant.isEnabled).length,
+      configuredStaffRestaurants: tenant.restaurants.filter((restaurant) => restaurant.staffConfigured).length,
       ordersToday,
       totalOrders: tenant.restaurants.reduce((s, r) => s + r._count.orders, 0),
       totalStaff: tenant.restaurants.reduce((s, r) => s + r._count.users, 0),

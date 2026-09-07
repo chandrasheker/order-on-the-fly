@@ -31,7 +31,26 @@ import type {
 const OPEN_ORDER = ["PENDING", "PREPARING", "READY"] as const;
 const KITCHEN_OPEN_ITEM = ["PENDING", "PREPARING", "READY"] as const;
 
-function hrefs(tenantId: string, restaurantId: string) {
+function hrefs(
+  tenantId: string,
+  restaurantId: string,
+  linkStyle: "platform" | "tenant" = "platform",
+) {
+  if (linkStyle === "tenant") {
+    const tenant = "/tenant";
+    return {
+      overview: `${tenant}?tab=restaurants&restaurantId=${restaurantId}`,
+      operations: `${tenant}?tab=operations&restaurantId=${restaurantId}`,
+      sla: `${tenant}?tab=operations&restaurantId=${restaurantId}&focus=sla`,
+      financial: `${tenant}?tab=analytics&restaurantId=${restaurantId}`,
+      staff: `${tenant}?tab=staff&restaurantId=${restaurantId}`,
+      logs: `${tenant}?tab=logs&restaurantId=${restaurantId}`,
+      errors: `${tenant}?tab=logs&restaurantId=${restaurantId}&preset=errors`,
+      paymentsFailed: `${tenant}?tab=logs&restaurantId=${restaurantId}&preset=payments&failedOnly=1`,
+      printingAmbiguous: `${tenant}?tab=logs&restaurantId=${restaurantId}&preset=printing&ambiguousOnly=1`,
+      security: `${tenant}?tab=logs&preset=security`,
+    };
+  }
   const base = `/platform/tenants/${tenantId}/restaurants/${restaurantId}`;
   const tenantLogs = `/platform/tenants/${tenantId}`;
   return {
@@ -91,6 +110,7 @@ export async function getCommandCenter(params: {
   range: ResolvedTimeRange;
   tenantId?: string;
   restaurantId?: string;
+  linkStyle?: "platform" | "tenant";
 }): Promise<CommandCenterPayload> {
   const range = params.range;
   const restaurantWhere = params.restaurantId
@@ -851,7 +871,7 @@ export async function getCommandCenter(params: {
           percent: null,
         },
       },
-      hrefs: hrefs(tenantId, restaurant.id),
+      hrefs: hrefs(tenantId, restaurant.id, params.linkStyle ?? "platform"),
     };
   });
 
