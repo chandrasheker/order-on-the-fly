@@ -36,13 +36,13 @@ function playPleasantChime() {
 }
 
 export function useSelfPickupAlerts(
-  orders: Array<{ id: string; pickup?: { pickupState?: PickupAlertState | null } | null }>,
+  orders: Array<{ id: string; pickup?: { pickupState?: string | null } | null }>,
 ) {
   const previous = useRef<Map<string, PickupAlertState | null>>(new Map());
 
   useEffect(() => {
     for (const order of orders) {
-      const next = order.pickup?.pickupState ?? null;
+      const next = (order.pickup?.pickupState ?? null) as PickupAlertState | null;
       const prev = previous.current.get(order.id) ?? null;
       previous.current.set(order.id, next);
       if (!next || next === prev) continue;
