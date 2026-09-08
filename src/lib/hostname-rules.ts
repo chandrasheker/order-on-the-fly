@@ -1,8 +1,7 @@
 import { slugify } from "@/lib/utils";
 import { restaurantSlugValidationError } from "@/lib/restaurant-slug";
 
-export const MULTI_RESTAURANT_SAME_NAME_ERROR =
-  "A multi-restaurant tenant must have a tenant name different from each restaurant name. Rename the tenant or the existing restaurant before adding another restaurant.";
+export const RESTAURANT_HOSTNAME_CHANGED_PREFIX = "Restaurant hostname changed to ";
 
 export function canonicalizeName(value: string): string {
   return String(value ?? "")
@@ -46,13 +45,8 @@ export function assertUniqueRestaurantNames(names: string[]) {
   }
 }
 
-export function assertMultiRestaurantNaming(tenantName: string, restaurantNames: string[]) {
-  if (restaurantNames.length <= 1) return;
-  for (const name of restaurantNames) {
-    if (isSameEntityName(tenantName, name)) {
-      throw new Error(MULTI_RESTAURANT_SAME_NAME_ERROR);
-    }
-  }
+export function restaurantHostnameChangedNotice(hostname: string) {
+  return `${RESTAURANT_HOSTNAME_CHANGED_PREFIX}${hostname}. Reprint/reissue QR codes that contain the old hostname.`;
 }
 
 export function tenantSlugFromName(tenantName: string): string {
@@ -101,14 +95,13 @@ export function isSingleSameNameRestaurantMode(input: {
   );
 }
 
-/** Tenant hub is live when the tenant slug is not the restaurant application host. */
+/** Dedicated tenant hub is live only when the tenant has two or more restaurants. */
 export function tenantHubIsActive(input: {
-  tenantSlug: string;
-  tenantName: string;
-  restaurants: Array<{ name: string; slug: string }>;
+  tenantSlug?: string;
+  tenantName?: string;
+  restaurants: Array<{ name?: string; slug?: string }>;
 }): boolean {
-  if (input.restaurants.length === 0) return false;
-  return !isSingleSameNameRestaurantMode(input);
+  return input.restaurants.length >= 2;
 }
 
 export function previewHostnames(input: {
@@ -120,7 +113,6 @@ export function previewHostnames(input: {
   const tenantName = assertTenantName(input.tenantName);
   const restaurantNames = input.restaurantNames.map(assertRestaurantName);
   assertUniqueRestaurantNames(restaurantNames);
-  assertMultiRestaurantNaming(tenantName, restaurantNames);
   const tenantSlug = input.tenantSlug?.trim()
     ? input.tenantSlug.trim().toLowerCase()
     : tenantSlugFromName(tenantName);

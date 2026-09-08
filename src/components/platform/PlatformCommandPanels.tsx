@@ -272,6 +272,20 @@ export function RestaurantOperationsCard({ row, focus }: { row: RestaurantComman
           <p className="text-sm">
             Created→served avg {formatDurationMs(row.service.orderToServed.average)} · P95 {formatDurationMs(row.service.orderToServed.p95)} · n={row.service.orderToServed.sampleCount}
           </p>
+          {row.fulfillment && (
+            <p className="text-sm mt-2">
+              {row.fulfillment.serviceMode.replaceAll("_", " ")}
+              {row.fulfillment.selfPickupPercent != null
+                ? ` · ${row.fulfillment.selfPickupPercent}% self pickup`
+                : ""}
+              {row.fulfillment.readyUnpaidOrders > 0
+                ? ` · READY BUT UNPAID ${row.fulfillment.readyUnpaidOrders} / `
+                : ""}
+              {row.fulfillment.readyUnpaidOrders > 0 ? (
+                <Money paise={row.fulfillment.readyUnpaidOutstandingPaise} />
+              ) : null}
+            </p>
+          )}
         </div>
         <div>
           <div className="flex items-center justify-between">

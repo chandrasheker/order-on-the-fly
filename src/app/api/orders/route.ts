@@ -14,7 +14,7 @@ import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-rou
 async function handlePOST(req: NextRequest) {
   logApiRequest("orders", "POST");
   try {
-    const { tableToken, customerName, items, comboMeals, promoCode, sessionKey } = await req.json();
+    const { tableToken, customerName, items, comboMeals, promoCode, sessionKey, fulfillmentMode } = await req.json();
 
     if (!tableToken || (!items?.length && !comboMeals?.length)) {
       return NextResponse.json({ error: "Invalid order data" }, { status: 400 });
@@ -53,6 +53,7 @@ async function handlePOST(req: NextRequest) {
       restaurantId: table.restaurantId,
       customerName,
       promoCode: promoCode ?? null,
+      requestedFulfillmentMode: fulfillmentMode,
       items: (items ?? []).map(
         (item: {
           menuItemId: string;
@@ -133,9 +134,24 @@ async function handleGET(req: NextRequest) {
     const orders = await getTableTabOrders(table.id);
     const ordersWithMenu = await prisma.order.findMany({
       where: { id: { in: orders.map((order) => order.id) } },
-      include: { items: { include: { menuItem: true } } },
+      include: { items: { include: { menuItem: true } }, payments: true },
       orderBy: { createdAt: "desc" },
     });
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: table.restaurantId },
+      select: {
+        pickupLocationLabel: true,
+        receiptGstEnabled: true,
+        receiptGstRate: true,
+      },
+    });
+    for (const order of ordersWithMenu) {
+      if (order.fulfillmentMode === "SELF_PICKUP") {
+        const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
+        await evaluateSelfPickupNotifications(order.id);
+      }
+    }
+    const { publicPickupView } = await import("@/lib/fulfillment/collection");
     const tabSummary = await getTableTabPaymentSummary(table.id);
     const { ensureBillPublicToken } = await import("@/lib/public-receipt-service");
     const bills = await prisma.bill.findMany({
@@ -144,17 +160,40 @@ async function handleGET(req: NextRequest) {
         orderId: { in: ordersWithMenu.map((order) => order.id) },
         status: "FINALIZED",
       },
-      select: { id: true, orderId: true, publicToken: true },
+      select: {
+        id: true,
+        orderId: true,
+        publicToken: true,
+        status: true,
+        grandTotal: true,
+        itemSubtotal: true,
+        orderDiscount: true,
+        gstAmount: true,
+        cgstAmount: true,
+        sgstAmount: true,
+      },
     });
     const receiptByOrder = new Map<string, string>();
+    const billsByOrder = new Map<string, typeof bills>();
     for (const bill of bills) {
       const token = bill.publicToken || (await ensureBillPublicToken(bill.id));
       if (token) receiptByOrder.set(bill.orderId, `/receipt/${token}`);
+      const list = billsByOrder.get(bill.orderId) ?? [];
+      list.push(bill);
+      billsByOrder.set(bill.orderId, list);
     }
     return NextResponse.json({
       orders: ordersWithMenu.map((order) => ({
         ...order,
         receiptUrl: receiptByOrder.get(order.id) ?? null,
+        pickup: publicPickupView(
+          {
+            ...order,
+            restaurant,
+            bills: billsByOrder.get(order.id) ?? [],
+          },
+          restaurant?.pickupLocationLabel,
+        ),
       })),
       paymentBlocked: await isTablePaymentBlocked(table.id),
       tabPaymentPending: tabSummary.paymentRequested,

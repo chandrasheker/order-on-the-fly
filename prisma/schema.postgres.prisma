@@ -209,8 +209,12 @@ model Restaurant {
   paymentWebhookSecretEnc String?
   pushAlertsEnabled     Boolean        @default(true)
   smsAlertsEnabled      Boolean        @default(true)
+  serviceMode           String         @default("FULL_SERVICE")
+  pickupLocationLabel   String         @default("Pickup Counter")
+  hybridDefaultFulfillment String      @default("TABLE_SERVICE")
   tenantId              String?
   tenant                Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  nameNormalized        String         @default("")
   createdAt             DateTime       @default(now())
   branches              Branch[]
   users                 User[]
@@ -246,6 +250,9 @@ model Restaurant {
   apiKeys               ApiKey[]
   demandForecasts       DemandForecast[]
   menuImports           MenuImport[]
+  hostSlugs             HostSlug[]
+
+  @@unique([tenantId, nameNormalized])
 }
 
 model User {
@@ -452,10 +459,18 @@ model Order {
   bills          Bill[]
   printJobs      PrintJob[]
   gatewayPaymentAttempts GatewayPaymentAttempt[]
+  fulfillmentMode    String      @default("TABLE_SERVICE")
+  pickupCode         String?
+  readyAt            DateTime?
+  collectedAt        DateTime?
+  readyPaymentRequiredNotifiedAt DateTime?
+  readyForCollectionNotifiedAt DateTime?
+  collectionReminderNotifiedAt DateTime?
 
   @@index([restaurantId, date])
   @@index([tableId])
   @@index([restaurantId, orderChannel, externalOrderId])
+  @@index([restaurantId, fulfillmentMode, status])
 }
 
 model AggregatorConnection {
@@ -873,12 +888,15 @@ model PushSubscription {
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   userId       String?
+  audience     String     @default("STAFF")
+  tableId      String?
   endpoint     String     @unique
   p256dh       String
   auth         String
   createdAt    DateTime   @default(now())
 
   @@index([restaurantId])
+  @@index([restaurantId, audience, tableId])
 }
 
 model PaymentWebhookEvent {
@@ -1020,6 +1038,7 @@ model PrinterAgent {
 model Tenant {
   id                 String             @id @default(cuid())
   name               String
+  nameNormalized     String             @unique @default("")
   slug               String             @unique
   plan               TenantPlan         @default(STARTER)
   subscriptionStatus SubscriptionStatus @default(TRIAL)
@@ -1031,6 +1050,38 @@ model Tenant {
   subscriptions      TenantSubscription[]
   printJobs          PrintJob[]
   printerAgents      PrinterAgent[]
+  admins             TenantAdmin[]
+  hostSlugs          HostSlug[]
+}
+
+/** Global DNS-label lease for tenant hubs and restaurants. */
+model HostSlug {
+  slug         String      @id
+  kind         String
+  tenantId     String
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([tenantId, kind])
+  @@index([restaurantId])
+}
+
+/** Tenant-host admin. Separate from restaurant OWNER and platform admin. */
+model TenantAdmin {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String
+  name         String
+  authVersion  Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@unique([tenantId, email])
+  @@index([email])
 }
 
 model TenantSubscription {

@@ -24,6 +24,8 @@ export type KitchenBoardTicket = {
   orderNumber: number;
   tableNumber: number;
   locationLabel?: string;
+  fulfillmentMode?: string | null;
+  pickupNumber?: number | null;
   orderChannel?: OrderChannel | null;
   alarmTriggered: boolean;
   items: KitchenBoardItem[];
@@ -118,10 +120,13 @@ export function KitchenTicketBoard({
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div>
                         <span className={cn("font-black leading-none", isCook ? "text-4xl" : "text-2xl")}>
-                          {ticket.locationLabel ?? `T${ticket.tableNumber}`}
+                          {ticket.fulfillmentMode === "SELF_PICKUP"
+                            ? `Pickup #${ticket.pickupNumber ?? ticket.orderNumber}`
+                            : ticket.locationLabel ?? `T${ticket.tableNumber}`}
                         </span>
                         <span className={cn("text-zinc-400 ml-2", isCook ? "text-base" : "text-sm")}>
-                          #{ticket.orderNumber}
+                          {ticket.fulfillmentMode === "SELF_PICKUP" ? "SELF PICKUP" : "TABLE SERVICE"}
+                          {" · "}#{ticket.orderNumber}
                         </span>
                       </div>
                       <span

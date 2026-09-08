@@ -170,6 +170,7 @@ async function handlePATCH(
     "prepare-item",
     "ready-item",
     "serve-all",
+    "collect-order",
     "mark-paid",
     "record-payment",
   ] as const;
@@ -205,7 +206,7 @@ async function handlePATCH(
       });
     }
 
-    if (order.status !== "SERVED") {
+    if (order.status !== "SERVED" && order.fulfillmentMode !== "SELF_PICKUP") {
       return NextResponse.json(
         { error: "Order must be fully served before marking paid" },
         { status: 400 }
@@ -253,7 +254,7 @@ async function handlePATCH(
     const blocked = await featureDisabledResponse(order.restaurantId, "split_bill");
     if (blocked) return blocked;
 
-    if (order.status !== "SERVED") {
+    if (order.status !== "SERVED" && order.fulfillmentMode !== "SELF_PICKUP") {
       return NextResponse.json(
         { error: "Order must be fully served before recording payment" },
         { status: 400 }
@@ -302,6 +303,59 @@ async function handlePATCH(
       fullyPaid: result.fullyPaid,
       receipt,
     });
+  }
+
+  if (action === "collect-order") {
+    if (!canPerformOrderAction(session.role, "collect-order")) {
+      return NextResponse.json({ error: "Action not allowed for your role" }, { status: 403 });
+    }
+    try {
+      const { markSelfPickupCollected } = await import("@/lib/fulfillment/collection");
+      const collected = await markSelfPickupCollected({
+        restaurantId: session.restaurantId,
+        orderId: id,
+        actor: { id: session.id, role: session.role, name: session.name },
+      });
+      return NextResponse.json({ success: true, order: collected, collected: true });
+    } catch (err) {
+      const { SelfPickupCollectionError, collectionErrorToJson } = await import(
+        "@/lib/fulfillment/collection"
+      );
+      if (err instanceof SelfPickupCollectionError) {
+        return NextResponse.json(collectionErrorToJson(err), { status: err.status });
+      }
+      throw err;
+    }
+  }
+
+  if ((action === "serve-item" && itemId) || action === "serve-all") {
+    if (order.fulfillmentMode === "SELF_PICKUP") {
+      const { loadOrderForCollection, throwIfSelfPickupHandoverBlocked, SelfPickupCollectionError, collectionErrorToJson, markSelfPickupCollected } =
+        await import("@/lib/fulfillment/collection");
+      const full = await loadOrderForCollection(
+        (await import("@/lib/prisma")).prisma,
+        session.restaurantId,
+        id,
+      );
+      if (!full) return opaqueNotFoundJson();
+      try {
+        throwIfSelfPickupHandoverBlocked(full);
+        if (!canPerformOrderAction(session.role, "collect-order")) {
+          return NextResponse.json({ error: "Action not allowed for your role" }, { status: 403 });
+        }
+        const collected = await markSelfPickupCollected({
+          restaurantId: session.restaurantId,
+          orderId: id,
+          actor: { id: session.id, role: session.role, name: session.name },
+        });
+        return NextResponse.json({ success: true, order: collected, collected: true });
+      } catch (err) {
+        if (err instanceof SelfPickupCollectionError) {
+          return NextResponse.json(collectionErrorToJson(err), { status: err.status });
+        }
+        throw err;
+      }
+    }
   }
 
   if (action === "serve-item" && itemId) {

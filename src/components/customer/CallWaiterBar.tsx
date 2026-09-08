@@ -18,10 +18,12 @@ export function CallWaiterBar({
   tableToken,
   sessionKey,
   enabled,
+  serviceMode,
 }: {
   tableToken: string;
   sessionKey: string | null;
   enabled: boolean;
+  serviceMode?: string;
 }) {
   const [sending, setSending] = useState<RequestType | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -47,7 +49,9 @@ export function CallWaiterBar({
       }
       setMessage(
         type === "CALL_WAITER"
-          ? "Server notified — someone will be with you shortly."
+          ? serviceMode === "SELF_SERVICE"
+            ? "Staff notified — someone will help you shortly."
+            : "Server notified — someone will be with you shortly."
           : "Request sent to staff.",
       );
     } catch {
@@ -59,9 +63,14 @@ export function CallWaiterBar({
 
   return (
     <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-      <p className="text-sm font-medium text-zinc-300">Need something?</p>
+      <p className="text-sm font-medium text-zinc-300">
+        {serviceMode === "SELF_SERVICE" ? "Need help?" : "Need something?"}
+      </p>
       <div className="flex flex-wrap gap-2">
-        {ACTIONS.map(({ type, label, icon: Icon }) => (
+        {(serviceMode === "SELF_SERVICE"
+          ? ACTIONS.filter((action) => action.type === "CALL_WAITER" || action.type === "OTHER")
+          : ACTIONS
+        ).map(({ type, label, icon: Icon }) => (
           <Button
             key={type}
             variant="secondary"
@@ -71,7 +80,11 @@ export function CallWaiterBar({
             className="gap-1.5"
           >
             <Icon className="w-3.5 h-3.5" />
-            {sending === type ? "Sending…" : label}
+            {sending === type
+              ? "Sending…"
+              : type === "CALL_WAITER" && serviceMode === "SELF_SERVICE"
+                ? "Request assistance"
+                : label}
           </Button>
         ))}
       </div>

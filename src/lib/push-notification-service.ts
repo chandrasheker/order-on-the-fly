@@ -24,6 +24,8 @@ export function getVapidPublicKey() {
 export async function savePushSubscription(params: {
   restaurantId: string;
   userId?: string;
+  audience?: string;
+  tableId?: string | null;
   endpoint: string;
   p256dh: string;
   auth: string;
@@ -37,12 +39,24 @@ export async function savePushSubscription(params: {
       data: {
         restaurantId: params.restaurantId,
         userId: params.userId ?? null,
+        audience: params.audience ?? existing.audience ?? "STAFF",
+        tableId: params.tableId ?? existing.tableId ?? null,
         p256dh: params.p256dh,
         auth: params.auth,
       },
     });
   }
-  return prisma.pushSubscription.create({ data: params });
+  return prisma.pushSubscription.create({
+    data: {
+      restaurantId: params.restaurantId,
+      userId: params.userId ?? null,
+      audience: params.audience ?? "STAFF",
+      tableId: params.tableId ?? null,
+      endpoint: params.endpoint,
+      p256dh: params.p256dh,
+      auth: params.auth,
+    },
+  });
 }
 
 export async function sendPushToRestaurant(
@@ -62,12 +76,60 @@ export async function sendPushToRestaurant(
 
   webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
 
-  const subs = await prisma.pushSubscription.findMany({ where: { restaurantId } });
+  const subs = await prisma.pushSubscription.findMany({
+    where: { restaurantId, audience: "STAFF" },
+  });
   const message = JSON.stringify({
     title: payload.title,
     body: payload.body,
     tag: payload.tag ?? crypto.randomUUID(),
     urgent: payload.urgent ?? false,
+  });
+
+  await Promise.all(
+    subs.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth },
+          },
+          message,
+        );
+      } catch {
+        await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => undefined);
+      }
+    }),
+  );
+}
+
+export async function sendCustomerTablePush(
+  restaurantId: string,
+  tableId: string,
+  payload: { title: string; body: string; tag?: string; url?: string },
+) {
+  const vapid = getVapidKeys();
+  if (!vapid) return;
+
+  let webpush: WebPushModule;
+  try {
+    webpush = (await import("web-push")) as WebPushModule;
+  } catch {
+    return;
+  }
+
+  webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+  const subs = await prisma.pushSubscription.findMany({
+    where: { restaurantId, audience: "CUSTOMER", tableId },
+  });
+  if (subs.length === 0) return;
+
+  const message = JSON.stringify({
+    title: payload.title,
+    body: payload.body,
+    tag: payload.tag ?? `customer-${tableId}`,
+    url: payload.url ?? "/",
+    urgent: false,
   });
 
   await Promise.all(

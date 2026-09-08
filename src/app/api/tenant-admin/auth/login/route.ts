@@ -7,6 +7,7 @@ import {
   verifyPassword,
 } from "@/lib/auth";
 import { resolveTenantFromHost } from "@/platform/host-tenant";
+import { resolveTenantAdminHostContext } from "@/lib/tenant-admin-host";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 import { AUDIT_ACTION, AUDIT_ACTOR_TYPE, AUDIT_CATEGORY, AUDIT_EVENT_KIND, AUDIT_SEVERITY } from "@/platform/forensics/constants";
 import { setForensicActor, setForensicTenant } from "@/platform/forensics/request-context";
@@ -14,7 +15,8 @@ import { tryAppendPlatformAuditEvent } from "@/platform/forensics/platform-audit
 
 async function handlePOST(req: NextRequest) {
   const resolution = await resolveTenantFromHost(req.headers);
-  if (!resolution.ok || resolution.kind !== "tenant") {
+  const host = await resolveTenantAdminHostContext(resolution);
+  if (!host) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -23,7 +25,7 @@ async function handlePOST(req: NextRequest) {
   const password = String(body.password ?? "");
 
   const admin = await prisma.tenantAdmin.findFirst({
-    where: { tenantId: resolution.tenant.tenantId, email },
+    where: { tenantId: host.tenantId, email },
   });
   if (!admin || !(await verifyPassword(password, admin.passwordHash))) {
     setForensicActor({ type: AUDIT_ACTOR_TYPE.ANONYMOUS });
@@ -34,7 +36,7 @@ async function handlePOST(req: NextRequest) {
       action: AUDIT_ACTION.TENANT_ADMIN_LOGIN_FAILED,
       outcome: "DENIED",
       actorType: AUDIT_ACTOR_TYPE.ANONYMOUS,
-      tenantId: resolution.tenant.tenantId,
+      tenantId: host.tenantId,
       metadata: { attemptedEmailNormalized: email },
     });
     return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
@@ -45,6 +47,7 @@ async function handlePOST(req: NextRequest) {
     email: admin.email,
     name: admin.name,
     tenantId: admin.tenantId,
+    authVersion: admin.authVersion,
   });
   setForensicActor({
     type: AUDIT_ACTOR_TYPE.TENANT_ADMIN,

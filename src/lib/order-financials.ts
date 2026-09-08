@@ -177,3 +177,80 @@ export function financialsForOrder(params: {
     gstRate: params.gstRate,
   });
 }
+
+/**
+ * SELF_PICKUP bills required/non-UNAVAILABLE items before collection.
+ * Projection only — OrderItem rows stay READY until Mark Collected.
+ * TABLE_SERVICE stays served-only.
+ */
+export function projectItemsForFinancials<T extends { status: string }>(
+  fulfillmentMode: string | null | undefined,
+  items: T[],
+): T[] {
+  if (fulfillmentMode !== "SELF_PICKUP") {
+    return items;
+  }
+  return items.map((item) =>
+    item.status === "UNAVAILABLE" ? item : { ...item, status: "SERVED" as T["status"] },
+  );
+}
+
+export type FinalizedBillTotals = {
+  status?: string | null;
+  grandTotal: number;
+  itemSubtotal?: number;
+  orderDiscount?: number;
+  gstAmount?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+};
+
+export function applyFinalizedBillToFinancials(
+  financials: OrderFinancialSummary,
+  bill: FinalizedBillTotals | null | undefined,
+): OrderFinancialSummary {
+  if (!bill || (bill.status != null && bill.status !== "FINALIZED")) {
+    return financials;
+  }
+  const grandTotalPaise = toPaise(bill.grandTotal);
+  const amountDuePaise = maxPaise(0, subtractPaise(grandTotalPaise, financials.netPaidPaise));
+  const amountDue = rupeeView(amountDuePaise);
+  return {
+    ...financials,
+    itemSubtotal: bill.itemSubtotal ?? financials.itemSubtotal,
+    orderDiscount: bill.orderDiscount ?? financials.orderDiscount,
+    gstAmount: bill.gstAmount ?? financials.gstAmount,
+    cgstAmount: bill.cgstAmount ?? financials.cgstAmount,
+    sgstAmount: bill.sgstAmount ?? financials.sgstAmount,
+    grandTotal: bill.grandTotal,
+    amountDue,
+    fullyPaid: amountDuePaise <= 0,
+    itemSubtotalPaise: bill.itemSubtotal != null ? toPaise(bill.itemSubtotal) : financials.itemSubtotalPaise,
+    orderDiscountPaise: bill.orderDiscount != null ? toPaise(bill.orderDiscount) : financials.orderDiscountPaise,
+    gstPaise: bill.gstAmount != null ? toPaise(bill.gstAmount) : financials.gstPaise,
+    cgstPaise: bill.cgstAmount != null ? toPaise(bill.cgstAmount) : financials.cgstPaise,
+    sgstPaise: bill.sgstAmount != null ? toPaise(bill.sgstAmount) : financials.sgstPaise,
+    grandTotalPaise,
+    amountDuePaise,
+  };
+}
+
+/** One M1/M2 path for payment, bill projection, and collection outstanding. */
+export function canonicalFinancialsForOrder(order: {
+  fulfillmentMode?: string | null;
+  items: FinancialLineItem[];
+  payments?: LedgerPayment[];
+  discountAmount?: number | null;
+  gstEnabled?: boolean;
+  gstRate?: number | null;
+  finalizedBill?: FinalizedBillTotals | null;
+}): OrderFinancialSummary {
+  const financials = financialsForOrder({
+    items: projectItemsForFinancials(order.fulfillmentMode, order.items),
+    payments: order.payments ?? [],
+    discountAmount: order.discountAmount,
+    gstEnabled: order.gstEnabled,
+    gstRate: order.gstRate,
+  });
+  return applyFinalizedBillToFinancials(financials, order.finalizedBill);
+}

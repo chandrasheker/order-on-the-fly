@@ -12,6 +12,7 @@ self.addEventListener("push", (event) => {
       tag: data.tag,
       requireInteraction: Boolean(data.urgent),
       icon: "/favicon.ico",
+      data: { url: data.url || "/staff/dashboard" },
     }),
   );
 });
@@ -23,7 +24,9 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of list) {
         if ("focus" in client) return client.focus();
       }
-      if (clients.openWindow) return clients.openWindow("/staff/dashboard");
+      if (clients.openWindow) {
+        return clients.openWindow(event.notification.data?.url || "/staff/dashboard");
+      }
     }),
   );
 });

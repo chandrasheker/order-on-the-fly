@@ -16,6 +16,7 @@ export type OrderAction =
   | "serve-item"
   | "reject-item"
   | "serve-all"
+  | "collect-order"
   | "mark-paid"
   | "record-payment";
 
@@ -33,6 +34,7 @@ const ACTION_ACCESS: Record<Role, OrderAction[]> = {
     "serve-item",
     "reject-item",
     "serve-all",
+    "collect-order",
     "mark-paid",
     "record-payment",
   ],
@@ -42,11 +44,12 @@ const ACTION_ACCESS: Record<Role, OrderAction[]> = {
     "serve-item",
     "reject-item",
     "serve-all",
+    "collect-order",
     "mark-paid",
     "record-payment",
   ],
-  COOK: ["prepare-item", "ready-item", "reject-item"],
-  SERVER: ["serve-item", "reject-item", "serve-all", "mark-paid", "record-payment"],
+  COOK: ["prepare-item", "ready-item", "reject-item", "collect-order"],
+  SERVER: ["serve-item", "reject-item", "serve-all", "collect-order", "mark-paid", "record-payment"],
 };
 
 export function canAccessTab(role: Role, tab: StaffTab) {

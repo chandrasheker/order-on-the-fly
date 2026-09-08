@@ -69,6 +69,22 @@ export async function openTableOrdering(tableId: string) {
 }
 
 export async function maybeAutoCloseTableAfterPayment(tableId: string) {
+  const table = await prisma.table.findUnique({
+    where: { id: tableId },
+    select: {
+      restaurant: { select: { serviceMode: true } },
+    },
+  });
+  if (table?.restaurant.serviceMode === "SELF_SERVICE") return;
+
+  const visitOrders = await prisma.order.findMany({
+    where: { tableId, date: todayDateString(), status: { not: "CANCELLED" } },
+    select: { fulfillmentMode: true },
+  });
+  if (visitOrders.length > 0 && visitOrders.every((order) => order.fulfillmentMode === "SELF_PICKUP")) {
+    return;
+  }
+
   if (!(await isTabFullySettled(tableId))) return;
 
   await closeTableOrdering(tableId);

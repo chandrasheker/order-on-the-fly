@@ -14,7 +14,6 @@ import {
   slaLabel,
 } from "@/platform/command-center/classify";
 import { ledgerRevenueFromPayments, staffCollectedFromPayments } from "@/platform/command-center/money-metrics";
-import { loadReliabilityByRestaurant } from "@/platform/command-center/reliability-service";
 import { resolveTimeRange } from "@/platform/command-center/time-range";
 import { COMMAND_CENTER_THRESHOLDS } from "@/platform/command-center/thresholds";
 
@@ -740,6 +739,7 @@ describe("M5 scoped forensic views", () => {
         },
       ],
     });
+    const { loadReliabilityByRestaurant } = await import("@/platform/command-center/reliability-service");
     const map = await loadReliabilityByRestaurant({
       restaurantIds: [restaurantA.id],
       from: new Date(now.getTime() - 1000),

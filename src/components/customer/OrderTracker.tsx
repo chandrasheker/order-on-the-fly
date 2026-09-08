@@ -27,6 +27,8 @@ import {
   CircleDollarSign,
 } from "lucide-react";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
+import { formatCurrency as formatMoney } from "@/lib/utils";
+import { fromPaise } from "@/lib/money";
 
 interface OrderItem {
   id: string;
@@ -49,6 +51,17 @@ interface Order {
   oosNoticeDismissedAt?: string | null;
   items: OrderItem[];
   createdAt: string;
+  fulfillmentMode?: string;
+  pickup?: {
+    pickupState?: string | null;
+    pickupNumber?: number;
+    pickupCode?: string | null;
+    pickupLocationLabel?: string;
+    foodReady?: boolean;
+    outstandingAmountPaise?: number;
+    collectable?: boolean;
+    collected?: boolean;
+  } | null;
 }
 
 export function OrderTracker({
@@ -61,6 +74,8 @@ export function OrderTracker({
   tabRemaining,
   onRefresh,
   onPaymentRequested,
+  serviceMode,
+  pickupLocationLabel,
 }: {
   orders: Order[];
   tableToken: string;
@@ -71,6 +86,8 @@ export function OrderTracker({
   tabRemaining?: number | null;
   onRefresh: () => void;
   onPaymentRequested?: () => void;
+  serviceMode?: string;
+  pickupLocationLabel?: string;
 }) {
   const [now, setNow] = useState(0);
   const [alarmSent, setAlarmSent] = useState(false);
@@ -91,8 +108,14 @@ export function OrderTracker({
     return () => clearInterval(interval);
   }, [onRefresh]);
 
-  const activeOrders = orders.filter((o) => shouldShowCustomerOrder(o.items));
-  const paymentOrders = orders.filter((o) => shouldShowCustomerPaymentOrder(o));
+  const activeOrders = orders.filter(
+    (o) =>
+      shouldShowCustomerOrder(o.items) ||
+      (o.fulfillmentMode === "SELF_PICKUP" && o.pickup?.pickupState && o.pickup.pickupState !== "CANCELLED"),
+  );
+  const paymentOrders = orders.filter(
+    (o) => o.fulfillmentMode !== "SELF_PICKUP" && shouldShowCustomerPaymentOrder(o),
+  );
 
   if (activeOrders.length === 0 && paymentOrders.length === 0) return null;
 
@@ -215,6 +238,63 @@ export function OrderTracker({
           badgeClass = "bg-amber-500/15 text-amber-400 border-amber-500/30";
         } else if (servedItems.length > 0) {
           badgeLabel = `${servedItems.length} served · ${pendingItems.length} preparing`;
+        }
+
+        if (order.fulfillmentMode === "SELF_PICKUP" || order.pickup?.pickupState) {
+          const state = order.pickup?.pickupState ?? "PREPARING";
+          const due = fromPaise(order.pickup?.outstandingAmountPaise ?? 0);
+          const pickupNumber = order.pickup?.pickupNumber ?? order.orderNumber;
+          const location = order.pickup?.pickupLocationLabel ?? pickupLocationLabel ?? "Pickup Counter";
+          return (
+            <motion.div
+              key={order.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`rounded-2xl border backdrop-blur-xl p-5 ${
+                state === "READY_FOR_COLLECTION"
+                  ? "border-emerald-400/50 bg-emerald-500/15"
+                  : state === "FOOD_READY_PAYMENT_REQUIRED"
+                    ? "border-amber-400/40 bg-amber-500/10"
+                    : "border-white/10 bg-white/5"
+              }`}
+            >
+              <p className="text-sm text-zinc-400">Pickup #{pickupNumber}</p>
+              {state === "PREPARING" && (
+                <>
+                  <p className="text-xl font-bold mt-1">We&apos;re preparing your order.</p>
+                  <p className="text-sm text-zinc-400 mt-1">Pickup #{pickupNumber}</p>
+                </>
+              )}
+              {state === "FOOD_READY_PAYMENT_REQUIRED" && (
+                <>
+                  <p className="text-xl font-bold text-amber-200 mt-1">YOUR ORDER IS READY</p>
+                  <p className="text-sm text-amber-100 mt-1">Payment required before collection</p>
+                  <p className="text-lg font-semibold mt-2">Due: {formatMoney(due)}</p>
+                  <Button
+                    variant="success"
+                    className="w-full mt-4"
+                    onClick={() => openPayModal(order)}
+                  >
+                    Pay Now
+                  </Button>
+                </>
+              )}
+              {state === "READY_FOR_COLLECTION" && (
+                <>
+                  <p className="text-2xl font-black text-emerald-300 mt-1">READY FOR COLLECTION</p>
+                  <p className="text-lg mt-2">Pickup #{pickupNumber}</p>
+                  {order.pickup?.pickupCode ? (
+                    <p className="text-sm text-zinc-300">Code: {order.pickup.pickupCode}</p>
+                  ) : null}
+                  <p className="text-sm text-zinc-300 mt-2">Collect from: {location}</p>
+                </>
+              )}
+              {state === "COLLECTED" && <p className="text-lg font-semibold mt-1">Order collected</p>}
+              {serviceMode === "SELF_SERVICE" && state === "PREPARING" && (
+                <p className="text-xs text-zinc-500 mt-3">Payment must be completed before collection.</p>
+              )}
+            </motion.div>
+          );
         }
 
         return (

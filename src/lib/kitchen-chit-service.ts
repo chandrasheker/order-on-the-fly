@@ -5,6 +5,8 @@ export type KitchenChitPayload = {
   restaurantName: string;
   orderNumber: number;
   locationLabel: string;
+  fulfillmentMode?: string;
+  pickupNumber?: number;
   orderChannel: string;
   customerName: string | null;
   customerPhone: string | null;
@@ -40,6 +42,8 @@ export async function buildKitchenChitPayload(orderId: string): Promise<KitchenC
   return {
     restaurantName: order.restaurant.name,
     orderNumber: order.orderNumber,
+    fulfillmentMode: order.fulfillmentMode,
+    pickupNumber: order.fulfillmentMode === "SELF_PICKUP" ? order.orderNumber : undefined,
     locationLabel: formatOrderLocation({
       orderChannel: order.orderChannel,
       tableNumber: order.table.number,

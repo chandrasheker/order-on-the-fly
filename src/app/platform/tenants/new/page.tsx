@@ -41,9 +41,14 @@ export default function NewTenantPage() {
     <PlatformShell
       admin={admin}
       title="New tenant"
-      subtitle="Create a tenant and one or more restaurants. Hostnames are generated for you."
+      subtitle="Create a tenant and one or more restaurants."
       backHref="/platform"
       backLabel="All tenants"
+      activeItem="tenants"
+      breadcrumb={[
+        { label: "Overview", href: "/platform" },
+        { label: "New tenant" },
+      ]}
     >
       <PlatformCreateTenantForm baseDomain={baseDomain} />
     </PlatformShell>

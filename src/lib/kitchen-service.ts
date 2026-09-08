@@ -155,6 +155,8 @@ export async function getKitchenTickets(restaurantId: string, stationSlug?: stri
         id: order.id,
         orderNumber: order.orderNumber,
         tableNumber: order.table.number,
+        fulfillmentMode: order.fulfillmentMode,
+        pickupNumber: order.fulfillmentMode === "SELF_PICKUP" ? order.orderNumber : null,
         locationLabel: formatOrderLocation({
           orderChannel: order.orderChannel,
           tableNumber: order.table.number,

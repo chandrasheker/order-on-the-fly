@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Button, Card, Input } from "@/components/ui";
 import { Plus, Trash2 } from "lucide-react";
-import { previewHostnames, MULTI_RESTAURANT_SAME_NAME_ERROR } from "@/lib/hostname-rules";
+import { previewHostnames } from "@/lib/hostname-rules";
 
 type RestaurantDraft = {
   name: string;
@@ -35,16 +35,6 @@ export function PlatformCreateTenantForm({ baseDomain }: { baseDomain: string })
       return { error: err instanceof Error ? err.message : "Invalid names" };
     }
   }, [tenantName, restaurants, baseDomain]);
-
-  const namingWarning =
-    restaurants.length > 1 &&
-    restaurants.some(
-      (restaurant) =>
-        restaurant.name.trim() &&
-        restaurant.name.trim().toLowerCase() === tenantName.trim().toLowerCase(),
-    )
-      ? MULTI_RESTAURANT_SAME_NAME_ERROR
-      : "";
 
   const addRestaurant = () => setRestaurants((current) => [...current, emptyRestaurant()]);
   const removeRestaurant = (index: number) => {
@@ -82,8 +72,10 @@ export function PlatformCreateTenantForm({ baseDomain }: { baseDomain: string })
   };
 
   if (result) {
-    const tenant = (result.tenant ?? {}) as { name?: string; url?: string | null };
+    const tenant = (result.tenant ?? {}) as { name?: string; url?: string | null; tenantAdminUrl?: string | null };
     const created = (result.restaurants ?? []) as Array<{ name?: string; url?: string }>;
+    const singleRestaurantAdmin =
+      !tenant.url && created.length === 1 ? created[0]?.url ?? tenant.tenantAdminUrl ?? null : null;
     return (
       <Card className="p-8 space-y-4 max-w-2xl">
         <h1 className="text-2xl font-bold text-emerald-400">Tenant created</h1>
@@ -92,22 +84,32 @@ export function PlatformCreateTenantForm({ baseDomain }: { baseDomain: string })
         </p>
         {tenant.url && (
           <p className="text-sm">
-            Tenant dashboard:{" "}
+            Tenant Command Center:{" "}
             <a href={tenant.url} className="text-orange-300 underline break-all">
               {tenant.url}
             </a>
           </p>
         )}
-        <ul className="text-sm space-y-2">
-          {created.map((restaurant) => (
-            <li key={restaurant.url}>
-              {restaurant.name}:{" "}
-              <a href={restaurant.url} className="text-orange-300 underline break-all">
-                {restaurant.url}
-              </a>
-            </li>
-          ))}
-        </ul>
+        {singleRestaurantAdmin && (
+          <p className="text-sm">
+            Restaurant & Tenant Admin:{" "}
+            <a href={singleRestaurantAdmin} className="text-orange-300 underline break-all">
+              {singleRestaurantAdmin}
+            </a>
+          </p>
+        )}
+        {created.length > 1 && (
+          <ul className="text-sm space-y-2">
+            {created.map((restaurant) => (
+              <li key={restaurant.url}>
+                {restaurant.name}:{" "}
+                <a href={restaurant.url} className="text-orange-300 underline break-all">
+                  {restaurant.url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
         <Link href="/platform">
           <Button>Back to tenants</Button>
         </Link>
@@ -199,25 +201,31 @@ export function PlatformCreateTenantForm({ baseDomain }: { baseDomain: string })
       {preview && "error" in preview && preview.error && (
         <p className="text-sm text-red-400">{preview.error}</p>
       )}
-      {namingWarning && <p className="text-sm text-red-400">{namingWarning}</p>}
       {preview && "restaurants" in preview && (
         <Card className="p-4 text-sm space-y-1">
-          {preview.tenantUrl && (
+          {preview.tenantHubActive && preview.tenantUrl && (
             <p>
-              Tenant dashboard: <span className="text-orange-300">{preview.tenantUrl}</span>
+              Tenant Command Center: <span className="text-orange-300">{preview.tenantUrl}</span>
             </p>
           )}
-          {preview.restaurants.map((restaurant) => (
-            <p key={restaurant.slug}>
-              Restaurant URL for {restaurant.name}:{" "}
-              <span className="text-orange-300">{restaurant.url}</span>
+          {!preview.tenantHubActive && preview.restaurants.length === 1 && (
+            <p>
+              Restaurant & Tenant Admin:{" "}
+              <span className="text-orange-300">{preview.restaurants[0].url}</span>
             </p>
-          ))}
+          )}
+          {preview.tenantHubActive &&
+            preview.restaurants.map((restaurant) => (
+              <p key={restaurant.slug}>
+                Restaurant URL for {restaurant.name}:{" "}
+                <span className="text-orange-300">{restaurant.url}</span>
+              </p>
+            ))}
         </Card>
       )}
 
       {error && <p className="text-sm text-red-400">{error}</p>}
-      <Button onClick={() => void submit()} disabled={loading || Boolean(namingWarning)}>
+      <Button onClick={() => void submit()} disabled={loading}>
         {loading ? "Creating…" : "Create tenant"}
       </Button>
     </div>

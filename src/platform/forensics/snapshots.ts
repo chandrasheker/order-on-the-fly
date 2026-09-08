@@ -53,6 +53,9 @@ export function auditOrderSnapshot(order: {
   discountAmount?: number | null;
   promoCode?: string | null;
   orderNumber?: number | null;
+  fulfillmentMode?: string | null;
+  collectedAt?: Date | string | null;
+  readyAt?: Date | string | null;
 }) {
   return {
     id: order.id,
@@ -61,6 +64,9 @@ export function auditOrderSnapshot(order: {
     discountAmount: order.discountAmount ?? null,
     promoCode: order.promoCode ?? null,
     orderNumber: order.orderNumber ?? null,
+    fulfillmentMode: order.fulfillmentMode ?? null,
+    readyAt: order.readyAt ? new Date(order.readyAt).toISOString() : null,
+    collectedAt: order.collectedAt ? new Date(order.collectedAt).toISOString() : null,
   };
 }
 

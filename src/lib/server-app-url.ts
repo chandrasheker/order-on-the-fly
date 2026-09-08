@@ -60,3 +60,13 @@ export function publicRestaurantPayload(restaurant: { id: string; name: string; 
     url: getRestaurantPublicBaseUrl(restaurant.slug),
   };
 }
+
+export function publicTenantAdminUrl(input: {
+  hubActive: boolean;
+  tenantSlug: string;
+  restaurants: Array<{ slug: string }>;
+}) {
+  if (input.hubActive) return getTenantHubPublicBaseUrl(input.tenantSlug);
+  const only = input.restaurants[0];
+  return only ? getRestaurantPublicBaseUrl(only.slug) : null;
+}

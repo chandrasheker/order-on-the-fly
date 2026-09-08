@@ -5,6 +5,7 @@ import {
   canonicalizeName,
   hostnameInUseError,
   plannedRestaurantHostSlug,
+  restaurantHostnameChangedNotice,
   tenantHubIsActive,
   tenantSlugFromName,
 } from "@/lib/hostname-rules";
@@ -151,6 +152,83 @@ export async function releaseHostname(db: Db, slug: string) {
   await db.hostSlug.deleteMany({ where: { slug } });
 }
 
+export type TenantRestaurantHostnameRow = {
+  id: string;
+  name: string;
+  previousSlug: string;
+  slug: string;
+};
+
+export async function syncTenantRestaurantHostnames(
+  db: Db,
+  tenantId: string,
+): Promise<{
+  tenantSlug: string;
+  tenantName: string;
+  restaurants: TenantRestaurantHostnameRow[];
+  hostnameChanges: TenantRestaurantHostnameRow[];
+  notices: string[];
+}> {
+  const tenant = await db.tenant.findUnique({
+    where: { id: tenantId },
+    include: { restaurants: { select: { id: true, name: true, slug: true } } },
+  });
+  if (!tenant) throw new Error("Tenant not found");
+
+  const planned: TenantRestaurantHostnameRow[] = tenant.restaurants.map((restaurant) => ({
+    id: restaurant.id,
+    name: restaurant.name,
+    previousSlug: restaurant.slug,
+    slug: plannedRestaurantHostSlug({
+      tenantSlug: tenant.slug,
+      tenantName: tenant.name,
+      restaurantName: restaurant.name,
+      totalRestaurantCount: tenant.restaurants.length,
+    }),
+  }));
+
+  const holderOfTenantSlug = tenant.restaurants.find((restaurant) => restaurant.slug === tenant.slug);
+  for (const row of planned) {
+    await assertHostnameAvailable(db, row.slug, {
+      restaurantId: row.id,
+      tenantHubId: tenant.id,
+    });
+  }
+  if (tenantHubIsActive({ restaurants: planned })) {
+    await assertHostnameAvailable(db, tenant.slug, {
+      tenantHubId: tenant.id,
+      restaurantId: holderOfTenantSlug?.id,
+    });
+  }
+
+  for (const row of planned) {
+    if (row.slug !== row.previousSlug) {
+      await db.restaurant.update({
+        where: { id: row.id },
+        data: { slug: row.slug },
+      });
+    }
+  }
+
+  await syncTenantHostLeases(db, {
+    tenantId: tenant.id,
+    tenantSlug: tenant.slug,
+    tenantName: tenant.name,
+    restaurants: planned.map((row) => ({ id: row.id, name: row.name, slug: row.slug })),
+  });
+
+  const hostnameChanges = planned.filter((row) => row.slug !== row.previousSlug);
+  return {
+    tenantSlug: tenant.slug,
+    tenantName: tenant.name,
+    restaurants: planned,
+    hostnameChanges,
+    notices: hostnameChanges.map((row) =>
+      restaurantHostnameChangedNotice(`${row.slug}.${baseDomain()}`),
+    ),
+  };
+}
+
 export async function syncTenantHostLeases(
   db: Db,
   input: {
@@ -195,6 +273,20 @@ export async function syncTenantHostLeases(
       });
     } else {
       await claimTenantHubHostname(db, { slug, tenantId: input.tenantId });
+    }
+  }
+}
+
+/** Remove stale tenant-hub leases for tenants that currently have exactly one restaurant. */
+export async function removeObsoleteSingleRestaurantTenantHubs(db: Db) {
+  const hubs = await db.hostSlug.findMany({
+    where: { kind: HOST_KIND_TENANT_HUB },
+    select: { slug: true, tenantId: true },
+  });
+  for (const hub of hubs) {
+    const restaurantCount = await db.restaurant.count({ where: { tenantId: hub.tenantId } });
+    if (restaurantCount === 1) {
+      await db.hostSlug.delete({ where: { slug: hub.slug } });
     }
   }
 }

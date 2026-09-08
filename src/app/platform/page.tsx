@@ -1,26 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Badge, Card, Spinner } from "@/components/ui";
-import { Building2, ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { PlatformShell } from "@/components/platform/PlatformShell";
 import {
   FilterPills,
   HealthBadge,
   Money,
   RestaurantHealthTable,
-  SummaryCard,
   TimeRangeBar,
 } from "@/components/platform/command-center-shared";
 import {
-  PlatformCollapsibleSection,
   PlatformPagedListFrame,
   PlatformRestaurantToolbar,
 } from "@/components/platform/PlatformRestaurantToolbar";
 import { usePagedExpandableList } from "@/hooks/usePagedExpandableList";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
+import { cn } from "@/lib/utils";
 import type { CommandCenterPayload } from "@/platform/command-center/types";
 
 type TenantSummary = {
@@ -34,8 +33,22 @@ type TenantSummary = {
   restaurants: Array<{ id: string; name: string; slug: string }>;
 };
 
-export default function PlatformHomePage() {
+type DirectoryView = "tenants" | "fleet";
+
+function tenantStatus(tenant: TenantSummary, command: CommandCenterPayload | null) {
+  if (tenant.isEnabled === false) return { label: "Disabled", warn: true };
+  const attention = (command?.restaurants ?? []).some(
+    (row) => row.tenantId === tenant.id && row.needsAttention,
+  );
+  if (attention) return { label: "Attention", warn: true };
+  return { label: "Healthy", warn: false };
+}
+
+function PlatformHomePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const viewParam = searchParams.get("view");
+  const directory: DirectoryView = viewParam === "fleet" || viewParam === "restaurants" ? "fleet" : "tenants";
   const [admin, setAdmin] = useState<{ name: string; email: string } | null>(null);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [command, setCommand] = useState<CommandCenterPayload | null>(null);
@@ -45,9 +58,6 @@ export default function PlatformHomePage() {
   const [range, setRange] = useState("today");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [tenantsOpen, setTenantsOpen] = useState(true);
-  const [fleetOpen, setFleetOpen] = useState(true);
-
   const getTenantId = useCallback((tenant: TenantSummary) => tenant.id, []);
   const getTenantText = useCallback(
     (tenant: TenantSummary) => `${tenant.name} ${tenant.slug} ${tenant.billingEmail ?? ""}`,
@@ -74,6 +84,12 @@ export default function PlatformHomePage() {
     setRange(next.range);
     setFrom(next.from ?? "");
     setTo(next.to ?? "");
+  };
+
+  const selectDirectory = (view: DirectoryView) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", view);
+    router.replace(`/platform?${params.toString()}`);
   };
 
   const load = useCallback(async () => {
@@ -116,6 +132,11 @@ export default function PlatformHomePage() {
     void load();
   }, [load]);
 
+  const attentionRows = useMemo(
+    () => (command?.restaurants ?? []).filter((row) => row.needsAttention),
+    [command],
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-app-shell">
@@ -125,167 +146,301 @@ export default function PlatformHomePage() {
   }
 
   const summary = command?.summary;
+  const needAttention = summary?.needAttention ?? 0;
 
   return (
     <PlatformShell
       wide
       admin={admin}
       title="Platform Command Center"
-      subtitle="What is happening, why, and where to investigate"
+      subtitle="Operational view across all tenants and restaurants"
+      activeItem={directory === "fleet" ? "restaurants" : viewParam === "tenants" ? "tenants" : "overview"}
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <TimeRangeBar
+            range={range}
+            from={from}
+            to={to}
+            onRange={(value) => setRangeParams({ range: value, from, to })}
+            onCustom={(nextFrom, nextTo) => setRangeParams({ range: "custom", from: nextFrom, to: nextTo })}
+          />
           <Link
             href="/platform/tenants/new"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:text-white"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/25"
           >
-            <Plus className="w-4 h-4" /> New tenant
+            <Plus className="w-4 h-4" /> New Tenant
           </Link>
         </div>
       }
     >
-      <div className="space-y-8">
-        <TimeRangeBar
-          range={range}
-          from={from}
-          to={to}
-          onRange={(value) => setRangeParams({ range: value, from, to })}
-          onCustom={(nextFrom, nextTo) => setRangeParams({ range: "custom", from: nextFrom, to: nextTo })}
-        />
-        <p className="text-xs text-zinc-500">
-          Period totals use {command?.range.label ?? range}. Active tables, kitchen backlog, staff, and printer last-seen are current.
-        </p>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryCard label="Tenants" value={String(summary?.tenantCount ?? tenants.length)} />
-          <SummaryCard label="Restaurants" value={String(summary?.restaurantCount ?? 0)} hint={`${summary?.activeNow ?? 0} active now`} />
-          <SummaryCard label="Orders" value={String(summary?.orders ?? 0)} hint={command?.range.label} />
-          <Card className="p-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">Net captured</p>
-            <p className="text-2xl font-semibold mt-1">{summary ? <Money paise={summary.netCapturedPaise} /> : "₹0"}</p>
-          </Card>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Card className="p-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">Service SLA</p>
-            <p className="text-2xl font-semibold mt-1">{summary?.slaLabel ?? "No eligible SLA sample"}</p>
-            <p className="text-xs text-zinc-500 mt-1">{summary?.slaSample ?? 0} eligible served items</p>
-          </Card>
-          <button type="button" className="text-left w-full" onClick={() => setFilter("attention")}>
-            <SummaryCard
-              label="Need attention"
-              value={String(summary?.needAttention ?? 0)}
-              warn={(summary?.needAttention ?? 0) > 0}
-              hint="Shows restaurants whose kitchen, payments, printing, or reliability need attention"
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+          <Kpi label="Tenants" value={String(summary?.tenantCount ?? tenants.length)} />
+          <Kpi
+            label="Restaurants"
+            value={String(summary?.restaurantCount ?? 0)}
+            hint={`${summary?.activeNow ?? 0} active now`}
+          />
+          <Kpi
+            label="Orders"
+            value={String(summary?.orders ?? 0)}
+            hint={summary?.slaLabel ? `SLA ${summary.slaLabel}` : command?.range.label}
+          />
+          <Kpi
+            label="Net Captured"
+            value={summary ? undefined : "₹0"}
+            money={summary?.netCapturedPaise}
+            hint={command?.range.label}
+          />
+          <button
+            type="button"
+            className="text-left"
+            onClick={() => {
+              setFilter("attention");
+              selectDirectory("fleet");
+            }}
+          >
+            <Kpi
+              label="Needs Attention"
+              value={String(needAttention)}
+              hint={needAttention > 0 ? "Open restaurant fleet" : "All clear"}
+              warn={needAttention > 0}
             />
           </button>
         </div>
 
-        <PlatformCollapsibleSection
-          title="Tenants"
-          countLabel={`${tenants.length} total`}
-          open={tenantsOpen}
-          onToggle={() => setTenantsOpen((open) => !open)}
-        >
-          <PlatformRestaurantToolbar
-            search={tenantList.search}
-            onSearchChange={tenantList.setSearch}
-            matching={tenantList.matchingCount}
-            total={tenantList.total}
-            showingFrom={tenantList.showingFrom}
-            showingTo={tenantList.showingTo}
-            pageSize={tenantList.pageSize}
-            onPageSizeChange={tenantList.setPageSize}
-            page={tenantList.page}
-            pageCount={tenantList.pageCount}
-            canPrev={tenantList.canPrev}
-            canNext={tenantList.canNext}
-            onPrev={tenantList.goPrev}
-            onNext={tenantList.goNext}
-            expandable={false}
-            noun="tenant"
-            placeholder="Search tenants by name or slug…"
-          />
-          {tenantList.matchingCount === 0 && (
-            <Card className="p-8 text-center">
-              <p className="text-zinc-500">
-                {tenantList.search.trim() ? "No tenants match your search." : "No tenants yet."}
-              </p>
-            </Card>
-          )}
-          <PlatformPagedListFrame
-            canPrev={tenantList.canPrev}
-            canNext={tenantList.canNext}
-            onPrev={tenantList.goPrev}
-            onNext={tenantList.goNext}
-            noun="tenant"
-          >
-            <div className="grid gap-3">
-              {tenantList.visible.map((tenant) => (
-                <Link key={tenant.id} href={`/platform/tenants/${tenant.id}`} className="block group">
-                  <Card className="p-5 hover:border-violet-500/40 transition-colors">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-start gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center shrink-0">
-                          <Building2 className="w-5 h-5 text-violet-400" />
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="text-lg font-semibold truncate group-hover:text-violet-200 transition-colors">
-                            {tenant.name}
-                          </h3>
-                          <p className="text-sm text-zinc-500">{tenant.slug}</p>
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
-                            <Badge className="bg-white/5 text-zinc-300 border-white/10">{tenant.plan}</Badge>
-                            <Badge className="bg-white/5 text-zinc-400 border-white/10">{tenant.subscriptionStatus}</Badge>
-                            {tenant.isEnabled === false && (
-                              <HealthBadge level="ATTENTION">Disabled</HealthBadge>
-                            )}
-                            <span className="text-xs text-zinc-500">
-                              {tenant.restaurants.length} restaurant
-                              {tenant.restaurants.length === 1 ? "" : "s"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-violet-400 shrink-0 transition-colors" />
-                    </div>
-                  </Card>
-                </Link>
-              ))}
+        {needAttention === 0 ? (
+          <p className="text-sm text-zinc-500 px-1">All monitored restaurants are operating normally.</p>
+        ) : (
+          <Card className="p-4 border-amber-500/30">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-amber-200">
+                  {needAttention} restaurant{needAttention === 1 ? "" : "s"} need attention
+                </p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  {attentionRows.slice(0, 4).map((row) => row.restaurantName).join(" · ")}
+                  {attentionRows.length > 4 ? ` · +${attentionRows.length - 4} more` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-sm text-amber-200 hover:text-white"
+                onClick={() => {
+                  setFilter("attention");
+                  selectDirectory("fleet");
+                }}
+              >
+                View fleet
+              </button>
             </div>
-          </PlatformPagedListFrame>
-        </PlatformCollapsibleSection>
+          </Card>
+        )}
 
-        <PlatformCollapsibleSection
-          title="Restaurant fleet"
-          countLabel={`${command?.restaurants.length ?? 0} restaurants`}
-          open={fleetOpen}
-          onToggle={() => setFleetOpen((open) => !open)}
-        >
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <FilterPills
-              value={filter}
-              onChange={setFilter}
-              options={[
-                { id: "all", label: "All" },
-                { id: "attention", label: "Needs attention" },
-                { id: "kitchen", label: "Kitchen" },
-                { id: "service", label: "Service" },
-                { id: "payments", label: "Payments" },
-                { id: "printing", label: "Printing" },
-                { id: "errors", label: "Errors" },
-              ]}
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ["tenants", "Tenants"],
+              ["fleet", "Restaurant Fleet"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => selectDirectory(id)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-sm font-medium border",
+                directory === id
+                  ? "bg-violet-500/15 border-violet-500/30 text-violet-100"
+                  : "bg-white/5 border-white/10 text-zinc-400 hover:text-white",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {directory === "tenants" ? (
+          <div className="space-y-3">
+            <PlatformRestaurantToolbar
+              search={tenantList.search}
+              onSearchChange={tenantList.setSearch}
+              matching={tenantList.matchingCount}
+              total={tenantList.total}
+              showingFrom={tenantList.showingFrom}
+              showingTo={tenantList.showingTo}
+              pageSize={tenantList.pageSize}
+              onPageSizeChange={tenantList.setPageSize}
+              page={tenantList.page}
+              pageCount={tenantList.pageCount}
+              canPrev={tenantList.canPrev}
+              canNext={tenantList.canNext}
+              onPrev={tenantList.goPrev}
+              onNext={tenantList.goNext}
+              expandable={false}
+              noun="tenant"
+              placeholder="Search tenants by name or slug…"
             />
+            {tenantList.matchingCount === 0 && (
+              <Card className="p-6 text-center">
+                <p className="text-zinc-500">
+                  {tenantList.search.trim() ? "No tenants match your search." : "No tenants yet."}
+                </p>
+              </Card>
+            )}
+            <PlatformPagedListFrame
+              canPrev={tenantList.canPrev}
+              canNext={tenantList.canNext}
+              onPrev={tenantList.goPrev}
+              onNext={tenantList.goNext}
+              noun="tenant"
+            >
+              <div className="hidden md:block overflow-hidden rounded-xl border border-white/10">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-white/5 text-zinc-500">
+                    <tr>
+                      <th className="text-left font-medium px-4 py-2">Tenant</th>
+                      <th className="text-left font-medium px-4 py-2">Plan</th>
+                      <th className="text-left font-medium px-4 py-2">Subscription</th>
+                      <th className="text-left font-medium px-4 py-2">Restaurants</th>
+                      <th className="text-left font-medium px-4 py-2">Status</th>
+                      <th className="px-4 py-2 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tenantList.visible.map((tenant) => {
+                      const status = tenantStatus(tenant, command);
+                      return (
+                        <tr
+                          key={tenant.id}
+                          className="border-t border-white/5 hover:bg-white/[0.03] cursor-pointer"
+                          onClick={() => router.push(`/platform/tenants/${tenant.id}`)}
+                        >
+                          <td className="px-4 py-3">
+                            <Link href={`/platform/tenants/${tenant.id}`} className="block min-w-0" onClick={(event) => event.stopPropagation()}>
+                              <p className="font-medium text-zinc-100">{tenant.name}</p>
+                              <p className="text-xs text-zinc-500 truncate">
+                                {tenant.slug}
+                                {tenant.billingEmail ? ` · ${tenant.billingEmail}` : ""}
+                              </p>
+                            </Link>
+                          </td>
+                          <td className="px-4 py-3 text-zinc-300">{tenant.plan}</td>
+                          <td className="px-4 py-3 text-zinc-400">{tenant.subscriptionStatus}</td>
+                          <td className="px-4 py-3 text-zinc-300">
+                            {tenant.restaurants.length} restaurant{tenant.restaurants.length === 1 ? "" : "s"}
+                          </td>
+                          <td className="px-4 py-3">
+                            {status.warn ? (
+                              <HealthBadge level="ATTENTION">{status.label}</HealthBadge>
+                            ) : (
+                              <span className="text-zinc-400">{status.label}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-600">
+                            <ChevronRight className="w-4 h-4" />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="md:hidden space-y-2">
+                {tenantList.visible.map((tenant) => {
+                  const status = tenantStatus(tenant, command);
+                  return (
+                    <Link key={tenant.id} href={`/platform/tenants/${tenant.id}`} className="block">
+                      <Card className="p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{tenant.name}</p>
+                            <p className="text-xs text-zinc-500 truncate">
+                              {tenant.slug}
+                              {tenant.billingEmail ? ` · ${tenant.billingEmail}` : ""}
+                            </p>
+                            <p className="text-xs text-zinc-400 mt-1">
+                              {tenant.plan} · {tenant.subscriptionStatus} · {tenant.restaurants.length}{" "}
+                              restaurant{tenant.restaurants.length === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          {status.warn ? (
+                            <HealthBadge level="ATTENTION">{status.label}</HealthBadge>
+                          ) : (
+                            <Badge className="bg-white/5 text-zinc-400 border-white/10">{status.label}</Badge>
+                          )}
+                        </div>
+                      </Card>
+                    </Link>
+                  );
+                })}
+              </div>
+            </PlatformPagedListFrame>
           </div>
+        ) : (
           <RestaurantHealthTable
             rows={command?.restaurants ?? []}
             sort={sort}
             onSort={setSort}
             filter={filter}
             showTenant
+            density="console"
+            filters={
+              <FilterPills
+                value={filter}
+                onChange={setFilter}
+                options={[
+                  { id: "all", label: "All" },
+                  { id: "attention", label: "Attention" },
+                  { id: "kitchen", label: "Kitchen" },
+                  { id: "service", label: "Service" },
+                  { id: "payments", label: "Payments" },
+                  { id: "printing", label: "Printing" },
+                  { id: "errors", label: "Errors" },
+                ]}
+              />
+            }
           />
-        </PlatformCollapsibleSection>
+        )}
       </div>
     </PlatformShell>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  hint,
+  warn,
+  money,
+}: {
+  label: string;
+  value?: string;
+  hint?: string;
+  warn?: boolean;
+  money?: number;
+}) {
+  return (
+    <Card className={cn("p-4 h-full", warn && "border-amber-500/40")}>
+      <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className={cn("text-2xl font-semibold mt-1", warn && "text-amber-200")}>
+        {money != null ? <Money paise={money} /> : value}
+      </p>
+      {hint ? <p className="text-xs text-zinc-500 mt-1">{hint}</p> : null}
+    </Card>
+  );
+}
+
+export default function PlatformHomePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-app-shell">
+          <Spinner className="w-8 h-8" />
+        </div>
+      }
+    >
+      <PlatformHomePageInner />
+    </Suspense>
   );
 }

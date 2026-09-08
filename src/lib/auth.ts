@@ -69,8 +69,14 @@ export async function createToken(user: SessionUser) {
     .sign(jwtSecret());
 }
 
-export async function createTenantAdminToken(admin: Omit<TenantAdminSession, "type">) {
-  return new SignJWT({ ...admin, type: "tenant_admin" })
+export async function createTenantAdminToken(
+  admin: Omit<TenantAdminSession, "type"> & { authVersion?: number },
+) {
+  return new SignJWT({
+    ...admin,
+    type: "tenant_admin",
+    authVersion: admin.authVersion ?? 0,
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
@@ -232,29 +238,38 @@ export async function requireSession(roles?: Role[]) {
   return session;
 }
 
-export async function verifyTenantAdminToken(token: string): Promise<TenantAdminSession | null> {
+type TenantAdminTokenPayload = TenantAdminSession & { authVersion?: number };
+
+export async function verifyTenantAdminToken(token: string): Promise<TenantAdminTokenPayload | null> {
   try {
     const { payload } = await jwtVerify(token, jwtSecret());
     if (payload.type !== "tenant_admin") return null;
-    return payload as unknown as TenantAdminSession;
+    return payload as unknown as TenantAdminTokenPayload;
   } catch {
     return null;
   }
 }
 
-export async function getTenantAdminSession(): Promise<TenantAdminSession | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(TENANT_ADMIN_COOKIE)?.value;
+export async function loadTenantAdminSession(token: string | undefined): Promise<TenantAdminSession | null> {
   if (!token) return null;
   const payload = await verifyTenantAdminToken(token);
   if (!payload) return null;
 
   const admin = await prisma.tenantAdmin.findUnique({
     where: { id: payload.id },
-    select: { id: true, email: true, name: true, tenantId: true, tenant: { select: { isEnabled: true } } },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      tenantId: true,
+      authVersion: true,
+      tenant: { select: { isEnabled: true } },
+    },
   });
   if (!admin || !admin.tenant.isEnabled) return null;
   if (admin.tenantId !== payload.tenantId) return null;
+  const tokenVersion = typeof payload.authVersion === "number" ? payload.authVersion : 0;
+  if (tokenVersion !== admin.authVersion) return null;
   return {
     type: "tenant_admin",
     id: admin.id,
@@ -264,12 +279,23 @@ export async function getTenantAdminSession(): Promise<TenantAdminSession | null
   };
 }
 
+export async function getTenantAdminSession(): Promise<TenantAdminSession | null> {
+  try {
+    const cookieStore = await cookies();
+    return loadTenantAdminSession(cookieStore.get(TENANT_ADMIN_COOKIE)?.value);
+  } catch {
+    return null;
+  }
+}
+
 export async function requireTenantAdmin() {
   const { resolveTenantFromHeaders } = await import("@/platform/host-tenant");
+  const { resolveTenantAdminHostContext } = await import("@/lib/tenant-admin-host");
   const resolution = await resolveTenantFromHeaders();
-  if (!resolution.ok || resolution.kind !== "tenant") return null;
+  const host = await resolveTenantAdminHostContext(resolution);
+  if (!host) return null;
   const session = await getTenantAdminSession();
-  if (!session || session.tenantId !== resolution.tenant.tenantId) return null;
+  if (!session || session.tenantId !== host.tenantId) return null;
   setForensicActor({
     type: AUDIT_ACTOR_TYPE.TENANT_ADMIN,
     id: session.id,
@@ -277,7 +303,7 @@ export async function requireTenantAdmin() {
     role: "TENANT_ADMIN",
   });
   setForensicTenant({ tenantId: session.tenantId });
-  return { session, tenant: resolution.tenant };
+  return { session, tenant: host };
 }
 
 export async function requirePlatformAdmin() {

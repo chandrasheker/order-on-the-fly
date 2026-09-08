@@ -132,6 +132,7 @@ export function PlatformAuditConsole({ admin }: { admin: { name: string; email: 
       subtitle="Platform-wide activity, security, money, and print evidence"
       backHref="/platform"
       backLabel="Tenants"
+      activeItem="audit"
     >
       <div className="max-w-6xl mx-auto space-y-4">
         <Card className="p-4 grid gap-3 md:grid-cols-4">

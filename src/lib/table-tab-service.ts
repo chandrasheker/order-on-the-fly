@@ -87,15 +87,17 @@ export async function getTableTabOrders(tableId: string) {
 
 export async function getTableTabPaymentSummary(tableId: string) {
   const orders = await getTableTabOrders(tableId);
-  const servedOrders = orders.filter((o) => o.status === "SERVED");
-  const summaries = await getOrderPaymentSummaries(servedOrders.map((o) => o.id));
+  const payableOrders = orders.filter(
+    (o) => o.status === "SERVED" || (o.fulfillmentMode === "SELF_PICKUP" && o.status !== "CANCELLED"),
+  );
+  const summaries = await getOrderPaymentSummaries(payableOrders.map((o) => o.id));
 
   let billTotal = 0;
   let paidTotal = 0;
   let remaining = 0;
   const unpaidOrderIds: string[] = [];
 
-  for (const order of servedOrders) {
+  for (const order of payableOrders) {
     const summary = summaries.get(order.id);
     if (!summary) continue;
     billTotal += summary.total;
@@ -117,7 +119,7 @@ export async function getTableTabPaymentSummary(tableId: string) {
     paymentRequested: Boolean(table?.tabPaymentRequestedAt && remaining > 0.01),
     tabPaymentRequestedAt: table?.tabPaymentRequestedAt ?? null,
     orderCount: orders.length,
-    servedOrderCount: servedOrders.length,
+    servedOrderCount: payableOrders.filter((o) => o.status === "SERVED").length,
   };
 }
 

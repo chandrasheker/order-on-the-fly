@@ -96,8 +96,9 @@ function PlatformRestaurantCommand() {
       subtitle={`${tenantName} · fleet visibility, not the restaurant /admin app`}
       backHref={`/platform/tenants/${tenantId}`}
       backLabel={tenantName}
+      activeItem="restaurants"
       breadcrumb={[
-        { label: "Command center", href: "/platform" },
+        { label: "Overview", href: "/platform" },
         { label: tenantName, href: `/platform/tenants/${tenantId}` },
         { label: row.restaurantName },
       ]}

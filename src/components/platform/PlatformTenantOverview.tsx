@@ -4,15 +4,22 @@ import { useCallback, useEffect, useState } from "react";
 import { Building2, Plus, ChevronDown, ChevronUp, Layers, Users } from "lucide-react";
 import { Button, Card, Input, Badge } from "@/components/ui";
 import { ConfirmDangerDialog } from "@/components/platform/ConfirmDangerDialog";
+import { PlatformSection } from "@/components/platform/PlatformShell";
 import { PlatformPagedListFrame, PlatformRestaurantToolbar } from "@/components/platform/PlatformRestaurantToolbar";
 import { useRestaurantSearch } from "@/hooks/useRestaurantSearch";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
-import { MULTI_RESTAURANT_SAME_NAME_ERROR, previewHostnames } from "@/lib/hostname-rules";
+import { previewHostnames, restaurantHostnameChangedNotice } from "@/lib/hostname-rules";
 
 type ActiveSessions = {
   total: number;
   byRole: { OWNER: number; MANAGER: number; COOK: number; SERVER: number };
   users: Array<{ name: string; email: string; role: string; lastSeenAt: string }>;
+};
+
+type TenantAdminRow = {
+  id: string;
+  name: string;
+  email: string;
 };
 
 type TenantRestaurant = {
@@ -40,6 +47,9 @@ interface PlatformTenantOverviewProps {
   tenantHubActive?: boolean;
   tenantEnabled: boolean;
   tenantBaseDomain?: string;
+  tenantPlan?: string;
+  tenantSubscriptionStatus?: string;
+  tenantBillingEmail?: string | null;
   restaurants: TenantRestaurant[];
   onRestaurantsChange: () => void;
   onTenantToggle: (enabled: boolean) => Promise<void>;
@@ -65,6 +75,9 @@ export function PlatformTenantOverview({
   tenantHubActive = false,
   tenantEnabled,
   tenantBaseDomain = "",
+  tenantPlan,
+  tenantSubscriptionStatus,
+  tenantBillingEmail,
   restaurants,
   onRestaurantsChange,
   onTenantToggle,
@@ -75,7 +88,13 @@ export function PlatformTenantOverview({
   const [overview, setOverview] = useState<{
     stats?: Record<string, number>;
     restaurants?: TenantRestaurant[];
+    admins?: TenantAdminRow[];
   } | null>(null);
+  const [resetAdminId, setResetAdminId] = useState<string | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [confirmResetPassword, setConfirmResetPassword] = useState("");
+  const [resettingAdmin, setResettingAdmin] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
   const [addRestaurant, setAddRestaurant] = useState({
     name: "",
     ownerEmail: "",
@@ -165,7 +184,8 @@ export function PlatformTenantOverview({
         setMessage(json.error || "Failed");
         return;
       }
-      setMessage(`Added ${json.restaurant.name}`);
+      const notices = Array.isArray(json.notices) ? json.notices.filter((n: unknown) => typeof n === "string") : [];
+      setMessage([`Added ${json.restaurant.name}`, ...notices].join(" "));
       setCreatedRestaurantUrl(String(json.restaurant?.url ?? ""));
       setAddRestaurant({ name: "", ownerEmail: "", ownerName: "Owner", tableCount: "6" });
       onRestaurantsChange();
@@ -221,6 +241,8 @@ export function PlatformTenantOverview({
         setMessage(json.error || "Could not delete restaurant.");
         return;
       }
+      const notices = Array.isArray(json.notices) ? json.notices.filter((n: unknown) => typeof n === "string") : [];
+      if (notices.length) setMessage(notices.join(" "));
       setConfirmRestaurant(null);
       onRestaurantsChange();
       void loadOverview();
@@ -229,6 +251,41 @@ export function PlatformTenantOverview({
       setMessage("Network error — try again.");
     } finally {
       setDeletingRestaurantId(null);
+    }
+  };
+
+  const resetTenantAdmin = async (adminId: string) => {
+    setResetMessage("");
+    if (resetPassword !== confirmResetPassword) {
+      setResetMessage("Passwords do not match.");
+      return;
+    }
+    setResettingAdmin(true);
+    try {
+      const res = await fetch("/api/platform/tenants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reset_tenant_admin_password",
+          tenantId,
+          tenantAdminId: adminId,
+          newPassword: resetPassword,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResetMessage(json.error || "Could not reset password.");
+        return;
+      }
+      setResetMessage("Tenant administrator password reset successfully.");
+      setResetPassword("");
+      setConfirmResetPassword("");
+      setResetAdminId(null);
+    } catch (error) {
+      swallowPollingFetchError(error);
+      setResetMessage("Network error — try again.");
+    } finally {
+      setResettingAdmin(false);
     }
   };
 
@@ -283,19 +340,14 @@ export function PlatformTenantOverview({
   const stats = overview?.stats;
 
   return (
-    <div className="space-y-6">
-      <Card className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-violet-500/20">
-        <div>
-          <p className="font-medium">{tenantName}</p>
-          <p className="text-sm text-zinc-400">
-            {tenantEnabled
-              ? "Tenant is live — enabled restaurants operate normally. Disabling this tenant immediately disables every restaurant under it."
-              : "Tenant is disabled — every restaurant under it is disabled and staff access is blocked. Re-enabling the tenant does not automatically re-enable restaurants."}
-          </p>
-          {tenantHubActive && tenantUrl && (
-            <p className="text-xs text-orange-300 mt-2 break-all">Tenant dashboard: {tenantUrl}</p>
-          )}
-          <div className="flex flex-wrap gap-2 mt-3">
+    <div className="space-y-8">
+      <PlatformSection title="Overview" description="Tenant identity and live counts.">
+        <Card className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium">{tenantName}</p>
+            <span className="text-xs text-zinc-500">{tenantEnabled ? "Enabled" : "Disabled"}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <Input
               value={tenantNameDraft}
               onChange={(e) => setTenantNameDraft(e.target.value)}
@@ -312,7 +364,7 @@ export function PlatformTenantOverview({
             </Button>
           </div>
           {tenantNameDraft.trim() && tenantNameDraft.trim() !== tenantName && (
-            <div className="text-xs mt-2 space-y-1">
+            <div className="text-xs space-y-1">
               {(() => {
                 try {
                   const preview = previewHostnames({
@@ -322,9 +374,14 @@ export function PlatformTenantOverview({
                   });
                   return (
                     <>
-                      {preview.tenantUrl && (
+                      {preview.tenantHubActive && preview.tenantUrl && (
                         <p className="text-orange-300">
-                          Tenant dashboard will become {preview.tenantUrl}
+                          Tenant Command Center will become {preview.tenantUrl}
+                        </p>
+                      )}
+                      {!preview.tenantHubActive && preview.restaurants.length === 1 && (
+                        <p className="text-orange-300">
+                          Restaurant & Tenant Admin will become {preview.restaurants[0].url}
                         </p>
                       )}
                       {preview.restaurants.map((restaurant) => (
@@ -344,51 +401,26 @@ export function PlatformTenantOverview({
               })()}
             </div>
           )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant={tenantEnabled ? "secondary" : "success"}
-            disabled={togglingTenant || deletingTenant}
-            onClick={() => void onTenantToggle(!tenantEnabled)}
-          >
-            {togglingTenant ? "Saving…" : tenantEnabled ? "Disable tenant" : "Enable tenant"}
-          </Button>
-          <Button
-            type="button"
-            variant="danger"
-            disabled={deletingTenant}
-            onClick={onDeleteTenant}
-          >
-            Delete tenant
-          </Button>
-        </div>
-      </Card>
+        </Card>
+        {stats && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              ["Restaurants", stats.restaurantCount],
+              ["Active logins", stats.activeLogins ?? 0],
+              ["Orders today", stats.ordersToday],
+              ["Total orders", stats.totalOrders],
+              ["Staff accounts", stats.totalStaff],
+            ].map(([label, value]) => (
+              <Card key={String(label)} className="p-4">
+                <p className="text-xs text-zinc-500">{label}</p>
+                <p className="text-2xl font-semibold">{value}</p>
+              </Card>
+            ))}
+          </div>
+        )}
+      </PlatformSection>
 
-      <p className="text-sm text-zinc-400">
-        Restaurants belonging to <span className="text-zinc-200">{tenantName}</span>. Disable a
-        restaurant to stop orders and staff logins for that location only. Delete permanently
-        wipes that restaurant and all of its records. A tenant with one restaurant may share the
-        tenant name; adding another restaurant requires a different tenant name first.
-      </p>
-
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {[
-            ["Restaurants", stats.restaurantCount],
-            ["Active logins", stats.activeLogins ?? 0],
-            ["Orders today", stats.ordersToday],
-            ["Total orders", stats.totalOrders],
-            ["Staff accounts", stats.totalStaff],
-          ].map(([label, value]) => (
-            <Card key={String(label)} className="p-4">
-              <p className="text-xs text-zinc-500">{label}</p>
-              <p className="text-2xl font-bold">{value}</p>
-            </Card>
-          ))}
-        </div>
-      )}
-
+      <PlatformSection title="Restaurants" description="Enable or disable a location. Adding a second restaurant activates a dedicated tenant hostname.">
       <Card className="p-5">
         <div className="flex items-center gap-2 mb-4">
           <Building2 className="w-5 h-5 text-violet-400" />
@@ -489,15 +521,6 @@ export function PlatformTenantOverview({
                         onClick={() => void toggleRestaurant(r)}
                       >
                         {togglingRestaurantId === r.id ? "…" : enabled ? "Disable" : "Enable"}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="danger"
-                        disabled={deletingRestaurantId === r.id}
-                        onClick={() => setConfirmRestaurant(r)}
-                      >
-                        Delete
                       </Button>
                     </div>
                     {open && (
@@ -650,9 +673,20 @@ export function PlatformTenantOverview({
                   baseDomain: tenantBaseDomain,
                 });
                 const created = preview.restaurants[preview.restaurants.length - 1];
-                return `Restaurant URL: ${created?.url || created?.slug}`;
+                const existing = restaurants[0];
+                const renamed = existing
+                  ? preview.restaurants.find((row) => row.name === existing.name)
+                  : undefined;
+                const lines = [`Restaurant URL: ${created?.url || created?.slug}`];
+                if (preview.tenantHubActive && preview.tenantUrl) {
+                  lines.unshift(`Tenant Command Center: ${preview.tenantUrl}`);
+                }
+                if (existing && renamed && renamed.slug !== existing.slug) {
+                  lines.push(restaurantHostnameChangedNotice(`${renamed.slug}.${tenantBaseDomain || "dvadtech.in"}`));
+                }
+                return lines.join(" ");
               } catch (err) {
-                return err instanceof Error ? err.message : MULTI_RESTAURANT_SAME_NAME_ERROR;
+                return err instanceof Error ? err.message : "Invalid restaurant name";
               }
             })()}
           </p>
@@ -693,6 +727,178 @@ export function PlatformTenantOverview({
           </div>
         )}
       </Card>
+      </PlatformSection>
+
+      <PlatformSection title="Tenant Administrator" description="Name, email, and password reset. Restaurant OWNER credentials stay separate.">
+      <Card className="p-4 space-y-3">
+        {(overview?.admins ?? []).length === 0 ? (
+          <p className="text-sm text-zinc-500">No tenant administrator is configured.</p>
+        ) : (
+          (overview?.admins ?? []).map((adminRow) => (
+            <div key={adminRow.id} className="space-y-2 rounded-xl border border-white/10 p-3">
+              <p className="text-sm">
+                Name: <span className="text-zinc-200">{adminRow.name}</span>
+              </p>
+              <p className="text-sm">
+                Email: <span className="text-zinc-200">{adminRow.email}</span>
+              </p>
+              {resetAdminId === adminRow.id ? (
+                <div className="grid md:grid-cols-2 gap-2">
+                  <Input
+                    type="password"
+                    placeholder="New password"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                  />
+                  <Input
+                    type="password"
+                    placeholder="Confirm password"
+                    value={confirmResetPassword}
+                    onChange={(e) => setConfirmResetPassword(e.target.value)}
+                  />
+                  <div className="md:col-span-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={resettingAdmin || !resetPassword}
+                      onClick={() => void resetTenantAdmin(adminRow.id)}
+                    >
+                      {resettingAdmin ? "Saving…" : "Save password"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={resettingAdmin}
+                      onClick={() => {
+                        setResetAdminId(null);
+                        setResetPassword("");
+                        setConfirmResetPassword("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button type="button" size="sm" variant="secondary" onClick={() => {
+                  setResetAdminId(adminRow.id);
+                  setResetMessage("");
+                  setResetPassword("");
+                  setConfirmResetPassword("");
+                }}>
+                  Reset Password
+                </Button>
+              )}
+            </div>
+          ))
+        )}
+        {resetMessage && (
+          <p className={`text-sm ${resetMessage.includes("successfully") ? "text-emerald-400" : "text-red-400"}`}>
+            {resetMessage}
+          </p>
+        )}
+      </Card>
+      </PlatformSection>
+
+      <PlatformSection title="Subscription / Billing">
+        <Card className="p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm space-y-1">
+            <p>
+              <span className="text-zinc-500">Plan</span>{" "}
+              <span className="text-zinc-200">{tenantPlan ?? "—"}</span>
+            </p>
+            <p>
+              <span className="text-zinc-500">Subscription</span>{" "}
+              <span className="text-zinc-200">{tenantSubscriptionStatus ?? "—"}</span>
+            </p>
+            <p>
+              <span className="text-zinc-500">Billing email</span>{" "}
+              <span className="text-zinc-200">{tenantBillingEmail ?? "—"}</span>
+            </p>
+          </div>
+          <a
+            href={`/platform/billing?tenantId=${tenantId}`}
+            className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm border bg-white/5 border-white/10 text-zinc-300 hover:text-white"
+          >
+            Open billing
+          </a>
+        </Card>
+      </PlatformSection>
+
+      <PlatformSection title="Security / Access" description="Hostnames used by this tenant. Restaurant OWNER passwords are managed separately.">
+        <Card className="p-4 space-y-2 text-sm">
+          {tenantHubActive && tenantUrl && (
+            <p className="break-all">
+              <span className="text-zinc-500">Tenant command center</span>{" "}
+              <span className="text-zinc-200">{tenantUrl}</span>
+            </p>
+          )}
+          {!tenantHubActive && restaurants.length === 1 && (
+            <p className="break-all">
+              <span className="text-zinc-500">Restaurant & tenant admin</span>{" "}
+              <span className="text-zinc-200">
+                {restaurants[0].url || restaurantHostPreview(restaurants[0].slug, tenantBaseDomain)}
+              </span>
+            </p>
+          )}
+          {restaurants.map((restaurant) => (
+            <p key={restaurant.id} className="break-all text-zinc-400">
+              {restaurant.name}: {restaurant.url || restaurantHostPreview(restaurant.slug, tenantBaseDomain) || restaurant.slug}
+            </p>
+          ))}
+        </Card>
+      </PlatformSection>
+
+      <PlatformSection title="Danger Zone" description="These actions immediately affect live operations or permanently delete records.">
+        <Card className="p-4 space-y-4 border-red-500/25">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Tenant access</p>
+              <p className="text-xs text-zinc-500">
+                {tenantEnabled
+                  ? "Disabling immediately disables every restaurant under this tenant."
+                  : "Re-enabling the tenant does not automatically re-enable restaurants."}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant={tenantEnabled ? "secondary" : "success"}
+              disabled={togglingTenant || deletingTenant}
+              onClick={() => void onTenantToggle(!tenantEnabled)}
+            >
+              {togglingTenant ? "Saving…" : tenantEnabled ? "Disable tenant" : "Enable tenant"}
+            </Button>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Delete restaurant</p>
+            {mergedRestaurants.map((restaurant) => (
+              <div key={restaurant.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2">
+                <p className="text-sm text-zinc-300 truncate">{restaurant.name}</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="danger"
+                  disabled={deletingRestaurantId === restaurant.id}
+                  onClick={() => setConfirmRestaurant(restaurant)}
+                >
+                  Delete
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/10">
+            <div>
+              <p className="text-sm font-medium text-red-300">Delete tenant</p>
+              <p className="text-xs text-zinc-500">Permanently removes this tenant and every restaurant under it.</p>
+            </div>
+            <Button type="button" size="sm" variant="danger" disabled={deletingTenant} onClick={onDeleteTenant}>
+              Delete tenant
+            </Button>
+          </div>
+        </Card>
+      </PlatformSection>
 
       {confirmRestaurant && (
         <ConfirmDangerDialog
