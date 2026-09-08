@@ -24,6 +24,20 @@ export async function getPickupQueue(restaurantId: string) {
       items: true,
       payments: true,
       table: { select: { number: true } },
+      restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+      bills: {
+        where: { status: "FINALIZED" },
+        select: {
+          status: true,
+          grandTotal: true,
+          itemSubtotal: true,
+          orderDiscount: true,
+          gstAmount: true,
+          cgstAmount: true,
+          sgstAmount: true,
+        },
+        take: 1,
+      },
     },
     orderBy: { createdAt: "asc" },
   });

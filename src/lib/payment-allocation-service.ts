@@ -6,13 +6,13 @@ import { auditPaymentSnapshot } from "@/platform/forensics/snapshots";
 import { setForensicCorrelationId, setForensicResource } from "@/platform/forensics/request-context";
 import { clearPaymentAlerts } from "@/lib/payment-service";
 import { orderItemBillableTotal, orderItemLineTotal } from "@/lib/utils";
-import { isSelfPickupOrder, settlementItemsForOrder } from "@/lib/fulfillment/collection";
+import { isSelfPickupOrder } from "@/lib/fulfillment/collection";
 import { fromPaise, maxPaise, minPaise, toPaise } from "@/lib/money";
 import {
   FINANCIAL_PAID_EPSILON,
   MANUAL_UPI_VERIFICATION,
   PAYMENT_STATUS,
-  financialsForOrder,
+  canonicalFinancialsForOrder,
   isCapturedPayment,
   type OrderFinancialSummary,
 } from "@/lib/order-financials";
@@ -96,37 +96,15 @@ function computeSummaryFromOrder(
     };
   });
 
-  let financials: OrderFinancialSummary = financialsForOrder({
-    items: settlementItemsForOrder(order.fulfillmentMode, order.items),
-    discountAmount: order.discountAmount,
+  const financials: OrderFinancialSummary = canonicalFinancialsForOrder({
+    fulfillmentMode: order.fulfillmentMode,
+    items: order.items,
     payments: order.payments,
+    discountAmount: order.discountAmount,
     gstEnabled: order.restaurant?.receiptGstEnabled,
     gstRate: order.restaurant?.receiptGstRate,
+    finalizedBill: order.bills?.find((bill) => bill.status === "FINALIZED"),
   });
-  const finalizedBill = order.bills?.find((bill) => bill.status === "FINALIZED");
-  if (finalizedBill) {
-    const grandTotalPaise = toPaise(finalizedBill.grandTotal);
-    const amountDuePaise = maxPaise(0, grandTotalPaise - financials.netPaidPaise);
-    const amountDue = fromPaise(amountDuePaise);
-    financials = {
-      ...financials,
-      itemSubtotal: finalizedBill.itemSubtotal,
-      orderDiscount: finalizedBill.orderDiscount,
-      gstAmount: finalizedBill.gstAmount,
-      cgstAmount: finalizedBill.cgstAmount,
-      sgstAmount: finalizedBill.sgstAmount,
-      grandTotal: finalizedBill.grandTotal,
-      amountDue,
-      fullyPaid: amountDuePaise <= 0,
-      itemSubtotalPaise: toPaise(finalizedBill.itemSubtotal),
-      orderDiscountPaise: toPaise(finalizedBill.orderDiscount),
-      gstPaise: toPaise(finalizedBill.gstAmount),
-      cgstPaise: toPaise(finalizedBill.cgstAmount),
-      sgstPaise: toPaise(finalizedBill.sgstAmount),
-      grandTotalPaise,
-      amountDuePaise,
-    };
-  }
 
   return {
     orderId: order.id,
@@ -241,6 +219,22 @@ function buildAllocations(
   });
 
   if (targets.length === 0) {
+    const fallback = items.find((item) =>
+      selfPickup ? item.status !== "UNAVAILABLE" : item.status === "SERVED",
+    );
+    if (fallback && amount > 0) {
+      return {
+        ok: true as const,
+        allocations: [
+          {
+            orderItemId: fallback.id,
+            quantity: fallback.quantity,
+            amount,
+          },
+        ],
+        applied: amount,
+      };
+    }
     return { ok: false as const, error: "No payable items selected" };
   }
 

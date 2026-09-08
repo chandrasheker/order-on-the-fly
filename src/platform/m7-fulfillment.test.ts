@@ -29,6 +29,7 @@ let getCommandCenter: typeof import("@/platform/command-center/metrics-service")
 let resolveTimeRange: typeof import("@/platform/command-center/time-range").resolveTimeRange;
 let maybeAutoCloseTableAfterPayment: typeof import("@/lib/table-ordering-service").maybeAutoCloseTableAfterPayment;
 let hashPassword: typeof import("@/lib/auth").hashPassword;
+let finalizeOrderBill: typeof import("@/lib/bill-service").finalizeOrderBill;
 
 before(async () => {
   execFileSync(
@@ -64,6 +65,7 @@ before(async () => {
   ({ resolveTimeRange } = await import("@/platform/command-center/time-range"));
   ({ maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service"));
   ({ hashPassword } = await import("@/lib/auth"));
+  ({ finalizeOrderBill } = await import("@/lib/bill-service"));
 });
 
 after(async () => {
@@ -660,5 +662,259 @@ describe("M7 dual/hybrid fulfillment", () => {
     assert.ok(row!.fulfillment.selfPickupOrders >= 2);
     assert.ok(row!.fulfillment.readyUnpaidOrders >= 1);
     assert.ok(row!.fulfillment.readyUnpaidOutstandingPaise > 0);
+  });
+
+  it("SELF_PICKUP READY items finalize an immutable Bill at the billable total, not ₹0", async () => {
+    const suffix = `bill-${Date.now()}`;
+    const { restaurant, table, burger } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: burger.id, quantity: 1 }],
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    await markItemsReady(created.order.id);
+    const itemsBefore = await prisma.orderItem.findMany({ where: { orderId: created.order.id } });
+    assert.ok(itemsBefore.every((item) => item.status === "READY"));
+    const pay = await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 280,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    assert.equal(pay.ok, true);
+    const bill = await prisma.bill.findFirst({ where: { orderId: created.order.id, status: "FINALIZED" } });
+    assert.ok(bill);
+    assert.equal(bill!.grandTotal, 280);
+    const itemsAfter = await prisma.orderItem.findMany({ where: { orderId: created.order.id } });
+    assert.ok(itemsAfter.every((item) => item.status === "READY"));
+  });
+
+  it("TABLE_SERVICE bill still counts served items only", async () => {
+    const suffix = `tsbill-${Date.now()}`;
+    const { restaurant, table, burger } = await seedRestaurant(suffix, { serviceMode: "HYBRID" });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: burger.id, quantity: 1 }],
+      requestedFulfillmentMode: "TABLE_SERVICE",
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    await markItemsReady(created.order.id);
+    const result = await finalizeOrderBill({
+      orderId: created.order.id,
+      restaurantId: restaurant.id,
+      actorUserId: owner.id,
+      actorName: owner.name,
+    });
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.bill.grandTotal, 0);
+    }
+  });
+
+  it("SELF_PICKUP partial payment stays due and collection unlocks only after the remainder", async () => {
+    const suffix = `partial-${Date.now()}`;
+    const { restaurant, table, burger } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: burger.id, quantity: 1 }],
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    await markItemsReady(created.order.id);
+    const first = await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 100,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    assert.equal(first.ok, true);
+    const afterPartial = await prisma.order.findUnique({ where: { id: created.order.id } });
+    assert.equal(afterPartial?.paidAt, null);
+    const partialElig = evaluateCollectionEligibility(
+      (await loadOrderForCollection(prisma, restaurant.id, created.order.id))!,
+    );
+    assert.equal(partialElig.outstandingAmountPaise, 18000);
+    assert.equal(partialElig.collectable, false);
+    assert.equal(partialElig.denyReason, "PAYMENT_REQUIRED");
+    await assert.rejects(
+      () =>
+        markSelfPickupCollected({
+          restaurantId: restaurant.id,
+          orderId: created.order.id,
+          actor: { id: owner.id, role: "OWNER", name: owner.name },
+        }),
+      (err: unknown) => err instanceof SelfPickupCollectionError && err.code === "PAYMENT_REQUIRED",
+    );
+
+    const rest = await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 180,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    assert.equal(rest.ok, true);
+    const settledElig = evaluateCollectionEligibility(
+      (await loadOrderForCollection(prisma, restaurant.id, created.order.id))!,
+    );
+    assert.equal(settledElig.outstandingAmountPaise, 0);
+    assert.equal(settledElig.collectable, true);
+    const collected = await markSelfPickupCollected({
+      restaurantId: restaurant.id,
+      orderId: created.order.id,
+      actor: { id: owner.id, role: "OWNER", name: owner.name },
+    });
+    assert.ok(collected.collectedAt);
+  });
+
+  it("GST remainder blocks SELF_PICKUP handover until the canonical total is captured", async () => {
+    const suffix = `gst-${Date.now()}`;
+    const { restaurant, table } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    await prisma.restaurant.update({
+      where: { id: restaurant.id },
+      data: { receiptGstEnabled: true, receiptGstRate: 5 },
+    });
+    const category = await prisma.menuCategory.findFirst({ where: { restaurantId: restaurant.id } });
+    assert.ok(category);
+    const chai = await prisma.menuItem.create({
+      data: { name: "Chai", price: 100, categoryId: category!.id },
+    });
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: chai.id, quantity: 1 }],
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    await markItemsReady(created.order.id);
+    const first = await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 100,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    assert.equal(first.ok, true);
+    const bill = await prisma.bill.findFirst({ where: { orderId: created.order.id, status: "FINALIZED" } });
+    assert.ok(bill);
+    assert.equal(bill!.grandTotal, 105);
+    const afterHundred = evaluateCollectionEligibility(
+      (await loadOrderForCollection(prisma, restaurant.id, created.order.id))!,
+    );
+    assert.equal(afterHundred.outstandingAmountPaise, 500);
+    assert.equal(afterHundred.denyReason, "PAYMENT_REQUIRED");
+    await assert.rejects(
+      () =>
+        markSelfPickupCollected({
+          restaurantId: restaurant.id,
+          orderId: created.order.id,
+          actor: { id: owner.id, role: "OWNER", name: owner.name },
+        }),
+      (err: unknown) =>
+        err instanceof SelfPickupCollectionError &&
+        err.code === "PAYMENT_REQUIRED" &&
+        err.outstandingAmountPaise === 500,
+    );
+
+    const remainder = await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 5,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    assert.equal(remainder.ok, true);
+    const afterGst = evaluateCollectionEligibility(
+      (await loadOrderForCollection(prisma, restaurant.id, created.order.id))!,
+    );
+    assert.equal(afterGst.outstandingAmountPaise, 0);
+    assert.equal(afterGst.collectable, true);
+    const collected = await markSelfPickupCollected({
+      restaurantId: restaurant.id,
+      orderId: created.order.id,
+      actor: { id: owner.id, role: "OWNER", name: owner.name },
+    });
+    assert.ok(collected.collectedAt);
+  });
+
+  it("collection outstanding uses the finalized Bill, not a later item recompute", async () => {
+    const suffix = `authbill-${Date.now()}`;
+    const { restaurant, table, burger } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: burger.id, quantity: 1 }],
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    await markItemsReady(created.order.id);
+    const pay = await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 100,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    assert.equal(pay.ok, true);
+    const bill = await prisma.bill.findFirst({ where: { orderId: created.order.id, status: "FINALIZED" } });
+    assert.equal(bill?.grandTotal, 280);
+    await prisma.orderItem.updateMany({
+      where: { orderId: created.order.id },
+      data: { unitPrice: 50 },
+    });
+    const elig = evaluateCollectionEligibility(
+      (await loadOrderForCollection(prisma, restaurant.id, created.order.id))!,
+    );
+    assert.equal(elig.outstandingAmountPaise, 18000);
+    assert.equal(elig.denyReason, "PAYMENT_REQUIRED");
+  });
+
+  it("concurrent Mark Collected claims one transition and one ORDER_COLLECTED event", async () => {
+    const suffix = `cas-${Date.now()}`;
+    const { restaurant, table, burger } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: burger.id, quantity: 1 }],
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    await markItemsReady(created.order.id);
+    await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 280,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    const actor = { id: owner.id, role: "OWNER", name: owner.name };
+    const results = await Promise.allSettled([
+      markSelfPickupCollected({ restaurantId: restaurant.id, orderId: created.order.id, actor }),
+      markSelfPickupCollected({ restaurantId: restaurant.id, orderId: created.order.id, actor }),
+    ]);
+    assert.equal(results.every((result) => result.status === "fulfilled"), true);
+    const collected = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+    assert.equal(collected.length, 2);
+    assert.ok(collected[0]!.collectedAt);
+    assert.equal(collected[0]!.collectedAt!.toISOString(), collected[1]!.collectedAt!.toISOString());
+    const persisted = await prisma.order.findUnique({ where: { id: created.order.id } });
+    assert.equal(persisted?.collectedAt?.toISOString(), collected[0]!.collectedAt!.toISOString());
+    const collectedEvents = await prisma.platformAuditEvent.count({
+      where: { action: "ORDER_COLLECTED", resourceId: created.order.id },
+    });
+    assert.equal(collectedEvents, 1);
   });
 });

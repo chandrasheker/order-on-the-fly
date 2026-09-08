@@ -70,7 +70,27 @@ export async function evaluateSelfPickupNotifications(orderId: string): Promise<
     include: {
       items: true,
       payments: true,
-      restaurant: { select: { pickupLocationLabel: true, name: true } },
+      restaurant: {
+        select: {
+          pickupLocationLabel: true,
+          name: true,
+          receiptGstEnabled: true,
+          receiptGstRate: true,
+        },
+      },
+      bills: {
+        where: { status: "FINALIZED" },
+        select: {
+          status: true,
+          grandTotal: true,
+          itemSubtotal: true,
+          orderDiscount: true,
+          gstAmount: true,
+          cgstAmount: true,
+          sgstAmount: true,
+        },
+        take: 1,
+      },
       table: { select: { id: true } },
     },
   });
@@ -86,7 +106,27 @@ export async function evaluateSelfPickupNotifications(orderId: string): Promise<
         include: {
           items: true,
           payments: true,
-          restaurant: { select: { pickupLocationLabel: true, name: true } },
+          restaurant: {
+            select: {
+              pickupLocationLabel: true,
+              name: true,
+              receiptGstEnabled: true,
+              receiptGstRate: true,
+            },
+          },
+          bills: {
+            where: { status: "FINALIZED" },
+            select: {
+              status: true,
+              grandTotal: true,
+              itemSubtotal: true,
+              orderDiscount: true,
+              gstAmount: true,
+              cgstAmount: true,
+              sgstAmount: true,
+            },
+            take: 1,
+          },
           table: { select: { id: true } },
         },
       });

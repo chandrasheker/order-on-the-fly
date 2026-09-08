@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { recordAuditLog } from "@/lib/audit-service";
 import { buildBillSnapshot, parseBillSnapshot, receiptFromBillSnapshot } from "@/lib/bill-snapshot";
-import { financialsForOrder } from "@/lib/order-financials";
+import { financialsForOrder, projectItemsForFinancials } from "@/lib/order-financials";
 import { logInfo, logWarn } from "@/lib/logger";
 import { enqueueCustomerBillPrintInTx, enqueueIdempotentPrintJob } from "@/domains/printing/print-job-service";
 import { customerBillIdempotencyKey, PRINT_KIND, targetFromKind } from "@/lib/print-constants";
@@ -121,7 +121,7 @@ export async function finalizeOrderBillInTx(
   if (!order) return { ok: false as const, error: "Order not found", status: 404 };
 
   const financials = financialsForOrder({
-    items: order.items,
+    items: projectItemsForFinancials(order.fulfillmentMode, order.items),
     discountAmount: order.discountAmount,
     payments: [],
     gstEnabled: order.restaurant.receiptGstEnabled,

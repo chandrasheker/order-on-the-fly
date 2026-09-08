@@ -1,7 +1,9 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
-  financialsForOrder,
+  canonicalFinancialsForOrder,
+  projectItemsForFinancials,
+  type FinalizedBillTotals,
   type LedgerPayment,
   type OrderFinancialSummary,
 } from "@/lib/order-financials";
@@ -50,6 +52,11 @@ export type OrderForCollection = {
   collectionReminderNotifiedAt: Date | null;
   items: CollectionItem[];
   payments: CollectionPayment[];
+  restaurant?: {
+    receiptGstEnabled: boolean;
+    receiptGstRate: number;
+  } | null;
+  bills?: FinalizedBillTotals[];
 };
 
 const ORDER_COLLECTION_SELECT = {
@@ -81,6 +88,25 @@ const ORDER_COLLECTION_SELECT = {
       status: true,
       refundOfPaymentId: true,
     },
+  },
+  restaurant: {
+    select: {
+      receiptGstEnabled: true,
+      receiptGstRate: true,
+    },
+  },
+  bills: {
+    where: { status: "FINALIZED" },
+    select: {
+      status: true,
+      grandTotal: true,
+      itemSubtotal: true,
+      orderDiscount: true,
+      gstAmount: true,
+      cgstAmount: true,
+      sgstAmount: true,
+    },
+    take: 1,
   },
 } satisfies Prisma.OrderSelect;
 
@@ -118,16 +144,31 @@ export function isOrderCollected(order: {
  * TABLE_SERVICE, but bills every required item (not only already-SERVED).
  * READY food still has a real outstanding amount. TABLE_SERVICE is unchanged.
  */
-export function settlementItemsForOrder<T extends { status: string }>(
-  fulfillmentMode: string | null | undefined,
-  items: T[],
-): T[] {
-  if (fulfillmentMode !== "SELF_PICKUP") {
-    return items;
-  }
-  return items.map((item) =>
-    item.status === "UNAVAILABLE" ? item : { ...item, status: "SERVED" as T["status"] },
-  );
+export const settlementItemsForOrder = projectItemsForFinancials;
+
+function collectionFinanceInput(order: {
+  fulfillmentMode?: string | null;
+  items: CollectionItem[];
+  payments?: CollectionPayment[];
+  discountAmount?: number | null;
+  gstEnabled?: boolean;
+  gstRate?: number | null;
+  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  bills?: FinalizedBillTotals[] | null;
+  finalizedBill?: FinalizedBillTotals | null;
+}) {
+  return {
+    fulfillmentMode: order.fulfillmentMode,
+    items: order.items,
+    payments: order.payments ?? [],
+    discountAmount: order.discountAmount,
+    gstEnabled: order.gstEnabled ?? order.restaurant?.receiptGstEnabled,
+    gstRate: order.gstRate ?? order.restaurant?.receiptGstRate,
+    finalizedBill:
+      order.finalizedBill ??
+      order.bills?.find((bill) => !bill.status || bill.status === "FINALIZED") ??
+      null,
+  };
 }
 
 export function settlementFinancialsForOrder(order: {
@@ -137,14 +178,11 @@ export function settlementFinancialsForOrder(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
+  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  bills?: FinalizedBillTotals[] | null;
+  finalizedBill?: FinalizedBillTotals | null;
 }): OrderFinancialSummary {
-  return financialsForOrder({
-    items: settlementItemsForOrder(order.fulfillmentMode, order.items),
-    payments: order.payments ?? [],
-    discountAmount: order.discountAmount,
-    gstEnabled: order.gstEnabled,
-    gstRate: order.gstRate,
-  });
+  return canonicalFinancialsForOrder(collectionFinanceInput(order));
 }
 
 export function outstandingAmountPaiseForCollection(order: {
@@ -154,6 +192,9 @@ export function outstandingAmountPaiseForCollection(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
+  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  bills?: FinalizedBillTotals[] | null;
+  finalizedBill?: FinalizedBillTotals | null;
 }): number {
   return settlementFinancialsForOrder(order).amountDuePaise;
 }
@@ -178,6 +219,9 @@ export function evaluateCollectionEligibility(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
+  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  bills?: FinalizedBillTotals[] | null;
+  finalizedBill?: FinalizedBillTotals | null;
 }): CollectionEligibility {
   const fulfillmentMode = isOrderFulfillmentMode(order.fulfillmentMode)
     ? order.fulfillmentMode
@@ -262,6 +306,11 @@ export function customerPickupState(order: {
   items: CollectionItem[];
   payments?: CollectionPayment[];
   discountAmount?: number | null;
+  gstEnabled?: boolean;
+  gstRate?: number | null;
+  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  bills?: FinalizedBillTotals[] | null;
+  finalizedBill?: FinalizedBillTotals | null;
 }): CustomerPickupState {
   if (isOrderCancelled(order)) return "CANCELLED";
   if (isOrderCollected(order)) return "COLLECTED";
@@ -283,6 +332,11 @@ export function publicPickupView(order: {
   items: CollectionItem[];
   payments?: CollectionPayment[];
   discountAmount?: number | null;
+  gstEnabled?: boolean;
+  gstRate?: number | null;
+  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  bills?: FinalizedBillTotals[] | null;
+  finalizedBill?: FinalizedBillTotals | null;
 }, pickupLocationLabel?: string | null) {
   const eligibility = evaluateCollectionEligibility(order);
   const state = customerPickupState(order);
@@ -320,6 +374,11 @@ export function throwIfSelfPickupHandoverBlocked(order: {
   items: CollectionItem[];
   payments?: CollectionPayment[];
   discountAmount?: number | null;
+  gstEnabled?: boolean;
+  gstRate?: number | null;
+  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  bills?: FinalizedBillTotals[] | null;
+  finalizedBill?: FinalizedBillTotals | null;
 }): void {
   if (!isSelfPickupOrder(order)) return;
   if (isOrderCollected(order)) return;
@@ -465,6 +524,27 @@ export async function markSelfPickupCollected(input: {
       }
 
       const collectedAt = new Date();
+      const claimed = await tx.order.updateMany({
+        where: {
+          id: order.id,
+          restaurantId: input.restaurantId,
+          collectedAt: null,
+        },
+        data: {
+          status: "SERVED",
+          collectedAt,
+          readyAt: order.readyAt ?? collectedAt,
+          paidAt: order.paidAt ?? collectedAt,
+        },
+      });
+      if (claimed.count === 0) {
+        const already = await loadOrderForCollection(tx, input.restaurantId, input.orderId);
+        if (already && isOrderCollected(already)) {
+          return already;
+        }
+        throw new SelfPickupCollectionError("NOT_FOUND", "Order not found.", 404);
+      }
+
       await tx.orderItem.updateMany({
         where: {
           orderId: order.id,
@@ -475,15 +555,6 @@ export async function markSelfPickupCollected(input: {
           servedAt: collectedAt,
           servedByUserId: input.actor.id,
           servedByName: input.actor.name ?? null,
-        },
-      });
-      await tx.order.update({
-        where: { id: order.id },
-        data: {
-          status: "SERVED",
-          collectedAt,
-          readyAt: order.readyAt ?? collectedAt,
-          paidAt: order.paidAt ?? collectedAt,
         },
       });
 

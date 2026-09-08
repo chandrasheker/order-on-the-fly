@@ -214,6 +214,7 @@ model Restaurant {
   hybridDefaultFulfillment String      @default("TABLE_SERVICE")
   tenantId              String?
   tenant                Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  nameNormalized        String         @default("")
   createdAt             DateTime       @default(now())
   branches              Branch[]
   users                 User[]
@@ -250,6 +251,8 @@ model Restaurant {
   demandForecasts       DemandForecast[]
   menuImports           MenuImport[]
   hostSlugs             HostSlug[]
+
+  @@unique([tenantId, nameNormalized])
 }
 
 model User {
@@ -1035,6 +1038,7 @@ model PrinterAgent {
 model Tenant {
   id                 String             @id @default(cuid())
   name               String
+  nameNormalized     String             @unique @default("")
   slug               String             @unique
   plan               TenantPlan         @default(STARTER)
   subscriptionStatus SubscriptionStatus @default(TRIAL)

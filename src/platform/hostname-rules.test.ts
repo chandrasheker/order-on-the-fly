@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it } from "node:test";
 import {
   assertUniqueRestaurantNames,
@@ -139,6 +142,29 @@ describe("hostname generation", () => {
     assert.equal(
       restaurantHostnameChangedNotice("abc-abc.dvadtech.in"),
       "Restaurant hostname changed to abc-abc.dvadtech.in. Reprint/reissue QR codes that contain the old hostname.",
+    );
+  });
+});
+
+describe("PostgreSQL nameNormalized parity", () => {
+  it("schema and M7 migration include Tenant/Restaurant normalized-name uniqueness", () => {
+    const schema = fs.readFileSync(path.join(process.cwd(), "prisma/schema.postgres.prisma"), "utf8");
+    assert.match(schema, /model Tenant[\s\S]*nameNormalized\s+String\s+@unique @default\(""\)/);
+    assert.match(schema, /model Restaurant[\s\S]*nameNormalized\s+String\s+@default\(""\)/);
+    assert.match(schema, /@@unique\(\[tenantId, nameNormalized\]\)/);
+    const sql = fs.readFileSync(
+      path.join(process.cwd(), "prisma/migrations-postgres/000022_m7_name_normalized/migration.sql"),
+      "utf8",
+    );
+    assert.match(sql, /ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "nameNormalized"/);
+    assert.match(sql, /ALTER TABLE "Restaurant" ADD COLUMN IF NOT EXISTS "nameNormalized"/);
+    assert.match(sql, /regexp_replace\("name", '\\s\+', ' ', 'g'\)/);
+    assert.match(sql, /Tenant_nameNormalized_key/);
+    assert.match(sql, /Restaurant_tenantId_nameNormalized_key/);
+    execFileSync(
+      process.execPath,
+      [path.join(process.cwd(), "scripts", "run-with-mem.js"), "npx", "prisma", "validate", "--schema", "prisma/schema.postgres.prisma"],
+      { cwd: process.cwd(), stdio: "inherit" },
     );
   });
 });

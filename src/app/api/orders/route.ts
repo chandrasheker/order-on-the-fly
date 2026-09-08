@@ -139,7 +139,11 @@ async function handleGET(req: NextRequest) {
     });
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: table.restaurantId },
-      select: { pickupLocationLabel: true },
+      select: {
+        pickupLocationLabel: true,
+        receiptGstEnabled: true,
+        receiptGstRate: true,
+      },
     });
     for (const order of ordersWithMenu) {
       if (order.fulfillmentMode === "SELF_PICKUP") {
@@ -156,18 +160,40 @@ async function handleGET(req: NextRequest) {
         orderId: { in: ordersWithMenu.map((order) => order.id) },
         status: "FINALIZED",
       },
-      select: { id: true, orderId: true, publicToken: true },
+      select: {
+        id: true,
+        orderId: true,
+        publicToken: true,
+        status: true,
+        grandTotal: true,
+        itemSubtotal: true,
+        orderDiscount: true,
+        gstAmount: true,
+        cgstAmount: true,
+        sgstAmount: true,
+      },
     });
     const receiptByOrder = new Map<string, string>();
+    const billsByOrder = new Map<string, typeof bills>();
     for (const bill of bills) {
       const token = bill.publicToken || (await ensureBillPublicToken(bill.id));
       if (token) receiptByOrder.set(bill.orderId, `/receipt/${token}`);
+      const list = billsByOrder.get(bill.orderId) ?? [];
+      list.push(bill);
+      billsByOrder.set(bill.orderId, list);
     }
     return NextResponse.json({
       orders: ordersWithMenu.map((order) => ({
         ...order,
         receiptUrl: receiptByOrder.get(order.id) ?? null,
-        pickup: publicPickupView(order, restaurant?.pickupLocationLabel),
+        pickup: publicPickupView(
+          {
+            ...order,
+            restaurant,
+            bills: billsByOrder.get(order.id) ?? [],
+          },
+          restaurant?.pickupLocationLabel,
+        ),
       })),
       paymentBlocked: await isTablePaymentBlocked(table.id),
       tabPaymentPending: tabSummary.paymentRequested,
