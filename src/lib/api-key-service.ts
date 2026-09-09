@@ -9,10 +9,20 @@ export function generateApiKeyRaw() {
   return `tt_${crypto.randomBytes(24).toString("hex")}`;
 }
 
+export function parseApiKeyExpiry(value: unknown): Date | null {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Invalid expiry date");
+  }
+  return parsed;
+}
+
 export async function createApiKey(params: {
   restaurantId: string;
   name: string;
   scopes?: string[];
+  expiresAt?: Date | null;
 }) {
   const raw = generateApiKeyRaw();
   const keyHash = hashKey(raw);
@@ -25,6 +35,7 @@ export async function createApiKey(params: {
       keyHash,
       keyPrefix,
       scopes: JSON.stringify(params.scopes ?? ["orders:read", "menu:read"]),
+      expiresAt: params.expiresAt ?? null,
     },
   });
 
@@ -39,6 +50,7 @@ export async function verifyApiKey(bearer: string) {
     where: { keyHash, revokedAt: null },
   });
   if (!row) return null;
+  if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
 
   void prisma.apiKey.update({
     where: { id: row.id },
@@ -62,6 +74,7 @@ export async function listApiKeys(restaurantId: string) {
       keyPrefix: true,
       scopes: true,
       lastUsedAt: true,
+      expiresAt: true,
       createdAt: true,
     },
   });

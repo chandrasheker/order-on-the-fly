@@ -38,6 +38,7 @@ interface RestaurantData {
   rewardTeaLabel: string;
   rewardBeverageLabel: string;
   backgroundImageUrl?: string | null;
+  logoUrl?: string | null;
   paymentQrUrl?: string | null;
   upiVpa?: string | null;
   upiMerchantName?: string | null;
@@ -379,16 +380,29 @@ export function OrderPageClient({ slug, token }: Props) {
 
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-orange-600/15 via-transparent to-purple-600/10" />
-        <div className="relative px-4 pt-8 pb-6 max-w-lg mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-sm text-orange-800 dark:text-orange-300 mb-3">
-            <UtensilsCrossed className="w-4 h-4" />
-            Table {data.table.number}
+        <div className="relative px-4 pt-6 pb-6 max-w-lg mx-auto">
+          <div className="flex items-center gap-3">
+            {data.restaurant.logoUrl ? (
+              <img
+                src={data.restaurant.logoUrl}
+                alt=""
+                className="h-12 w-12 rounded-xl object-contain bg-white/90 p-1 shrink-0"
+              />
+            ) : null}
+            <div className="min-w-0 text-left">
+              <h1 className="text-2xl font-bold drop-shadow-lg truncate">{data.restaurant.name}</h1>
+              <p className="text-sm text-muted mt-0.5 flex items-center gap-1 drop-shadow">
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                Scan · Order · Enjoy
+              </p>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold drop-shadow-lg">{data.restaurant.name}</h1>
-          <p className="text-sm text-muted mt-1 flex items-center justify-center gap-1 drop-shadow">
-            <Sparkles className="w-3.5 h-3.5" />
-            Scan · Order · Enjoy
-          </p>
+          <div className="mt-4 text-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-sm text-orange-800 dark:text-orange-300">
+              <UtensilsCrossed className="w-4 h-4" />
+              Table {data.table.number}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -470,6 +484,14 @@ export function OrderPageClient({ slug, token }: Props) {
             sessionKey={tableSession.sessionKey}
             enabled={Boolean(data.features.callWaiter)}
             serviceMode={data.restaurant.serviceMode}
+          />
+        )}
+
+        {data.restaurant.serviceMode === "HYBRID" && canOrder && !showThankYou && (
+          <HybridFulfillmentPicker
+            selected={fulfillmentChoice || data.restaurant.hybridDefaultFulfillment || "TABLE_SERVICE"}
+            pickupLabel={data.restaurant.pickupLocationLabel || "the pickup counter"}
+            onSelect={setFulfillmentChoice}
           />
         )}
 
@@ -575,38 +597,6 @@ export function OrderPageClient({ slug, token }: Props) {
           </p>
         )}
 
-        {data.restaurant.serviceMode === "HYBRID" && canOrder && (
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-            <p className="font-medium">How would you like your order?</p>
-            <label className="flex items-start gap-3">
-              <input
-                type="radio"
-                checked={(fulfillmentChoice || data.restaurant.hybridDefaultFulfillment) === "TABLE_SERVICE"}
-                onChange={() => setFulfillmentChoice("TABLE_SERVICE")}
-                className="mt-1"
-              />
-              <span>
-                <span className="block font-medium">Serve at my table</span>
-                <span className="text-sm text-muted">Staff will bring your order when it is ready.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3">
-              <input
-                type="radio"
-                checked={(fulfillmentChoice || data.restaurant.hybridDefaultFulfillment) === "SELF_PICKUP"}
-                onChange={() => setFulfillmentChoice("SELF_PICKUP")}
-                className="mt-1"
-              />
-              <span>
-                <span className="block font-medium">I&apos;ll collect from the counter</span>
-                <span className="text-sm text-muted">
-                  We&apos;ll notify you when the order is ready. Payment must be completed before collection.
-                </span>
-              </span>
-            </label>
-          </div>
-        )}
-
         <div id="customer-menu">
           <MenuView
             categories={data.categories}
@@ -622,6 +612,53 @@ export function OrderPageClient({ slug, token }: Props) {
         customerName={customerName}
         orderId={latestOrderId}
       />
+    </div>
+  );
+}
+
+function HybridFulfillmentPicker({
+  selected,
+  pickupLabel,
+  onSelect,
+}: {
+  selected: OrderFulfillmentMode;
+  pickupLabel: string;
+  onSelect: (mode: OrderFulfillmentMode) => void;
+}) {
+  return (
+    <div className="p-4 rounded-2xl border-2 border-orange-400/60 bg-orange-500/15 space-y-3">
+      <p className="font-semibold text-center text-lg text-foreground">How should we serve you?</p>
+      <p className="text-sm text-center text-muted">Tap one option. You can change it before you place the order.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => onSelect("TABLE_SERVICE")}
+          className={`rounded-2xl px-4 py-4 text-left border-2 transition-colors min-h-[6.5rem] ${
+            selected === "TABLE_SERVICE"
+              ? "border-orange-400 bg-orange-500 text-white shadow-lg shadow-orange-500/25"
+              : "border-white/20 bg-black/30 text-foreground hover:border-orange-400/50"
+          }`}
+        >
+          <span className="block text-base font-bold">Serve at my table</span>
+          <span className={`block text-sm mt-1 ${selected === "TABLE_SERVICE" ? "text-white/90" : "text-muted"}`}>
+            Staff will bring your order when it is ready.
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelect("SELF_PICKUP")}
+          className={`rounded-2xl px-4 py-4 text-left border-2 transition-colors min-h-[6.5rem] ${
+            selected === "SELF_PICKUP"
+              ? "border-orange-400 bg-orange-500 text-white shadow-lg shadow-orange-500/25"
+              : "border-white/20 bg-black/30 text-foreground hover:border-orange-400/50"
+          }`}
+        >
+          <span className="block text-base font-bold">I&apos;ll collect</span>
+          <span className={`block text-sm mt-1 ${selected === "SELF_PICKUP" ? "text-white/90" : "text-muted"}`}>
+            Pick up from {pickupLabel}. Pay before collection.
+          </span>
+        </button>
+      </div>
     </div>
   );
 }

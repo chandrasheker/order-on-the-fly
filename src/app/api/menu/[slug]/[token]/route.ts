@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logApiError, logApiRequest, logWarn } from "@/lib/logger";
 import { isTablePaymentBlocked } from "@/lib/payment-service";
 import { getPaymentQrPublicUrl, paymentQrExists } from "@/lib/payment-qr-storage";
-import { getCustomerBackgroundImageUrl } from "@/lib/branding-service";
+import { getCustomerBackgroundImageUrl, getCustomerLogoUrl } from "@/lib/branding-service";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { listActivePromotions, listComboMeals } from "@/lib/promotion-service";
 import { getKitchenCapacityState } from "@/lib/kitchen-capacity-service";
@@ -38,6 +38,7 @@ async function handleGET(
         rewardTeaLabel: true,
         rewardBeverageLabel: true,
         backgroundImageUrl: true,
+        logoUrl: true,
         paymentQrUrl: true,
         upiVpa: true,
         upiMerchantName: true,
@@ -146,6 +147,7 @@ async function handleGET(
     const hasPaymentQr = await paymentQrExists(restaurant.id);
     const paymentQrUrl = hasPaymentQr ? getPaymentQrPublicUrl(restaurant.slug) : null;
     const backgroundImageUrl = await getCustomerBackgroundImageUrl(restaurant);
+    const logoUrl = await getCustomerLogoUrl(restaurant);
 
     return NextResponse.json({
       restaurant: {
@@ -157,6 +159,7 @@ async function handleGET(
         rewardTeaLabel: restaurant.rewardTeaLabel,
         rewardBeverageLabel: restaurant.rewardBeverageLabel,
         backgroundImageUrl,
+        logoUrl,
         paymentQrUrl,
         upiVpa: restaurant.upiVpa ?? null,
         upiMerchantName: restaurant.upiMerchantName ?? restaurant.name,

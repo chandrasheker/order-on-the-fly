@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { Button, Card, Spinner, Input } from "@/components/ui";
+import { ManualUpiCard } from "@/components/admin/ManualUpiCard";
 
 type Tab = "promotions" | "combos" | "modifiers" | "kitchen" | "gateway" | "alerts";
 
@@ -420,6 +421,8 @@ export default function RealtimeAdminPage() {
             <Button onClick={() => void saveGateway()}>Save gateway</Button>
           </Card>
         )}
+
+        {tab === "gateway" && <ManualUpiCard />}
 
         {tab === "alerts" && (
           <Card className="p-4 space-y-4">

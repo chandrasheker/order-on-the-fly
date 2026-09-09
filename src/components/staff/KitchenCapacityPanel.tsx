@@ -25,24 +25,39 @@ export function KitchenCapacityPanel({
   const [message, setMessage] = useState("");
   const [threshold, setThreshold] = useState(0);
   const [expanded, setExpanded] = useState(!compact);
-  const pendingPaused = useRef<boolean | null>(null);
+  const desiredPaused = useRef<boolean | null>(null);
   const saveGen = useRef(0);
 
+  const applyGetState = useCallback((remote: KitchenState) => {
+    const desired = desiredPaused.current;
+    if (desired !== null && remote.paused !== desired) {
+      setState((current) => ({
+        ...(current ?? remote),
+        ...remote,
+        paused: desired,
+      }));
+      return;
+    }
+    if (desired !== null && remote.paused === desired) {
+      desiredPaused.current = null;
+    }
+    setState(remote);
+    setMessage(remote.message ?? "");
+    setThreshold(remote.autoPauseThreshold ?? 0);
+  }, []);
+
   const load = useCallback(async () => {
-    if (!enabled || pendingPaused.current !== null) return;
+    if (!enabled) return;
     try {
       const res = await fetch("/api/realtime/kitchen");
       if (res.ok) {
         const json = await res.json();
-        if (pendingPaused.current !== null) return;
-        setState(json.state);
-        setMessage(json.state.message ?? "");
-        setThreshold(json.state.autoPauseThreshold ?? 0);
+        applyGetState(json.state);
       }
     } catch {
       /* ignore transient network errors during dev reload or polling */
     }
-  }, [enabled]);
+  }, [applyGetState, enabled]);
 
   useEffect(() => {
     void load();
@@ -55,7 +70,7 @@ export function KitchenCapacityPanel({
     if (!state) return;
     const generation = ++saveGen.current;
     const previous = state;
-    pendingPaused.current = paused;
+    desiredPaused.current = paused;
     flushSync(() => {
       setState((current) => (current ? { ...current, paused } : current));
     });
@@ -73,17 +88,19 @@ export function KitchenCapacityPanel({
       if (res.ok) {
         const json = await res.json();
         if (generation !== saveGen.current) return;
-        setState(json.state);
+        setState({ ...json.state, paused });
         setMessage(json.state.message ?? message);
         setThreshold(json.state.autoPauseThreshold ?? threshold);
       } else {
+        desiredPaused.current = null;
         setState(previous);
       }
     } catch (error) {
-      if (generation === saveGen.current) setState(previous);
+      if (generation === saveGen.current) {
+        desiredPaused.current = null;
+        setState(previous);
+      }
       swallowPollingFetchError(error);
-    } finally {
-      if (generation === saveGen.current) pendingPaused.current = null;
     }
   };
 

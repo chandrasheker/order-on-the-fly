@@ -24,14 +24,15 @@ export const FLOOR_STATE_LABELS: Record<
 
 /** Shared chip/tile colors for floor plan and table-ordering. Keep these identical. */
 export const FLOOR_STATE_STYLES: Record<string, string> = {
-  available: "border-zinc-600/40 bg-zinc-800/40 text-zinc-400",
+  available: "border-emerald-500/55 bg-emerald-500/20 text-emerald-200",
   seated: "border-blue-500/40 bg-blue-500/10 text-blue-300",
   ordering: "border-violet-500/40 bg-violet-500/10 text-violet-300",
-  kitchen: "border-orange-500/40 bg-orange-500/10 text-orange-300",
+  kitchen: "border-amber-500/40 bg-amber-500/10 text-amber-300",
   ready: "border-cyan-500/40 bg-cyan-500/10 text-cyan-300",
-  eating: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+  eating: "border-orange-500/60 bg-orange-500/20 text-orange-200",
   payment: "border-yellow-500/40 bg-yellow-500/10 text-yellow-300",
-  overdue: "border-red-500/50 bg-red-500/15 text-red-300 animate-pulse",
+  overdue:
+    "border-red-600 bg-red-600/45 text-red-50 animate-pulse shadow-[0_0_14px_rgba(220,38,38,0.65)]",
 };
 
 /** Owner-disabled QR — not a floor state, and never the eating green. */

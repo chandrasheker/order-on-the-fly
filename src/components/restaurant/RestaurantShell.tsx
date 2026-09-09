@@ -31,6 +31,7 @@ import {
 import { TakeOrderOverlay } from "@/components/staff/TakeOrderOverlay";
 import type { Role } from "@/generated/prisma/client";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
+import { LOGO_CHANGED_EVENT } from "@/lib/admin-api-error";
 import { cn } from "@/lib/utils";
 
 export type RestaurantNavId =
@@ -52,6 +53,7 @@ export type RestaurantShellUser = {
   role: Role;
   restaurantName: string;
   email?: string;
+  restaurantLogoUrl?: string | null;
 };
 
 type FeatureFlags = Record<string, boolean | undefined>;
@@ -119,26 +121,8 @@ function buildNav(role: Role | undefined, features: FeatureFlags | undefined): N
   if (flagOn(features, "aggregator_inbox")) {
     items.push({ id: "integrations", href: "/admin/integrations", label: "Integrations", icon: Plug });
   }
-  if (
-    flagOn(features, "inventory_86") ||
-    flagOn(features, "labor_clock") ||
-    flagOn(features, "reservations") ||
-    flagOn(features, "tip_pooling") ||
-    flagOn(features, "guest_crm") ||
-    flagOn(features, "audit_log")
-  ) {
-    items.push({ id: "operations", href: "/admin/operations", label: "Operations", icon: ClipboardList });
-  }
-  if (
-    flagOn(features, "promotions_engine") ||
-    flagOn(features, "menu_modifiers") ||
-    flagOn(features, "call_waiter") ||
-    flagOn(features, "kitchen_capacity") ||
-    flagOn(features, "payment_webhooks") ||
-    flagOn(features, "push_alerts")
-  ) {
-    items.push({ id: "realtime", href: "/admin/realtime", label: "Realtime", icon: Radio });
-  }
+  items.push({ id: "operations", href: "/admin/operations", label: "Operations", icon: ClipboardList });
+  items.push({ id: "realtime", href: "/admin/realtime", label: "Realtime", icon: Radio });
   items.push(
     { id: "printing", href: "/admin/printing", label: "Printing", icon: Printer },
     { id: "analytics", href: "/admin/platform", label: "Analytics", icon: BarChart3 },
@@ -167,6 +151,7 @@ export function RestaurantShell({
   const [fetchedUser, setFetchedUser] = useState<RestaurantShellUser | null>(null);
   const [fetchedFeatures, setFetchedFeatures] = useState<FeatureFlags>({});
   const [sessionResolved, setSessionResolved] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(userProp?.restaurantLogoUrl ?? null);
 
   useEffect(() => {
     if (userProp) return;
@@ -191,7 +176,9 @@ export function RestaurantShell({
           role: me.user.role,
           restaurantName: me.user.restaurantName,
           email: me.user.email,
+          restaurantLogoUrl: me.user.restaurantLogoUrl ?? null,
         });
+        setLogoUrl(me.user.restaurantLogoUrl ?? null);
         setFetchedFeatures((featuresJson.enabled ?? {}) as FeatureFlags);
       } catch (error) {
         swallowPollingFetchError(error);
@@ -203,6 +190,37 @@ export function RestaurantShell({
       cancelled = true;
     };
   }, [router, userProp]);
+
+  useEffect(() => {
+    if (userProp?.restaurantLogoUrl) setLogoUrl(userProp.restaurantLogoUrl);
+  }, [userProp?.restaurantLogoUrl]);
+
+  useEffect(() => {
+    if (userProp) {
+      let cancelled = false;
+      void fetch("/api/auth/me", { credentials: "same-origin" })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((me) => {
+          if (!cancelled && me?.user) {
+            setLogoUrl(me.user.restaurantLogoUrl ?? null);
+          }
+        })
+        .catch((error) => swallowPollingFetchError(error));
+      return () => {
+        cancelled = true;
+      };
+    }
+    return undefined;
+  }, [userProp]);
+
+  useEffect(() => {
+    const onLogo = (event: Event) => {
+      const detail = (event as CustomEvent<{ url?: string | null }>).detail;
+      setLogoUrl(detail?.url ?? null);
+    };
+    window.addEventListener(LOGO_CHANGED_EVENT, onLogo);
+    return () => window.removeEventListener(LOGO_CHANGED_EVENT, onLogo);
+  }, []);
 
   const user = userProp ?? fetchedUser;
   const features = featuresProp ?? fetchedFeatures;
@@ -253,9 +271,18 @@ export function RestaurantShell({
   );
 
   const brand = (
-    <div className="px-4 py-4 border-b border-white/5">
-      <p className="text-sm font-semibold text-foreground truncate">{user?.restaurantName || "TableTap"}</p>
-      <p className="text-xs text-muted">Restaurant</p>
+    <div className="px-4 py-4 border-b border-white/5 flex items-center gap-2.5 min-w-0">
+      {logoUrl ? (
+        <img
+          src={logoUrl}
+          alt=""
+          className="h-9 w-9 rounded-lg object-contain bg-white/90 p-0.5 shrink-0"
+        />
+      ) : null}
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-foreground truncate">{user?.restaurantName || "TableTap"}</p>
+        <p className="text-xs text-muted">Restaurant</p>
+      </div>
     </div>
   );
 
@@ -310,9 +337,18 @@ export function RestaurantShell({
           />
           <aside className="relative z-50 flex h-full w-72 max-w-[85vw] flex-col border-r border-white/10 bg-app-shell">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground truncate">{user?.restaurantName || "TableTap"}</p>
-                <p className="text-xs text-muted">Restaurant</p>
+              <div className="flex items-center gap-2.5 min-w-0">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt=""
+                    className="h-9 w-9 rounded-lg object-contain bg-white/90 p-0.5 shrink-0"
+                  />
+                ) : null}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">{user?.restaurantName || "TableTap"}</p>
+                  <p className="text-xs text-muted">Restaurant</p>
+                </div>
               </div>
               <button
                 type="button"
@@ -353,7 +389,15 @@ export function RestaurantShell({
               >
                 <Menu className="w-5 h-5" />
               </button>
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt=""
+                  className="h-9 w-9 mt-0.5 rounded-lg object-contain bg-white/90 p-0.5 shrink-0"
+                />
+              ) : null}
               <div className="min-w-0">
+                <p className="lg:hidden text-sm font-semibold truncate">{user?.restaurantName || "TableTap"}</p>
                 <h1 className="text-xl font-semibold truncate">{title}</h1>
                 {subtitle ? <p className="text-sm text-muted mt-0.5">{subtitle}</p> : null}
               </div>

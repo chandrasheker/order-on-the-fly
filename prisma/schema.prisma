@@ -1358,6 +1358,7 @@ model ApiKey {
   keyPrefix    String
   scopes       String     @default("[\"orders:read\"]")
   lastUsedAt   DateTime?
+  expiresAt    DateTime?
   revokedAt    DateTime?
   createdAt    DateTime   @default(now())
 

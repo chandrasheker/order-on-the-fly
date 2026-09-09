@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Copy } from "lucide-react";
 import { Button, Card, Input, Spinner } from "@/components/ui";
+import { ReceiptSettingsCard } from "@/components/admin/ReceiptSettingsCard";
 
 type Agent = {
   id: string;
@@ -127,6 +128,7 @@ export default function PrintingAdminPage() {
         </Button>
       </div>
         {message ? <p className="text-sm text-amber-300">{message}</p> : null}
+        <ReceiptSettingsCard />
         {newToken ? (
           <Card className="p-4 space-y-2">
             <p className="text-sm text-zinc-400">Copy this token now. It will not be shown again.</p>

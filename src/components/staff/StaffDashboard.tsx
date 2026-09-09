@@ -197,6 +197,7 @@ export function StaffDashboard() {
     role: Role;
     restaurantName: string;
     email?: string;
+    restaurantLogoUrl?: string | null;
   } | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
@@ -496,7 +497,11 @@ export function StaffDashboard() {
       wide
       title={user?.restaurantName ?? "Restaurant"}
       subtitle={user ? `${user.name} · ${user.role.toLowerCase()}` : undefined}
-      user={user}
+      user={
+        user
+          ? { ...user, restaurantLogoUrl: restaurantLogoUrl ?? user.restaurantLogoUrl }
+          : user
+      }
       features={features}
       activeItem="dashboard"
       actions={

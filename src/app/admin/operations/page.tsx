@@ -10,13 +10,23 @@ import {
   Shield,
   Bell,
   Download,
+  ImageIcon,
+  UtensilsCrossed,
 } from "lucide-react";
 import { Button, Card, Input, Spinner, Badge } from "@/components/ui";
 import { cn, formatCurrency } from "@/lib/utils";
+import { ServiceModeCard } from "@/components/admin/ServiceModeCard";
+import { RestaurantLogoCard } from "@/components/admin/RestaurantLogoCard";
+import { GuestBackgroundCard } from "@/components/admin/GuestBackgroundCard";
 
-type Tab = "inventory" | "labor" | "reservations" | "tips" | "guests" | "audit";
+type Tab = "branding" | "service" | "inventory" | "labor" | "reservations" | "tips" | "guests" | "audit";
 
-const TABS: { id: Tab; label: string; icon: typeof Package; flag: string }[] = [
+const ALWAYS_TABS: { id: Tab; label: string; icon: typeof Package }[] = [
+  { id: "branding", label: "Branding", icon: ImageIcon },
+  { id: "service", label: "Service model", icon: UtensilsCrossed },
+];
+
+const FEATURE_TABS: { id: Tab; label: string; icon: typeof Package; flag: string }[] = [
   { id: "inventory", label: "Inventory", icon: Package, flag: "inventory_86" },
   { id: "labor", label: "Labor & SPLH", icon: Clock, flag: "labor_clock" },
   { id: "reservations", label: "Reservations", icon: CalendarDays, flag: "reservations" },
@@ -27,7 +37,7 @@ const TABS: { id: Tab; label: string; icon: typeof Package; flag: string }[] = [
 
 export default function OperationsPage() {
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
-  const [tab, setTab] = useState<Tab>("inventory");
+  const [tab, setTab] = useState<Tab>("branding");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -57,13 +67,29 @@ export default function OperationsPage() {
     );
   }
 
-  const activeFlag = TABS.find((t) => t.id === tab)?.flag;
-  const tabEnabled = activeFlag ? enabled[activeFlag] : false;
+  const activeFlag = FEATURE_TABS.find((t) => t.id === tab)?.flag;
+  const tabEnabled = !activeFlag || Boolean(enabled[activeFlag]);
 
   return (
     <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          {TABS.map((t) => (
+          {ALWAYS_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-xl text-sm border transition-colors",
+                tab === t.id
+                  ? "bg-orange-500/20 border-orange-500/40 text-orange-200"
+                  : "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10",
+              )}
+            >
+              <t.icon className="w-4 h-4" />
+              {t.label}
+            </button>
+          ))}
+          {FEATURE_TABS.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -87,7 +113,15 @@ export default function OperationsPage() {
 
         {message && <p className="text-sm text-emerald-400 text-center">{message}</p>}
 
-        {!tabEnabled ? (
+        {tab === "branding" && (
+          <div className="space-y-4">
+            <RestaurantLogoCard />
+            <GuestBackgroundCard />
+          </div>
+        )}
+        {tab === "service" && <ServiceModeCard />}
+
+        {tab !== "branding" && tab !== "service" && !tabEnabled ? (
           <Card className="p-8 text-center text-zinc-400">
             Enable <strong className="text-white">{activeFlag}</strong> from super admin → Premium features
             (or run <code className="text-orange-300">enable-premium-features.ts --all</code>).

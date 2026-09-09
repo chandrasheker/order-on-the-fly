@@ -18,7 +18,7 @@ function adminPageMeta(pathname: string) {
     };
   }
   if (pathname.startsWith("/admin/qr")) {
-    return { title: "Tables & QR", subtitle: "Dine-in table codes and guest page" };
+    return { title: "Tables & QR", subtitle: "Dine-in tables and QR codes only" };
   }
   if (pathname.startsWith("/admin/rewards")) {
     return { title: "Rewards", subtitle: "Verify name and mark redeemed" };
@@ -27,13 +27,13 @@ function adminPageMeta(pathname: string) {
     return { title: "Integrations", subtitle: "Swiggy and Zomato automatic sync" };
   }
   if (pathname.startsWith("/admin/operations")) {
-    return { title: "Operations", subtitle: "Inventory, labor, reservations, tips, CRM, audit" };
+    return { title: "Operations", subtitle: "Branding, service model, inventory, labor, CRM" };
   }
   if (pathname.startsWith("/admin/realtime")) {
-    return { title: "Realtime", subtitle: "Promotions, modifiers, kitchen, payments, alerts" };
+    return { title: "Realtime", subtitle: "Promotions, modifiers, kitchen, payments, UPI, alerts" };
   }
   if (pathname.startsWith("/admin/printing")) {
-    return { title: "Printing", subtitle: "Agents, queue, retry delivery" };
+    return { title: "Printing", subtitle: "Thermal receipts, agents, queue, retry delivery" };
   }
   if (pathname.startsWith("/admin/platform")) {
     return { title: "Analytics", subtitle: "Forecasts, API keys, recipes, branches" };

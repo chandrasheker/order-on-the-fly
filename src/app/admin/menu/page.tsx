@@ -472,35 +472,8 @@ export default function MenuManagePage() {
           </div>
         )}
 
-        {restaurantSlug && (
-          <Card className="p-5 border border-cyan-500/20 bg-cyan-500/5 space-y-3">
-            <div>
-              <h2 className="font-semibold text-lg flex items-center gap-2">
-                <Monitor className="w-5 h-5 text-cyan-400" />
-                Digital menu board
-              </h2>
-              <p className="text-sm text-zinc-400 mt-1">
-                Open on a TV or tablet at {restaurantName || "your restaurant"}. It refreshes every
-                30 seconds and only shows enabled categories with live items.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={openDigitalDisplay}>
-                <Monitor className="w-4 h-4" />
-                Open display screen
-              </Button>
-              <Button type="button" variant="secondary" onClick={openPrintMenu}>
-                <Printer className="w-4 h-4" />
-                Print menu (PDF)
-              </Button>
-            </div>
-            <p className="text-xs text-zinc-500 break-all">
-              Display path: /display/menu/{restaurantSlug}
-            </p>
-          </Card>
-        )}
-
-        <Card className="p-5 space-y-3 border border-amber-500/25 bg-amber-500/5">
+        <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
+        <Card className="order-1 lg:order-2 lg:col-start-2 p-5 space-y-3 border border-amber-500/25 bg-amber-500/5">
           <div className="flex items-start gap-3">
             <Upload className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
             <div className="flex-1 space-y-1">
@@ -522,6 +495,7 @@ export default function MenuManagePage() {
           </Link>
         </Card>
 
+        <div className="order-2 lg:order-1 lg:col-start-1 lg:row-span-2 space-y-6">
         <Card className="p-5 space-y-4 border border-orange-500/20">
           <div className="flex items-start gap-3">
             <FolderPlus className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
@@ -733,6 +707,36 @@ export default function MenuManagePage() {
             </div>
           )}
         </Card>
+        </div>
+
+        {restaurantSlug && (
+          <Card className="order-3 lg:col-start-2 p-5 border border-cyan-500/20 bg-cyan-500/5 space-y-3">
+            <div>
+              <h2 className="font-semibold text-lg flex items-center gap-2">
+                <Monitor className="w-5 h-5 text-cyan-400" />
+                Digital menu board
+              </h2>
+              <p className="text-sm text-zinc-400 mt-1">
+                Open on a TV or tablet at {restaurantName || "your restaurant"}. It refreshes every
+                30 seconds and only shows enabled categories with live items.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={openDigitalDisplay}>
+                <Monitor className="w-4 h-4" />
+                Open display screen
+              </Button>
+              <Button type="button" variant="secondary" onClick={openPrintMenu}>
+                <Printer className="w-4 h-4" />
+                Print menu (PDF)
+              </Button>
+            </div>
+            <p className="text-xs text-zinc-500 break-all">
+              Display path: /display/menu/{restaurantSlug}
+            </p>
+          </Card>
+        )}
+        </div>
     </div>
   );
 }

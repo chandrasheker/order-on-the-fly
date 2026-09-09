@@ -15,6 +15,10 @@ export default function PlatformAdminPage() {
   const [ingredients, setIngredients] = useState<Array<Record<string, unknown>>>([]);
   const [branches, setBranches] = useState<Array<Record<string, unknown>>>([]);
   const [newKeySecret, setNewKeySecret] = useState<string | null>(null);
+  const [newKeyName, setNewKeyName] = useState("Integration");
+  const [expiryPreset, setExpiryPreset] = useState("");
+  const [customExpiry, setCustomExpiry] = useState("");
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   const [ingName, setIngName] = useState("");
   const [branchName, setBranchName] = useState("");
 
@@ -112,12 +116,48 @@ export default function PlatformAdminPage() {
 
         {tab === "apikeys" && (
           <Card className="p-4 space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-zinc-500 block mb-1">Key name</label>
+                <Input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="Integration" />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 block mb-1">Expiry</label>
+                <select
+                  className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm"
+                  value={expiryPreset}
+                  onChange={(e) => setExpiryPreset(e.target.value)}
+                >
+                  <option value="">Never expires</option>
+                  <option value="30">30 days</option>
+                  <option value="90">90 days</option>
+                  <option value="365">1 year</option>
+                  <option value="custom">Custom date</option>
+                </select>
+              </div>
+            </div>
+            {expiryPreset === "custom" && (
+              <div>
+                <label className="text-xs text-zinc-500 block mb-1">Expires at</label>
+                <Input
+                  type="datetime-local"
+                  value={customExpiry}
+                  onChange={(e) => setCustomExpiry(e.target.value)}
+                />
+              </div>
+            )}
             <Button
               onClick={async () => {
+                let expiresAt: string | null = null;
+                if (expiryPreset === "custom") {
+                  expiresAt = customExpiry ? new Date(customExpiry).toISOString() : null;
+                } else if (expiryPreset) {
+                  expiresAt = new Date(Date.now() + Number(expiryPreset) * 86400000).toISOString();
+                }
                 const res = await fetch("/api/api-keys", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ name: "Integration" }),
+                  body: JSON.stringify({ name: newKeyName || "Integration", expiresAt }),
                 });
                 const json = await res.json();
                 if (json.secret) setNewKeySecret(json.secret);
@@ -129,12 +169,44 @@ export default function PlatformAdminPage() {
             {newKeySecret && (
               <p className="text-xs text-emerald-400 break-all">Secret (copy now): {newKeySecret}</p>
             )}
-            <ul className="text-sm space-y-1">
-              {keys.map((k) => (
-                <li key={String(k.id)}>
-                  {String(k.name)} · {String(k.keyPrefix)}…
-                </li>
-              ))}
+            <ul className="text-sm space-y-2">
+              {keys.map((k) => {
+                const expiresAt = k.expiresAt ? new Date(String(k.expiresAt)) : null;
+                const expired = Boolean(expiresAt && expiresAt.getTime() <= Date.now());
+                return (
+                  <li
+                    key={String(k.id)}
+                    className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-white/5 border border-white/10"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {String(k.name)} · {String(k.keyPrefix)}…
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        {expired
+                          ? "Expired"
+                          : expiresAt
+                            ? `Expires ${expiresAt.toLocaleString()}`
+                            : "No expiry"}
+                        {k.lastUsedAt ? ` · last used ${new Date(String(k.lastUsedAt)).toLocaleString()}` : ""}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={revokingId === String(k.id)}
+                      onClick={async () => {
+                        setRevokingId(String(k.id));
+                        await fetch(`/api/api-keys?id=${k.id}`, { method: "DELETE" });
+                        setRevokingId(null);
+                        void load();
+                      }}
+                    >
+                      {revokingId === String(k.id) ? "Revoking…" : "Revoke"}
+                    </Button>
+                  </li>
+                );
+              })}
             </ul>
           </Card>
         )}
