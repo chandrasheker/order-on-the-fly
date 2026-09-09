@@ -85,18 +85,18 @@ function CartLines({
       </div>
 
       <div className="flex flex-col gap-2 pt-1">
-        <div className="flex gap-2">
+        <div className="flex flex-col-reverse sm:flex-row gap-2">
           <Button
             type="button"
             variant="secondary"
-            className="flex-1"
+            className="w-full sm:flex-1"
             disabled={placing}
             onClick={onClearCart}
           >
             <Trash2 className="w-4 h-4" />
             Empty cart
           </Button>
-          <Button type="button" className="flex-1" disabled={placing} onClick={onPlaceOrder}>
+          <Button type="button" className="w-full sm:flex-1" disabled={placing} onClick={onPlaceOrder}>
             {placing ? <Spinner /> : placeLabel ?? "Send to kitchen"}
           </Button>
         </div>
