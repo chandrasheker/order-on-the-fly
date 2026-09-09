@@ -814,7 +814,9 @@ function ItemRow({
             {item.prepTimeMinutes} min serve
             {" · "}
             {item.trackInventory
-              ? `Qty ${item.stockQuantity ?? 0}`
+              ? item.stockQuantity == null
+                ? "Qty —"
+                : `Qty ${item.stockQuantity}`
               : "Qty not tracked"}
           </p>
         </button>
