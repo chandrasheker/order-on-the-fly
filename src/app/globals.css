@@ -103,8 +103,37 @@ html {
 }
 
 .light .text-orange-100,
-.light .text-orange-200 {
+.light .text-orange-200,
+.light .text-orange-300,
+.light .text-orange-400 {
   color: #9a3412;
+}
+
+.light .text-violet-100,
+.light .text-violet-200,
+.light .text-violet-300 {
+  color: #5b21b6;
+}
+
+.light .text-amber-200,
+.light .text-amber-300 {
+  color: #92400e;
+}
+
+.light .text-emerald-300,
+.light .text-emerald-400 {
+  color: #065f46;
+}
+
+.light .text-red-300,
+.light .text-red-400 {
+  color: #991b1b;
+}
+
+.light .text-sky-200,
+.light .text-sky-300,
+.light .text-sky-400 {
+  color: #075985;
 }
 
 .light .border-white\/5,
