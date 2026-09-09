@@ -234,6 +234,10 @@ export function RestaurantShell({
     setTakeOrderOpen(true);
   };
 
+  useEffect(() => {
+    setTakeOrderOpen(false);
+  }, [pathname]);
+
   const takeOrderButtonClass =
     "inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-semibold shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40";
 
