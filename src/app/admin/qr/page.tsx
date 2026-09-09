@@ -224,6 +224,15 @@ export default function QRPage() {
                     alt={`Table ${qr.number}`}
                     className="w-36 h-36 mx-auto rounded-xl"
                   />
+                  <a
+                    href={qr.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block text-[10px] leading-snug text-muted break-all px-1 hover:text-orange-700 dark:hover:text-orange-300"
+                    title={qr.url}
+                  >
+                    {qr.url}
+                  </a>
                   <p className="text-2xl font-bold mt-2">Table {qr.number}</p>
                   {setting ? (
                     <p className="text-[11px] text-muted">

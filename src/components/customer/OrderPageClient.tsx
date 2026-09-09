@@ -89,7 +89,6 @@ export function OrderPageClient({ slug, token }: Props) {
   const [loading, setLoading] = useState(true);
   const [ordering, setOrdering] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
-  const [showNameInput, setShowNameInput] = useState(true);
   const [orderError, setOrderError] = useState("");
   const [fulfillmentChoice, setFulfillmentChoice] = useState<OrderFulfillmentMode | "">("");
   const [tabPaymentPending, setTabPaymentPending] = useState(false);
@@ -425,7 +424,7 @@ export function OrderPageClient({ slug, token }: Props) {
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 space-y-6 pb-8">
+      <div className="max-w-lg mx-auto px-4 space-y-6 pb-36">
         {tabPaymentPending && (
           <div className="p-4 rounded-2xl bg-yellow-500/15 border border-yellow-500/30 text-center space-y-2">
             <p className="font-semibold text-yellow-300">Payment pending</p>
@@ -497,31 +496,6 @@ export function OrderPageClient({ slug, token }: Props) {
           />
         )}
 
-        {data.features?.callWaiter && tableSession.diningVerified && (
-          <CallWaiterBar
-            tableToken={token}
-            sessionKey={tableSession.sessionKey}
-            enabled={Boolean(data.features.callWaiter)}
-            serviceMode={data.restaurant.serviceMode}
-          />
-        )}
-
-        {showNameInput && canOrder && (
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
-            <label className="text-sm text-muted mb-2 block">Your name (optional)</label>
-            <div className="flex gap-2">
-              <Input
-                placeholder="e.g. Rahul"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-              />
-              <Button variant="secondary" onClick={() => setShowNameInput(false)}>
-                OK
-              </Button>
-            </div>
-          </div>
-        )}
-
         {orderPlaced && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -542,6 +516,50 @@ export function OrderPageClient({ slug, token }: Props) {
             tableToken={token}
             onDismissed={fetchOrders}
           />
+        )}
+
+        {data.features?.promotions && (data.combos?.length ?? 0) > 0 && !showThankYou && (
+          <ComboMealsSection
+            combos={data.combos ?? []}
+            canOrder={canOrder}
+            onAddCombo={addCombo}
+          />
+        )}
+
+        {comboCart.length > 0 && (
+          <p className="text-sm text-center text-orange-300">
+            {comboCart.length} combo{comboCart.length > 1 ? "s" : ""} ready to order
+          </p>
+        )}
+
+        <div id="customer-menu">
+          <MenuView
+            categories={data.categories}
+            onOrder={placeOrder}
+            ordering={ordering}
+            canOrder={canOrder && !showThankYou}
+            checkoutExtra={
+              canOrder && !showThankYou ? (
+                <div className="rounded-2xl border border-white/15 bg-app-shell/95 p-2.5 space-y-2 shadow-xl">
+                  <Input
+                    placeholder="Your name (optional)"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                  {data.features?.promotions ? (
+                    <PromoCodeInput enabled compact />
+                  ) : null}
+                </div>
+              ) : null
+            }
+          />
+        </div>
+
+        {data.restaurant.serviceMode === "SELF_SERVICE" && canOrder && (
+          <p className="text-sm text-center text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+            Payment must be completed before collection from {data.restaurant.pickupLocationLabel || "the pickup counter"}.
+          </p>
         )}
 
         {hasVisibleOrders && !showThankYou && (
@@ -583,40 +601,16 @@ export function OrderPageClient({ slug, token }: Props) {
             }}
           />
         )}
-
-        {data.features?.promotions && canOrder && !showThankYou && (
-          <PromoCodeInput enabled={Boolean(data.features.promotions)} />
-        )}
-
-        {data.features?.promotions && (data.combos?.length ?? 0) > 0 && !showThankYou && (
-          <ComboMealsSection
-            combos={data.combos ?? []}
-            canOrder={canOrder}
-            onAddCombo={addCombo}
-          />
-        )}
-
-        {comboCart.length > 0 && (
-          <p className="text-sm text-center text-orange-300">
-            {comboCart.length} combo{comboCart.length > 1 ? "s" : ""} ready to order
-          </p>
-        )}
-
-        {data.restaurant.serviceMode === "SELF_SERVICE" && canOrder && (
-          <p className="text-sm text-center text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
-            Payment must be completed before collection from {data.restaurant.pickupLocationLabel || "the pickup counter"}.
-          </p>
-        )}
-
-        <div id="customer-menu">
-          <MenuView
-            categories={data.categories}
-            onOrder={placeOrder}
-            ordering={ordering}
-            canOrder={canOrder && !showThankYou}
-          />
-        </div>
       </div>
+
+      {data.features?.callWaiter && tableSession.diningVerified ? (
+        <CallWaiterBar
+          tableToken={token}
+          sessionKey={tableSession.sessionKey}
+          enabled={Boolean(data.features.callWaiter)}
+          serviceMode={data.restaurant.serviceMode}
+        />
+      ) : null}
 
       <FeedbackButton
         tableToken={token}

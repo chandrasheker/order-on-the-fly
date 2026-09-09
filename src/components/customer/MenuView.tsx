@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Minus, ShoppingBag, Flame, ChevronLeft, ChevronRight, ChevronDown, Search, X } from "lucide-react";
 import { formatCurrency, getPrepTimeLabel, cn } from "@/lib/utils";
@@ -254,6 +254,7 @@ export function MenuView({
   tapToSelect = false,
   layout = "list",
   hideCheckout = false,
+  checkoutExtra,
 }: {
   categories: Category[];
   onOrder: () => void;
@@ -264,6 +265,7 @@ export function MenuView({
   tapToSelect?: boolean;
   layout?: "list" | "dense";
   hideCheckout?: boolean;
+  checkoutExtra?: ReactNode;
 }) {
   const [activeCategory, setActiveCategory] = useState(categories[0]?.slug || "");
   const [searchQuery, setSearchQuery] = useState("");
@@ -613,7 +615,8 @@ export function MenuView({
             exit={{ y: 100 }}
             className="fixed bottom-0 left-0 right-0 p-4 z-30 pointer-events-none"
           >
-            <div className="max-w-lg mx-auto pointer-events-auto">
+            <div className="max-w-lg mx-auto pointer-events-auto space-y-2">
+              {checkoutExtra}
               <Button
                 onClick={onOrder}
                 disabled={ordering || !canOrder}
