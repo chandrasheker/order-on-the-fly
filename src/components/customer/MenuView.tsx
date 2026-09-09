@@ -61,33 +61,32 @@ function DenseMenuItemCard({
   inCart,
   onAdd,
   onAddWithModifiers,
+  onUpdateQty,
   hasModifiers,
 }: {
   item: MenuItem;
   inCart: { quantity: number } | undefined;
   onAdd: () => void;
   onAddWithModifiers?: () => void;
+  onUpdateQty: (qty: number) => void;
   hasModifiers?: boolean;
 }) {
   const outOfStock = isOutOfStock(item) || item.isAvailable === false;
-  const handleTapSelect = () => {
+  const handleAdd = () => {
     if (outOfStock) return;
     if (hasModifiers && onAddWithModifiers) onAddWithModifiers();
     else onAdd();
   };
 
   return (
-    <button
-      type="button"
-      disabled={outOfStock}
-      onClick={handleTapSelect}
+    <div
       className={cn(
-        "rounded-xl border p-2 text-left transition-colors min-h-[4.25rem]",
+        "rounded-xl border p-2 text-left min-h-[4.25rem] flex flex-col",
         outOfStock
-          ? "border-red-500/30 bg-red-500/10 opacity-80 cursor-not-allowed"
+          ? "border-red-500/30 bg-red-500/10 opacity-80"
           : inCart
           ? "border-orange-500/40 bg-orange-500/10"
-          : "border-white/10 bg-white/5 hover:border-orange-500/25 hover:bg-white/10",
+          : "border-white/10 bg-white/5",
       )}
     >
       <div className="flex items-start justify-between gap-1">
@@ -102,17 +101,41 @@ function DenseMenuItemCard({
           </span>
         )}
       </div>
-      <div className="mt-1 flex items-center justify-between gap-1">
+      <div className="mt-auto pt-1 flex items-center justify-between gap-1">
         <span className="text-xs font-bold text-orange-400">{formatCurrency(item.price)}</span>
         {outOfStock ? (
           <span className="text-[10px] font-semibold text-red-300">OUT OF STOCK</span>
         ) : inCart ? (
-          <span className="text-[10px] font-semibold text-orange-200">×{inCart.quantity}</span>
+          <div className="inline-flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => onUpdateQty(inCart.quantity - 1)}
+              className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-foreground"
+              aria-label={`Decrease ${item.name}`}
+            >
+              <Minus className="w-3 h-3" />
+            </button>
+            <span className="w-5 text-center text-xs font-bold text-foreground">{inCart.quantity}</span>
+            <button
+              type="button"
+              onClick={() => onUpdateQty(inCart.quantity + 1)}
+              className="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-white"
+              aria-label={`Increase ${item.name}`}
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
         ) : (
-          <span className="text-[10px] text-muted">{hasModifiers ? "Customize" : "Add"}</span>
+          <button
+            type="button"
+            onClick={handleAdd}
+            className="px-2 py-1 rounded-lg bg-orange-500/20 text-orange-800 dark:text-orange-200 border border-orange-500/30 text-[10px] font-semibold"
+          >
+            {hasModifiers ? "Customize" : "Add"}
+          </button>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -583,17 +606,19 @@ export function MenuView({
                           setPickerItem(item);
                         },
                       };
+                      const onUpdateQty = (qty: number) => {
+                        if (!canOrder || !firstLine) return;
+                        const next = qty > inCartQty ? firstLine.quantity + 1 : firstLine.quantity - 1;
+                        updateQuantity(firstLine.lineId, next);
+                      };
                       return layout === "dense" ? (
-                        <DenseMenuItemCard key={item.id} {...shared} />
+                        <DenseMenuItemCard key={item.id} {...shared} onUpdateQty={onUpdateQty} />
                       ) : (
                         <MenuItemCard
                           key={item.id}
                           {...shared}
                           tapToSelect={tapToSelect}
-                          onUpdateQty={(qty) => {
-                            if (!canOrder || !firstLine) return;
-                            updateQuantity(firstLine.lineId, qty);
-                          }}
+                          onUpdateQty={onUpdateQty}
                         />
                       );
                     })}

@@ -106,6 +106,7 @@ export function RemoteOrdersPanel({
     updateQuantity,
     updateNotes,
     clearCart,
+    resetSession,
     total,
     maxPrepTime,
   } = useStaffCartStore();
@@ -163,6 +164,20 @@ export function RemoteOrdersPanel({
       setLoadingMenu(false);
     }
   }, [cachedMenu, storeMenu]);
+
+  useEffect(() => {
+    resetSession();
+    setCustomerPhone("");
+    setOrderNotes("");
+    setCartOpen(false);
+    return () => {
+      const previousTableId = useStaffCartStore.getState().tableId;
+      resetSession();
+      if (previousTableId) {
+        void clearRemoteCartDraft({ source: "STAFF", tableId: previousTableId });
+      }
+    };
+  }, [resetSession]);
 
   useEffect(() => {
     void loadTables();

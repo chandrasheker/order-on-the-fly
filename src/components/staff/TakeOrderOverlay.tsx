@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui";
 import { RemoteOrdersPanel } from "@/components/staff/RemoteOrdersPanel";
+import { useStaffCartStore } from "@/store/staff-cart";
+import { clearRemoteCartDraft } from "@/hooks/useCartDraftSync";
 
 export function TakeOrderOverlay({ onClose }: { onClose: () => void }) {
   useEffect(() => {
@@ -13,9 +15,15 @@ export function TakeOrderOverlay({ onClose }: { onClose: () => void }) {
     document.addEventListener("keydown", onKey);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    useStaffCartStore.getState().resetSession();
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
+      const tableId = useStaffCartStore.getState().tableId;
+      useStaffCartStore.getState().resetSession();
+      if (tableId) {
+        void clearRemoteCartDraft({ source: "STAFF", tableId });
+      }
     };
   }, [onClose]);
 

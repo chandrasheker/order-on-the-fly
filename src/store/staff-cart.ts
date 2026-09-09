@@ -20,6 +20,7 @@ interface StaffCartStore {
   updateQuantity: (lineId: string, quantity: number) => void;
   updateNotes: (lineId: string, notes: string) => void;
   clearCart: () => void;
+  resetSession: () => void;
   total: () => number;
   maxPrepTime: () => number;
 }
@@ -83,6 +84,7 @@ export const useStaffCartStore = create<StaffCartStore>((set, get) => ({
       ),
     }),
   clearCart: () => set({ items: [], customerName: "" }),
+  resetSession: () => set({ tableId: null, customerName: "", items: [] }),
   total: () => get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),
   maxPrepTime: () => get().items.reduce((max, i) => Math.max(max, i.prepTimeMinutes), 0),
 }));
