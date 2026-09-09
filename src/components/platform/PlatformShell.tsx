@@ -181,9 +181,9 @@ export function PlatformShell({
       )}
 
       <div className="min-w-0 flex-1">
-        <header className="border-b border-white/5 px-4 py-3 lg:px-6">
-          <div className={`${contentWidth} mx-auto flex items-start justify-between gap-3`}>
-            <div className="flex items-start gap-3 min-w-0">
+        <header className="sticky top-0 z-30 border-b border-white/5 bg-app-shell/95 backdrop-blur-md px-4 py-3 lg:px-6">
+          <div className={`${contentWidth} mx-auto flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between`}>
+            <div className="flex items-start gap-3 min-w-0 flex-1">
               <button
                 type="button"
                 className="lg:hidden mt-0.5 p-2 rounded-lg bg-white/5 text-foreground hover:text-foreground"
@@ -196,14 +196,14 @@ export function PlatformShell({
                 {breadcrumb && breadcrumb.length > 0 && (
                   <nav aria-label="Breadcrumb" className="mb-1 flex flex-wrap items-center gap-1 text-xs text-muted">
                     {breadcrumb.map((item, i) => (
-                      <span key={`${item.label}-${i}`} className="flex items-center gap-1">
-                        {i > 0 && <ChevronRight className="w-3 h-3" />}
+                      <span key={`${item.label}-${i}`} className="flex items-center gap-1 min-w-0">
+                        {i > 0 && <ChevronRight className="w-3 h-3 shrink-0" />}
                         {item.href ? (
-                          <Link href={item.href} className="hover:text-violet-800 dark:hover:text-violet-300">
+                          <Link href={item.href} className="hover:text-violet-800 dark:hover:text-violet-300 truncate max-w-[10rem] sm:max-w-none">
                             {item.label}
                           </Link>
                         ) : (
-                          <span className="text-muted">{item.label}</span>
+                          <span className="text-muted truncate max-w-[10rem] sm:max-w-none">{item.label}</span>
                         )}
                       </span>
                     ))}
@@ -215,22 +215,22 @@ export function PlatformShell({
                       href={backHref}
                       aria-label={backLabel ?? "Back"}
                       title={backLabel ?? "Back"}
-                      className="hidden sm:inline-flex w-8 h-8 rounded-lg bg-white/5 items-center justify-center shrink-0 hover:bg-white/10"
+                      className="inline-flex w-8 h-8 rounded-lg bg-white/5 items-center justify-center shrink-0 hover:bg-white/10"
                     >
                       <ArrowLeft className="w-4 h-4" />
                     </Link>
                   ) : null}
                   <h1 className="text-xl font-semibold truncate">{title}</h1>
                 </div>
-                {subtitle ? <p className="text-sm text-muted mt-0.5">{subtitle}</p> : null}
+                {subtitle ? <p className="text-sm text-muted mt-0.5 line-clamp-2">{subtitle}</p> : null}
               </div>
             </div>
-            <div className="header-trailing-actions flex flex-wrap items-center justify-end gap-2 shrink-0">
+            <div className="header-trailing-actions flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto min-w-0">
               {actions}
             </div>
           </div>
         </header>
-        <main className={`${contentWidth} mx-auto px-4 py-5 lg:px-6`}>{children}</main>
+        <main className={`${contentWidth} mx-auto min-w-0 px-4 py-5 lg:px-6`}>{children}</main>
       </div>
     </div>
   );

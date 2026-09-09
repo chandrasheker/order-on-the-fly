@@ -57,7 +57,7 @@ export function TimeRangeBar({
   onCustom: (from: string, to: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-end gap-2">
+    <div className="flex flex-wrap items-end gap-2 max-w-full">
       {TIME_RANGE_OPTIONS.map((option) => (
         <Button
           key={option.id}

@@ -298,33 +298,33 @@ export function TenantHubHome() {
 
   return (
     <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between gap-4">
-        <div>
+      <header className="border-b border-white/10 px-4 sm:px-6 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <p className="text-xs text-zinc-500">Tenant administrator</p>
-          <h1 className="text-2xl font-bold">{tenant.name}</h1>
+          <h1 className="text-2xl font-bold truncate">{tenant.name}</h1>
           <p className="text-sm text-zinc-400">
             {tenant.plan} · {tenant.subscriptionStatus} · {stats.restaurantCount} restaurant
             {stats.restaurantCount === 1 ? "" : "s"}
             {!tenant.isEnabled ? " · DISABLED" : ""}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {admin && <p className="text-sm text-zinc-400 hidden sm:block">{admin.email}</p>}
+        <div className="header-trailing-actions flex items-center gap-3 self-start sm:self-auto">
+          {admin && <p className="text-sm text-zinc-400 hidden sm:block truncate max-w-[12rem]">{admin.email}</p>}
           <Button variant="secondary" size="sm" onClick={() => void logout()}>
             Logout
           </Button>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-6 space-y-6">
-        <div className="flex flex-wrap gap-2 border-b border-white/5 pb-4">
+      <main className="max-w-6xl mx-auto px-4 py-5 sm:p-6 space-y-6 min-w-0">
+        <div className="flex gap-2 overflow-x-auto pb-4 border-b border-white/5 -mx-4 px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
               onClick={() => replaceParams({ tab: id })}
               className={cn(
-                "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors",
+                "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors shrink-0",
                 tab === id
                   ? id === "features"
                     ? "bg-amber-500/20 border-amber-500/40 text-amber-200"
@@ -485,7 +485,7 @@ export function TenantHubHome() {
                   const open = expanded[restaurant.id] ?? restaurantFilter === restaurant.id;
                   return (
                     <div key={restaurant.id} className="rounded-xl border border-white/10">
-                      <div className="p-4 flex items-center justify-between gap-3">
+                      <div className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <button
                           type="button"
                           className="min-w-0 text-left flex-1"

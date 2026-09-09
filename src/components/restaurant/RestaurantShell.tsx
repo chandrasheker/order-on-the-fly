@@ -390,8 +390,8 @@ export function RestaurantShell({
 
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-30 border-b border-white/5 bg-app-shell/95 backdrop-blur-md px-4 py-3 lg:px-6">
-          <div className={`${contentWidth} mx-auto flex items-start justify-between gap-3`}>
-            <div className="flex items-start gap-3 min-w-0">
+          <div className={`${contentWidth} mx-auto flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between`}>
+            <div className="flex items-start gap-3 min-w-0 flex-1">
               <button
                 type="button"
                 className="lg:hidden mt-0.5 p-2 rounded-lg bg-white/5 text-foreground hover:text-foreground"
@@ -410,26 +410,25 @@ export function RestaurantShell({
               <div className="min-w-0">
                 <p className="lg:hidden text-sm font-semibold truncate">{user?.restaurantName || "TableTap"}</p>
                 <h1 className="text-xl font-semibold truncate">{title}</h1>
-                {subtitle ? <p className="text-sm text-muted mt-0.5">{subtitle}</p> : null}
+                {subtitle ? <p className="text-sm text-muted mt-0.5 line-clamp-2">{subtitle}</p> : null}
               </div>
             </div>
-            <div className="header-trailing-actions flex flex-wrap items-center justify-end gap-2 shrink-0">
+            <div className="header-trailing-actions flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto sm:max-w-[min(100%,28rem)]">
               {canTakeOrder && !onTakeOrderPage ? (
                 <button
                   type="button"
                   onClick={openTakeOrder}
-                  className={`${takeOrderButtonClass} px-3 py-2 text-sm`}
+                  className={`${takeOrderButtonClass} hidden lg:inline-flex px-3 py-2 text-sm`}
                 >
                   <UtensilsCrossed className="w-4 h-4 shrink-0" />
-                  <span className="hidden sm:inline">Take Order</span>
-                  <span className="sm:hidden">Order</span>
+                  Take Order
                 </button>
               ) : null}
               {actions}
             </div>
           </div>
         </header>
-        <main className={`${contentWidth} mx-auto px-4 py-5 lg:px-6 ${canTakeOrder ? "pb-24 lg:pb-5" : ""}`}>
+        <main className={`${contentWidth} mx-auto min-w-0 px-4 py-5 lg:px-6 ${canTakeOrder && !onTakeOrderPage ? "pb-28 lg:pb-5" : ""}`}>
           {children}
         </main>
       </div>
@@ -438,7 +437,7 @@ export function RestaurantShell({
         <button
           type="button"
           onClick={openTakeOrder}
-          className={`${takeOrderButtonClass} lg:hidden fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 px-6 py-3 text-base`}
+          className={`${takeOrderButtonClass} lg:hidden fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-[60] -translate-x-1/2 px-5 py-3 text-base max-w-[calc(100vw-2rem)]`}
         >
           <UtensilsCrossed className="w-5 h-5 shrink-0" />
           Take Order

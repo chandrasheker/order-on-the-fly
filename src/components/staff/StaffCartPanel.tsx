@@ -50,7 +50,7 @@ function CartLines({
               <button
                 type="button"
                 onClick={() => onUpdateQuantity(item.lineId, item.quantity - 1)}
-                className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-foreground"
+                className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-foreground"
               >
                 <Minus className="w-3.5 h-3.5" />
               </button>
@@ -58,7 +58,7 @@ function CartLines({
               <button
                 type="button"
                 onClick={() => onUpdateQuantity(item.lineId, item.quantity + 1)}
-                className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-white"
+                className="w-10 h-10 rounded-full bg-violet-500 flex items-center justify-center text-white"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>

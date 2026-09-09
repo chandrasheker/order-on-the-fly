@@ -114,7 +114,7 @@ function DenseMenuItemCard({
             <button
               type="button"
               onClick={() => onUpdateQty(inCart.quantity - 1)}
-              className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-foreground"
+              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-foreground"
               aria-label={`Decrease ${item.name}`}
             >
               <Minus className="w-3 h-3" />
@@ -123,7 +123,7 @@ function DenseMenuItemCard({
             <button
               type="button"
               onClick={() => onUpdateQty(inCart.quantity + 1)}
-              className="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-white"
+              className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center text-white"
               aria-label={`Increase ${item.name}`}
             >
               <Plus className="w-3 h-3" />

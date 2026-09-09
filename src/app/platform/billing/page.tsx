@@ -389,7 +389,7 @@ export default function PlatformBillingPage() {
               ) : (
                 <ul className="space-y-2 text-sm">
                   {tenant.subscriptions.map((s) => (
-                    <li key={s.id} className="flex justify-between border-b border-white/5 pb-2">
+                    <li key={s.id} className="flex flex-wrap justify-between gap-2 border-b border-white/5 pb-2 min-w-0">
                       <span>
                         {s.plan} · {s.status}
                         {s.currentPeriodEnd

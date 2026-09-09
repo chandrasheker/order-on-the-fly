@@ -914,7 +914,7 @@ export function StaffDashboard() {
                 onCollected={() => void fetchDashboard()}
               />
             </div>
-            <div className="flex gap-2 mb-4">
+            <div className="flex flex-wrap gap-2 mb-4">
               {(["all", "overdue", "alarm"] as const).map((f) => (
                 <button
                   key={f}
@@ -1691,7 +1691,7 @@ function CompletedOrderRow({
     <Card className="p-4">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-1">
+          <div className="flex items-center gap-3 mb-1 flex-wrap">
             <span className="text-lg font-bold">Table {order.table.number}</span>
             <span className="text-zinc-500">#{order.orderNumber}</span>
             <Badge className={getStatusColor(order.status)}>{order.status}</Badge>

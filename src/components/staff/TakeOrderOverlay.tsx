@@ -34,21 +34,21 @@ export function TakeOrderOverlay({ onClose }: { onClose: () => void }) {
       aria-modal="true"
       aria-labelledby="take-order-title"
     >
-      <div className="flex items-center justify-between gap-3 border-b border-[color:var(--surface-border)] px-4 py-3 lg:px-6 shrink-0">
+      <div className="flex items-center justify-between gap-3 border-b border-[color:var(--surface-border)] px-4 py-3 lg:px-6 shrink-0 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="min-w-0">
           <p id="take-order-title" className="text-lg font-semibold truncate">
             Take Order
           </p>
-          <p className="text-xs text-muted mt-0.5">
+          <p className="text-xs text-muted mt-0.5 hidden sm:block">
             Pick dishes on the left. The cart on the right updates as you go.
           </p>
         </div>
         <Button type="button" variant="secondary" size="sm" onClick={close} aria-label="Close take order">
           <X className="w-4 h-4" />
-          Close
+          <span className="hidden sm:inline">Close</span>
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden px-4 py-4 lg:px-6">
+      <div className="min-h-0 flex-1 overflow-hidden px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
         <RemoteOrdersPanel stickyClassName="top-0" splitCart />
       </div>
     </div>

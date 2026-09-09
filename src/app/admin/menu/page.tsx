@@ -568,11 +568,12 @@ export default function MenuManagePage() {
               ))}
             </div>
           )}
-          <form onSubmit={addCustomCategory} className="flex gap-2">
+          <form onSubmit={addCustomCategory} className="flex gap-2 min-w-0">
             <Input
               placeholder="New category name"
               value={newCategoryName}
               onChange={(e) => setNewCategoryName(e.target.value)}
+              className="min-w-0 flex-1"
             />
             <Button type="submit" disabled={addingCategory || !newCategoryName.trim()} size="sm">
               {addingCategory ? "…" : "Add"}
@@ -794,7 +795,8 @@ function ItemRow({
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02]">
-      <div className="flex items-center gap-2 px-2.5 py-2 flex-wrap">
+      <div className="flex flex-col gap-2 px-2.5 py-2">
+      <div className="flex items-center gap-2">
         {item.imageUrl ? (
           <img src={item.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover bg-black/20 shrink-0" />
         ) : (
@@ -820,6 +822,16 @@ function ItemRow({
               : "Qty not tracked"}
           </p>
         </button>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="p-2 text-muted"
+          title={open ? "Close details" : "Edit name, price, and quantity"}
+        >
+          {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
         <DietToggle isVeg={item.isVeg !== false} onChange={(next) => onDietChange(item.id, next)} size="sm" />
         <label className="space-y-0.5">
           <span className="block text-[10px] font-medium text-muted">Prep</span>
@@ -867,19 +879,12 @@ function ItemRow({
         <button
           type="button"
           onClick={() => onDelete(item.id)}
-          className="p-1.5 text-muted hover:text-red-400"
+          className="p-2 text-muted hover:text-red-400"
           title="Delete item"
         >
           <Trash2 className="w-4 h-4" />
         </button>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="p-1 text-muted"
-          title={open ? "Close details" : "Edit name, price, and quantity"}
-        >
-          {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </button>
+      </div>
       </div>
 
       {open && (

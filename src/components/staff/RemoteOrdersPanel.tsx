@@ -409,13 +409,13 @@ export function RemoteOrdersPanel({
                 {isSelf ? "Self" : "Table service"}
               </button>
             ) : null}
-            <div className="flex items-center gap-2 min-w-[180px]">
+            <div className="flex items-center gap-2 w-full min-w-0 sm:w-auto sm:min-w-[180px]">
               <UserRound className="w-4 h-4 text-muted shrink-0" />
               <Input
                 placeholder="Guest name"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                className="h-10"
+                className="h-10 min-w-0"
               />
             </div>
             {mode === "delivery" && (
@@ -423,7 +423,7 @@ export function RemoteOrdersPanel({
                 placeholder="Phone"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
-                className="h-10 min-w-[160px]"
+                className="h-10 w-full min-w-0 sm:w-auto sm:min-w-[160px]"
               />
             )}
           </div>
@@ -499,11 +499,26 @@ export function RemoteOrdersPanel({
 
   if (splitCart) {
     return (
-      <div className="flex flex-col md:flex-row gap-4 md:gap-6 h-full min-h-0">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full min-h-0">
         <div className="min-w-0 flex-1 min-h-0 overflow-y-auto">{menuBlock}</div>
-        <aside className="w-full md:w-[22rem] shrink-0 max-h-[38vh] md:max-h-none md:h-full overflow-y-auto border-t md:border-t-0 border-[color:var(--surface-border)] pt-3 md:pt-0 bg-app-shell sticky bottom-0 md:sticky md:top-0 z-10">
+        <aside className="hidden lg:block w-[22rem] shrink-0 h-full overflow-y-auto">
           <StaffCartPanel {...cartProps} allowEmpty />
         </aside>
+        <div className="lg:hidden shrink-0 border-t border-[color:var(--surface-border)] bg-app-shell px-1 pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+          {cartCount === 0 ? (
+            <p className="text-sm text-muted text-center py-2">Tap dishes to add them to the cart</p>
+          ) : (
+            <Button type="button" size="lg" className="w-full" onClick={() => setCartOpen(true)}>
+              <ShoppingBag className="w-5 h-5" />
+              Cart ({cartCount}) · {formatCurrency(total())}
+            </Button>
+          )}
+        </div>
+        <StaffCartDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          {...cartProps}
+        />
       </div>
     );
   }
@@ -512,7 +527,7 @@ export function RemoteOrdersPanel({
     <>
       {menuBlock}
       {cartCount > 0 && !cartOpen ? (
-        <div className="fixed bottom-5 left-1/2 z-[85] -translate-x-1/2">
+        <div className="fixed bottom-24 lg:bottom-5 left-1/2 z-[85] -translate-x-1/2 max-w-[calc(100vw-2rem)]">
           <Button type="button" size="lg" onClick={() => setCartOpen(true)}>
             <ShoppingBag className="w-5 h-5" />
             View cart ({cartCount}) · {formatCurrency(total())}

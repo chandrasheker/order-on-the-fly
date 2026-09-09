@@ -215,7 +215,7 @@ export function PlatformScopedLogsConsole({
 
       <div className="flex flex-wrap gap-2 items-end">
         {restaurants && onRestaurantId && (
-          <div className="min-w-[220px]">
+          <div className="min-w-0 w-full sm:min-w-[220px] sm:w-auto">
             <label className="text-xs text-zinc-500 block mb-1">Restaurant</label>
             {restaurants.length > 10 ? (
               <Input

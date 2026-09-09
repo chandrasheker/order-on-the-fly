@@ -59,6 +59,8 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+  overflow-x: clip;
+  max-width: 100%;
 }
 
 .scrollbar-hide {
@@ -71,8 +73,10 @@ body {
 }
 
 html {
+  overflow-x: clip;
   overflow-y: scroll;
   -webkit-overflow-scrolling: touch;
+  max-width: 100%;
 }
 
 @keyframes pulse-glow {
@@ -179,7 +183,14 @@ html {
 }
 
 .header-trailing-actions {
-  margin-right: var(--theme-toggle-rail);
+  padding-right: var(--theme-toggle-rail);
+}
+
+@media (min-width: 640px) {
+  .header-trailing-actions {
+    padding-right: 0;
+    margin-right: var(--theme-toggle-rail);
+  }
 }
 
 select option {

@@ -461,7 +461,7 @@ function GuestsPanel({ onMessage }: { onMessage: (m: string) => void }) {
       <p className="text-sm text-zinc-400 mb-3">Profiles auto-created when orders include a phone number.</p>
       {guests.length === 0 && <p className="text-zinc-500">No guests yet.</p>}
       {guests.map((g) => (
-        <div key={g.id} className="flex justify-between py-2 border-b border-white/5 text-sm">
+        <div key={g.id} className="flex flex-col sm:flex-row sm:justify-between gap-1 py-2 border-b border-white/5 text-sm">
           <span>
             {g.name ?? "Guest"} · {g.phone}
           </span>
