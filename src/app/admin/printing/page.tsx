@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Printer, RefreshCw, Copy } from "lucide-react";
+import { RefreshCw, Copy } from "lucide-react";
 import { Button, Card, Input, Spinner } from "@/components/ui";
 
 type Agent = {
@@ -121,25 +120,12 @@ export default function PrintingAdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/5 px-4 py-4">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
-          <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <Printer className="w-5 h-5" /> Printing
-            </h1>
-            <p className="text-sm text-zinc-400">Agents · queue · retry delivery · print another copy</p>
-          </div>
-          <Button className="ml-auto" variant="secondary" onClick={() => void load()}>
-            <RefreshCw className="w-4 h-4" /> Refresh
-          </Button>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="secondary" onClick={() => void load()}>
+          <RefreshCw className="w-4 h-4" /> Refresh
+        </Button>
+      </div>
         {message ? <p className="text-sm text-amber-300">{message}</p> : null}
         {newToken ? (
           <Card className="p-4 space-y-2">
@@ -240,7 +226,6 @@ TABLETAP_PRINTER_POLL_MS=2000`}
             </div>
           ))}
         </Card>
-      </main>
     </div>
   );
 }

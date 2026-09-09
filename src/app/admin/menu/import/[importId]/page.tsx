@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button, Card, Input, Spinner } from "@/components/ui";
 import { applyPreviewFromDraft } from "@/lib/menu-import/eligibility";
 
@@ -207,7 +207,7 @@ export default function MenuImportReviewPage() {
 
   if (!record && !error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-app-shell">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
@@ -216,23 +216,16 @@ export default function MenuImportReviewPage() {
   const editable = record?.status === "READY_FOR_REVIEW";
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground pb-10">
-      <header className="border-b border-white/5 px-4 py-4 sticky top-0 z-30 bg-app-shell/95 backdrop-blur-md">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          <Link href="/admin/menu" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div className="flex-1">
-            <h1 className="text-xl font-bold">Review Imported Menu</h1>
-            <p className="text-sm text-zinc-400">
-              {STATUS_LABEL[record?.status ?? ""] ?? record?.status} · {record?.sourceType} ·{" "}
-              {record?.pageCount ?? record?.sourceFileCount} page(s)
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+    <div className="space-y-6">
+      <div>
+        <Link href="/admin/menu" className="text-sm text-zinc-400 hover:text-white">
+          ← Back to live menu
+        </Link>
+        <p className="text-sm text-zinc-400 mt-1">
+          {STATUS_LABEL[record?.status ?? ""] ?? record?.status} · {record?.sourceType} ·{" "}
+          {record?.pageCount ?? record?.sourceFileCount} page(s)
+        </p>
+      </div>
         {error && (
           <div className="rounded-xl px-4 py-3 text-sm bg-red-500/10 text-red-300 border border-red-500/30">
             {error}
@@ -491,7 +484,6 @@ export default function MenuImportReviewPage() {
             <p>This import was cancelled. The live menu was not changed.</p>
           </Card>
         )}
-      </main>
     </div>
   );
 }

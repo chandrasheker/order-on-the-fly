@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { Button, Card, Input, Spinner } from "@/components/ui";
 
 const ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp";
@@ -71,20 +71,10 @@ export default function MenuImportUploadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground pb-10">
-      <header className="border-b border-white/5 px-4 py-4 sticky top-0 z-30 bg-app-shell/95 backdrop-blur-md">
-        <div className="max-w-3xl mx-auto flex items-center gap-3">
-          <Link href="/admin/menu" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold">Import Existing Menu</h1>
-            <p className="text-sm text-zinc-400">PDF, JPG, JPEG, PNG or WebP — nothing goes live until you apply</p>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+    <div className="space-y-6">
+      <Link href="/admin/menu" className="text-sm text-zinc-400 hover:text-white">
+        ← Back to live menu
+      </Link>
         {error && (
           <div className="rounded-xl px-4 py-3 text-sm bg-red-500/10 text-red-300 border border-red-500/30">
             {error}
@@ -147,7 +137,6 @@ export default function MenuImportUploadPage() {
             <Spinner className="w-6 h-6" />
           </div>
         )}
-      </main>
     </div>
   );
 }

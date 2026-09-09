@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Plug, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
+import { RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button, Card, Input, Spinner, Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
@@ -139,30 +138,14 @@ export default function IntegrationsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-app-shell flex items-center justify-center">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/5 px-4 py-4">
-        <div className="max-w-3xl mx-auto flex items-center gap-3">
-          <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div className="flex items-center gap-2">
-            <Plug className="w-5 h-5 text-orange-400" />
-            <div>
-              <h1 className="text-xl font-bold">Swiggy & Zomato</h1>
-              <p className="text-sm text-zinc-400">Enter credentials once — orders sync automatically</p>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+    <div className="space-y-6">
         <Card className="p-5 space-y-3 border-orange-500/20 bg-orange-500/5">
           <h2 className="font-semibold text-orange-200">How automatic sync works</h2>
           <ol className="text-sm text-zinc-400 space-y-2 list-decimal list-inside">
@@ -355,7 +338,6 @@ export default function IntegrationsPage() {
             </Card>
           );
         })}
-      </main>
     </div>
   );
 }

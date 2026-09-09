@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Package,
   Clock,
   CalendarDays,
@@ -53,7 +51,7 @@ export default function OperationsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-app-shell flex items-center justify-center">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
@@ -63,20 +61,7 @@ export default function OperationsPage() {
   const tabEnabled = activeFlag ? enabled[activeFlag] : false;
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/5 px-4 py-4">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
-          <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold">Operations</h1>
-            <p className="text-sm text-zinc-400">Inventory · labor · reservations · tips · CRM · audit</p>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+    <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {TABS.map((t) => (
             <button
@@ -117,7 +102,6 @@ export default function OperationsPage() {
             {tab === "audit" && <AuditPanel />}
           </>
         )}
-      </main>
     </div>
   );
 }

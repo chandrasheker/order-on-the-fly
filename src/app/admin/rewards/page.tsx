@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Spinner, Badge } from "@/components/ui";
-import { ArrowLeft, Gift, CheckCircle2 } from "lucide-react";
-import Link from "next/link";
+import { Gift, CheckCircle2 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { formatRewardExpiry } from "@/lib/reward-constants";
 
@@ -64,7 +63,7 @@ export default function RewardsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-app-shell">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
@@ -91,23 +90,7 @@ export default function RewardsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/5 px-4 py-4">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <Gift className="w-5 h-5 text-orange-400" />
-              Customer Rewards
-            </h1>
-            <p className="text-sm text-zinc-400">Verify name & mark redeemed · Expires after 48 hours</p>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 py-6">
+    <div>
         <div className="flex gap-2 mb-6 flex-wrap">
           {(["PENDING", "REDEEMED", "EXPIRED", "ALL"] as const).map((f) => (
             <button
@@ -172,7 +155,6 @@ export default function RewardsPage() {
             ))}
           </div>
         )}
-      </main>
     </div>
   );
 }

@@ -4,8 +4,7 @@ import { useEffect, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button, Card, Spinner, Input } from "@/components/ui";
-import { ArrowLeft, Download, Printer, QrCode, Users, CircleDollarSign, ImageIcon } from "lucide-react";
-import Link from "next/link";
+import { Download, Printer, QrCode, Users, CircleDollarSign, ImageIcon } from "lucide-react";
 import { isDineInTable } from "@/lib/order-channel";
 import { ServiceModeCard } from "@/components/admin/ServiceModeCard";
 
@@ -325,32 +324,20 @@ export default function QRPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-app-shell">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/5 px-4 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold">Table QR Codes</h1>
-              <p className="text-sm text-zinc-400">{restaurantName} · {qrCodes.length} tables</p>
-            </div>
-          </div>
-          <Button onClick={printAll}>
-            <Printer className="w-4 h-4" /> Print All
-          </Button>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-zinc-400">{restaurantName} · {qrCodes.length} tables</p>
+        <Button onClick={printAll}>
+          <Printer className="w-4 h-4" /> Print All
+        </Button>
+      </div>
         <ServiceModeCard />
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-3">
@@ -731,7 +718,6 @@ export default function QRPage() {
             </motion.div>
           ))}
         </motion.div>
-      </main>
     </div>
   );
 }

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft,
   ChevronDown,
   ChevronUp,
   FolderPlus,
@@ -425,7 +424,7 @@ export default function MenuManagePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-app-shell">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
@@ -435,34 +434,19 @@ export default function MenuManagePage() {
   const missingPresets = QUICK_PRESETS.filter((p) => !existingSlugs.has(p.slug));
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground pb-10">
-      <header className="border-b border-white/5 px-4 py-4 sticky top-0 z-30 bg-app-shell/95 backdrop-blur-md">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold">Menu builder</h1>
-            <p className="text-sm text-zinc-400">
-              Add categories and items — disable temporarily to hide from QR menu and digital boards
-            </p>
-          </div>
-          {restaurantSlug && (
-            <div className="flex flex-wrap gap-2 shrink-0">
-              <Button type="button" variant="secondary" size="sm" onClick={openDigitalDisplay}>
-                <Monitor className="w-4 h-4" />
-                Digital display
-              </Button>
-              <Button type="button" variant="secondary" size="sm" onClick={openPrintMenu}>
-                <Printer className="w-4 h-4" />
-                Print menu
-              </Button>
-            </div>
-          )}
+    <div className="space-y-6">
+      {restaurantSlug && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={openDigitalDisplay}>
+            <Monitor className="w-4 h-4" />
+            Digital display
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={openPrintMenu}>
+            <Printer className="w-4 h-4" />
+            Print menu
+          </Button>
         </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      )}
         {(message || error) && (
           <div
             className={`rounded-xl px-4 py-3 text-sm ${
@@ -733,7 +717,6 @@ export default function MenuManagePage() {
             </div>
           )}
         </Card>
-      </main>
     </div>
   );
 }

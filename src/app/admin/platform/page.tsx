@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, BarChart3, Key, ChefHat, TrendingUp, Building2 } from "lucide-react";
+import { BarChart3, Key, ChefHat, TrendingUp, Building2 } from "lucide-react";
 import { Button, Card, Input, Spinner } from "@/components/ui";
 
 type Tab = "analytics" | "forecasts" | "apikeys" | "recipes" | "branches";
@@ -55,22 +54,14 @@ export default function PlatformAdminPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <header className="border-b border-white/10 px-4 py-4 max-w-5xl mx-auto flex items-center gap-3">
-        <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5">
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
-        <h1 className="text-lg font-bold">Platform ops</h1>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <div className="space-y-6">
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (
             <button
@@ -203,7 +194,6 @@ export default function PlatformAdminPage() {
             </ul>
           </Card>
         )}
-      </main>
     </div>
   );
 }
