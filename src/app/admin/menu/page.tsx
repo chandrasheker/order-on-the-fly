@@ -155,7 +155,7 @@ function AddItemForm({
 
   return (
     <form onSubmit={submit} className="rounded-xl border border-orange-500/25 bg-orange-500/5 p-3 space-y-2">
-      <div className="grid sm:grid-cols-[1fr_6.5rem_auto] gap-2">
+      <div className="grid sm:grid-cols-[1fr_6.5rem_5.5rem_auto] gap-2">
         <Input
           placeholder="Item name"
           value={name}
@@ -171,6 +171,14 @@ function AddItemForm({
           required
           min="0"
         />
+        <Input
+          type="number"
+          min="0"
+          placeholder="Qty"
+          title="Optional stock quantity. Same as Operations → Inventory."
+          value={stockQuantity}
+          onChange={(e) => setStockQuantity(e.target.value)}
+        />
         <Button type="submit" disabled={saving} size="sm">
           {saving ? "…" : "Add"}
         </Button>
@@ -182,7 +190,7 @@ function AddItemForm({
           onClick={() => setMore((v) => !v)}
           className="text-xs text-muted hover:text-foreground"
         >
-          {more ? "Fewer options" : "Photo, prep, stock"}
+          {more ? "Fewer options" : "Photo, prep"}
         </button>
         <button
           type="button"
@@ -196,7 +204,7 @@ function AddItemForm({
         </button>
       </div>
       {more && (
-        <div className="grid sm:grid-cols-3 gap-2 pt-1">
+        <div className="grid sm:grid-cols-2 gap-2 pt-1">
           <Input
             type="number"
             placeholder="Prep min"
@@ -204,13 +212,6 @@ function AddItemForm({
             onChange={(e) => setPrepTimeMinutes(e.target.value)}
             min="1"
             max="120"
-          />
-          <Input
-            type="number"
-            min="0"
-            placeholder="Stock qty (optional)"
-            value={stockQuantity}
-            onChange={(e) => setStockQuantity(e.target.value)}
           />
           <label className="inline-flex items-center gap-2 text-xs text-muted cursor-pointer">
             <ImagePlus className="w-4 h-4" />

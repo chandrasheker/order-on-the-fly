@@ -18,7 +18,7 @@ function adminPageMeta(pathname: string) {
     };
   }
   if (pathname.startsWith("/admin/qr")) {
-    return { title: "Tables & QR", subtitle: "Dine-in tables and QR codes only" };
+    return { title: "Tables & QR", subtitle: "Add tables, set phones, print QR codes" };
   }
   if (pathname.startsWith("/admin/rewards")) {
     return { title: "Rewards", subtitle: "Verify name and mark redeemed" };
