@@ -426,7 +426,10 @@ export function RestaurantShell({
                 <button
                   type="button"
                   onClick={openTakeOrder}
-                  className={`${takeOrderButtonClass} hidden lg:inline-flex px-3 py-2 text-sm`}
+                  className={cn(
+                    takeOrderButtonClass,
+                    "take-order-header-btn hidden max-lg:!hidden lg:inline-flex px-3 py-2 text-sm",
+                  )}
                 >
                   <UtensilsCrossed className="w-4 h-4 shrink-0" />
                   Take Order
@@ -436,7 +439,7 @@ export function RestaurantShell({
             </div>
           </div>
         </header>
-        <main className={`${contentWidth} mx-auto min-w-0 px-4 py-5 lg:px-6 ${canTakeOrder && !onTakeOrderPage ? "pb-28 lg:pb-5" : ""}`}>
+        <main className={`${contentWidth} mx-auto min-w-0 px-4 py-5 lg:px-6 ${canTakeOrder && !onTakeOrderPage ? "pb-32 lg:pb-5" : ""}`}>
           {children}
         </main>
       </div>

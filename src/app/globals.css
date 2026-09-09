@@ -213,3 +213,9 @@ body.take-order-open > .site-footer-global,
 body.take-order-open footer.site-footer-global {
   display: none !important;
 }
+
+@media (max-width: 1023px) {
+  .take-order-header-btn {
+    display: none !important;
+  }
+}
