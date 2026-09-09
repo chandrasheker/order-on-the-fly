@@ -210,7 +210,8 @@ body.cook-kiosk .fixed-theme-toggle {
 }
 
 body.take-order-open > .site-footer-global,
-body.take-order-open footer.site-footer-global {
+body.take-order-open footer.site-footer-global,
+body.take-order-open .fixed-theme-toggle {
   display: none !important;
 }
 

@@ -43,7 +43,7 @@ export function TakeOrderOverlay({
       aria-modal="true"
       aria-labelledby="take-order-title"
     >
-      <div className="header-trailing-actions flex items-center justify-between gap-3 border-b border-[color:var(--surface-border)] px-3 py-2.5 sm:px-4 lg:px-6 shrink-0 pt-[max(0.65rem,env(safe-area-inset-top))]">
+      <div className="flex items-center justify-between gap-3 border-b border-[color:var(--surface-border)] px-3 py-2.5 sm:px-4 lg:px-6 shrink-0 pt-[max(0.65rem,env(safe-area-inset-top))]">
         <div className="min-w-0">
           <p id="take-order-title" className="text-base sm:text-lg font-semibold truncate">
             Take Order
@@ -58,7 +58,7 @@ export function TakeOrderOverlay({
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden px-3 py-2 sm:px-4 sm:py-3 lg:px-6">
-        <RemoteOrdersPanel stickyClassName="top-0" splitCart initialMode={initialMode} />
+        <RemoteOrdersPanel splitCart initialMode={initialMode} />
       </div>
     </div>
   );

@@ -145,7 +145,7 @@ export function StaffCartDrawer({
         aria-label="Close cart"
         onClick={onClose}
       />
-      <aside className="absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto border-l border-[color:var(--surface-border)] bg-app-shell p-4 shadow-2xl">
+      <aside className="absolute inset-0 sm:left-auto sm:right-0 sm:w-full sm:max-w-md h-full overflow-y-auto border-l border-[color:var(--surface-border)] bg-app-shell p-4 pt-[max(1rem,env(safe-area-inset-top))] shadow-2xl">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <p className="text-lg font-semibold text-foreground">View cart</p>

@@ -493,7 +493,8 @@ export function MenuView({
                 data-slug={cat.slug}
                 onClick={() => jumpToCategory(cat.slug)}
                 className={cn(
-                  "flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap",
+                  "flex-shrink-0 flex items-center gap-1.5 rounded-full font-medium transition-all whitespace-nowrap",
+                  dense ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-sm",
                   activeCategory === cat.slug
                     ? "bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg shadow-orange-500/25"
                     : "bg-white/5 text-muted border border-white/10 active:bg-white/10"
@@ -517,6 +518,7 @@ export function MenuView({
           )}
         </div>
         )}
+        {dense ? null : (
         <p className="text-center text-xs text-muted px-4">
           {isSearching
             ? `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`
@@ -524,6 +526,7 @@ export function MenuView({
               ? "Tap an item to add · use +/- to adjust quantity"
               : "Tap category tabs to jump · tap headers to expand or collapse"}
         </p>
+        )}
         {!isSearching && categories.length > 1 && (
           <div className="flex justify-center gap-2 px-4">
             <button
@@ -546,7 +549,7 @@ export function MenuView({
       </div>
 
       {/* All categories — vertical scroll */}
-      <div className={cn("mt-5", layout === "dense" ? "space-y-4" : "space-y-8")}>
+      <div className={cn(layout === "dense" ? "mt-3 space-y-3" : "mt-5 space-y-8")}>
         {isSearching && searchResults.length === 0 && (
           <div className="text-center py-12 text-zinc-500">
             <Search className="w-10 h-10 mx-auto mb-3 opacity-40" />

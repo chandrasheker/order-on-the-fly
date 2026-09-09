@@ -338,140 +338,150 @@ export function RemoteOrdersPanel({
     placeLabel: isSelf ? "Send & print" : "Send to kitchen",
   };
 
-  const menuBlock = (
-    <div className={cn("space-y-4", splitCart ? "pb-4" : "pb-28")}>
-      {(!online || pendingCount > 0) && (
-        <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-200 flex items-center justify-between gap-3">
-          <span>
-            {!online ? "Offline mode — orders queue locally." : `${pendingCount} order(s) waiting to sync.`}
-          </span>
-          {online && pendingCount > 0 && (
-            <button type="button" className="underline" onClick={() => void syncPending()}>
-              Sync now
+  const offlineBanner = (!online || pendingCount > 0) && (
+    <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-200 flex items-center justify-between gap-3">
+      <span>
+        {!online ? "Offline mode — orders queue locally." : `${pendingCount} order(s) waiting to sync.`}
+      </span>
+      {online && pendingCount > 0 && (
+        <button type="button" className="underline" onClick={() => void syncPending()}>
+          Sync now
+        </button>
+      )}
+    </div>
+  );
+
+  const orderControls = (
+    <div className="space-y-2">
+      <ModePicker modes={modes} mode={mode} onChange={resetMode} compact />
+
+      {meta.needsTable && (
+        <div>
+          {selectedTable && (
+            <button
+              type="button"
+              onClick={() => setTablesOpen((open) => !open)}
+              className="lg:hidden mb-1.5 inline-flex w-full items-center justify-between rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-sm font-semibold text-orange-900 dark:text-orange-100"
+            >
+              <span>Table {selectedTable.number}</span>
+              <span className="text-xs font-medium text-muted">{tablesOpen ? "Hide tables" : "Change"}</span>
             </button>
           )}
+          {!selectedTable ? (
+            <p className="text-xs text-muted mb-1.5">Pick a table, then add items</p>
+          ) : (
+            <p className="hidden lg:block text-xs text-muted mb-1.5">Table {selectedTable.number}</p>
+          )}
+          <div
+            className={cn(
+              "flex gap-1.5 overflow-x-auto pb-0.5 lg:grid lg:grid-cols-8 lg:overflow-visible lg:gap-2",
+              selectedTable && !tablesOpen && "hidden lg:grid",
+            )}
+          >
+            {dineInTables.map((table) => {
+              const floorState = states[table.id]?.state;
+              const closed = !table.orderingEnabled && (!floorState || floorState === "available");
+              const selected = tableId === table.id;
+              return (
+                <button
+                  key={table.id}
+                  type="button"
+                  onClick={() => {
+                    setTable(table.id === tableId ? null : table.id);
+                    if (table.id !== tableId) setTablesOpen(false);
+                  }}
+                  className={cn(
+                    "h-10 w-11 shrink-0 rounded-xl border text-sm font-bold transition-colors lg:h-14 lg:w-auto",
+                    closed
+                      ? TABLE_CLOSED_STYLE
+                      : FLOOR_STATE_STYLES[floorState ?? "available"] ?? FLOOR_STATE_STYLES.available,
+                    selected && "ring-2 ring-orange-400 border-orange-400",
+                  )}
+                >
+                  T{table.number}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
-      <div className={cn("sticky z-20 -mx-1 px-1 py-2 sm:py-3 bg-app-shell/95 backdrop-blur-md border-b border-[color:var(--surface-border)] space-y-2 sm:space-y-3", stickyClassName)}>
-        <ModePicker modes={modes} mode={mode} onChange={resetMode} compact />
 
-        {meta.needsTable && (
-          <div>
-            {selectedTable && (
-              <button
-                type="button"
-                onClick={() => setTablesOpen((open) => !open)}
-                className="lg:hidden mb-2 inline-flex w-full items-center justify-between rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-sm font-semibold text-orange-900 dark:text-orange-100"
-              >
-                <span>Table {selectedTable.number}</span>
-                <span className="text-xs font-medium text-muted">{tablesOpen ? "Hide tables" : "Change"}</span>
-              </button>
+      <div className="flex gap-2 min-w-0">
+        {mode === "walkin" ? (
+          <button
+            type="button"
+            onClick={() =>
+              setStaffFulfillment((current) =>
+                current === "SELF_PICKUP" ? "TABLE_SERVICE" : "SELF_PICKUP",
+              )
+            }
+            className={cn(
+              "inline-flex shrink-0 items-center justify-center px-2.5 py-2 rounded-xl border text-xs sm:text-sm font-semibold",
+              isSelf
+                ? "bg-sky-500/20 border-sky-500/40 text-sky-800 dark:text-sky-200"
+                : "bg-orange-500/15 border-orange-500/40 text-orange-800 dark:text-orange-200",
             )}
-            {!selectedTable ? (
-              <p className="text-xs text-muted mb-2">Pick a table, then add items</p>
-            ) : (
-              <p className="hidden lg:block text-xs text-muted mb-2">Table {selectedTable.number}</p>
-            )}
-            <div
-              className={cn(
-                "grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-1.5 sm:gap-2",
-                selectedTable && !tablesOpen && "hidden lg:grid",
-              )}
-            >
-              {dineInTables.map((table) => {
-                const floorState = states[table.id]?.state;
-                const closed = !table.orderingEnabled && (!floorState || floorState === "available");
-                const selected = tableId === table.id;
-                return (
-                  <button
-                    key={table.id}
-                    type="button"
-                    onClick={() => {
-                      setTable(table.id === tableId ? null : table.id);
-                      if (table.id !== tableId) setTablesOpen(false);
-                    }}
-                    className={cn(
-                      "min-h-10 sm:min-h-[3.5rem] rounded-xl border text-sm sm:text-base font-bold transition-colors",
-                      closed
-                        ? TABLE_CLOSED_STYLE
-                        : FLOOR_STATE_STYLES[floorState ?? "available"] ?? FLOOR_STATE_STYLES.available,
-                      selected && "ring-2 ring-orange-400 border-orange-400",
-                    )}
-                  >
-                    T{table.number}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-          <div className="min-w-0 hidden md:block">
-            <p className="font-semibold text-foreground">{meta.label}</p>
-            <p className="text-xs text-muted">{meta.description}</p>
-          </div>
-
-          <div className="flex flex-wrap gap-2 min-w-0 sm:flex-1 sm:justify-end">
-            {mode === "walkin" ? (
-              <button
-                type="button"
-                onClick={() =>
-                  setStaffFulfillment((current) =>
-                    current === "SELF_PICKUP" ? "TABLE_SERVICE" : "SELF_PICKUP",
-                  )
-                }
-                className={cn(
-                  "inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold",
-                  isSelf
-                    ? "bg-sky-500/20 border-sky-500/40 text-sky-800 dark:text-sky-200"
-                    : "bg-orange-500/15 border-orange-500/40 text-orange-800 dark:text-orange-200",
-                )}
-              >
-                {isSelf ? "Self" : "Table service"}
-              </button>
-            ) : null}
-            <div className="flex items-center gap-2 min-w-0 flex-1 sm:min-w-[180px] sm:flex-none">
-              <UserRound className="w-4 h-4 text-muted shrink-0" />
-              <Input
-                placeholder="Guest name"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="h-10 min-w-0"
-              />
-            </div>
-            {mode === "delivery" && (
-              <Input
-                placeholder="Phone"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                className="h-10 w-full min-w-0 sm:w-auto sm:min-w-[160px]"
-              />
-            )}
-          </div>
+          >
+            {isSelf ? "Self" : "Table"}
+          </button>
+        ) : null}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <UserRound className="w-4 h-4 text-muted shrink-0" />
+          <Input
+            placeholder="Guest name"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            className="h-10 min-w-0"
+          />
         </div>
-        {mode === "delivery" && (
+      </div>
+      {mode === "delivery" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Input
+            placeholder="Phone"
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
+            className="h-10 min-w-0"
+          />
           <Input
             placeholder="Delivery address / notes"
             value={orderNotes}
             onChange={(e) => setOrderNotes(e.target.value)}
             className="h-10"
           />
-        )}
-        {mode === "takeaway" && (
-          <Input
-            placeholder="Pickup notes (optional)"
-            value={orderNotes}
-            onChange={(e) => setOrderNotes(e.target.value)}
-            className="h-10"
-          />
-        )}
-        {isSelf ? (
-          <p className="text-xs text-muted">
-            Self tickets go to the kitchen and print a customer slip.
-          </p>
-        ) : null}
-      </div>
+        </div>
+      )}
+      {mode === "takeaway" && (
+        <Input
+          placeholder="Pickup notes (optional)"
+          value={orderNotes}
+          onChange={(e) => setOrderNotes(e.target.value)}
+          className="h-10"
+        />
+      )}
+      {isSelf ? (
+        <p className="text-xs text-muted">
+          Self tickets go to the kitchen and print a customer slip.
+        </p>
+      ) : null}
+    </div>
+  );
+
+  const menuBlock = (
+    <div className={cn("space-y-4", splitCart ? "pb-2" : "pb-28")}>
+      {!splitCart ? (
+        <>
+          {offlineBanner}
+          <div
+            className={cn(
+              "z-20 -mx-1 px-1 py-2 bg-app-shell/95 border-b border-[color:var(--surface-border)] lg:sticky lg:backdrop-blur-md",
+              stickyClassName,
+            )}
+          >
+            {orderControls}
+          </div>
+        </>
+      ) : null}
 
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -521,8 +531,14 @@ export function RemoteOrdersPanel({
 
   if (splitCart) {
     return (
-      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full min-h-0">
-        <div className="min-w-0 flex-1 min-h-0 overflow-y-auto">{menuBlock}</div>
+      <div className="flex flex-col lg:flex-row gap-3 lg:gap-6 h-full min-h-0">
+        <div className="min-w-0 flex-1 min-h-0 flex flex-col">
+          {offlineBanner ? <div className="shrink-0 mb-2">{offlineBanner}</div> : null}
+          <div className="shrink-0 pb-2 mb-2 border-b border-[color:var(--surface-border)]">
+            {orderControls}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">{menuBlock}</div>
+        </div>
         <aside className="hidden lg:block w-[22rem] shrink-0 h-full overflow-y-auto">
           <StaffCartPanel {...cartProps} allowEmpty />
         </aside>
