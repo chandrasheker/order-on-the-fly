@@ -246,7 +246,7 @@ export function RestaurantShell({
   }, [pathname]);
 
   const takeOrderButtonClass =
-    "inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-semibold shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40";
+    "items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-semibold shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40";
 
   const logout = async () => {
     try {
@@ -318,8 +318,16 @@ export function RestaurantShell({
     );
   }
 
+  if (onTakeOrderPage) {
+    return (
+      <div className="relative h-dvh max-w-full overflow-hidden bg-app-shell text-foreground">
+        {children}
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-app-shell text-foreground lg:flex">
+    <div className="min-h-screen max-w-full overflow-x-clip bg-app-shell text-foreground lg:flex">
       <aside className="hidden lg:flex lg:w-60 xl:w-64 shrink-0 flex-col border-r border-white/5 bg-black/20">
         {brand}
         {canTakeOrder && !onTakeOrderPage ? (
@@ -327,7 +335,7 @@ export function RestaurantShell({
             <button
               type="button"
               onClick={openTakeOrder}
-              className={`${takeOrderButtonClass} w-full px-3 py-2.5 text-sm`}
+              className={`inline-flex ${takeOrderButtonClass} w-full px-3 py-2.5 text-sm`}
             >
               <UtensilsCrossed className="w-4 h-4 shrink-0" />
               Take Order
@@ -375,7 +383,7 @@ export function RestaurantShell({
                 <button
                   type="button"
                   onClick={openTakeOrder}
-                  className={`${takeOrderButtonClass} w-full px-3 py-2.5 text-sm`}
+                  className={`inline-flex ${takeOrderButtonClass} w-full px-3 py-2.5 text-sm`}
                 >
                   <UtensilsCrossed className="w-4 h-4 shrink-0" />
                   Take Order
@@ -437,7 +445,7 @@ export function RestaurantShell({
         <button
           type="button"
           onClick={openTakeOrder}
-          className={`${takeOrderButtonClass} lg:hidden fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-[60] -translate-x-1/2 px-5 py-3 text-base max-w-[calc(100vw-2rem)]`}
+          className={`inline-flex lg:hidden ${takeOrderButtonClass} fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-[60] -translate-x-1/2 px-5 py-3 text-base max-w-[calc(100vw-2rem)]`}
         >
           <UtensilsCrossed className="w-5 h-5 shrink-0" />
           Take Order

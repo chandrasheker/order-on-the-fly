@@ -4,15 +4,17 @@ import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TakeOrderOverlay } from "@/components/staff/TakeOrderOverlay";
 import { Spinner } from "@/components/ui";
-import { safeStaffReturnPath } from "@/lib/take-order-return";
+import { parseTakeOrderMode, safeStaffReturnPath } from "@/lib/take-order-return";
 
 function TakeOrderPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const from = safeStaffReturnPath(searchParams.get("from"));
+  const initialMode = parseTakeOrderMode(searchParams.get("mode"));
 
   return (
     <TakeOrderOverlay
+      initialMode={initialMode}
       onClose={() => {
         router.push(from);
       }}

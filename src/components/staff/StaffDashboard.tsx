@@ -50,6 +50,7 @@ import { isClientOffline, isNetworkFetchError, swallowPollingFetchError } from "
 import { CookKitchenDashboard } from "@/components/staff/CookKitchenDashboard";
 import { PickupQueuePanel } from "@/components/staff/PickupQueuePanel";
 import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
+import { takeOrderPath } from "@/lib/take-order-return";
 
 interface OrderItem {
   id: string;
@@ -639,7 +640,7 @@ export function StaffDashboard() {
               {tableSwitchRequests.map((request) => (
                 <div
                   key={request.id}
-                  className="p-3 rounded-xl bg-black/20 border border-white/10 flex items-center justify-between gap-3"
+                  className="p-3 rounded-xl bg-black/20 border border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
                 >
                   <div>
                     <p className="font-medium text-foreground">
@@ -821,20 +822,12 @@ export function StaffDashboard() {
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
             <button
               type="button"
-              onClick={() => {
-                setOfflineIntent("walkin");
-                setViewMode("offline");
-              }}
-              className={cn(
-                "text-left rounded-2xl border p-3 transition-all",
-                viewMode === "offline" && offlineIntent === "walkin"
-                  ? "border-violet-500/50 bg-violet-500/10"
-                  : "border-white/10 bg-white/5 hover:border-white/20",
-              )}
+              onClick={() => router.push(takeOrderPath("/staff/dashboard", "walkin"))}
+              className="text-left rounded-2xl border p-3 transition-all border-white/10 bg-white/5 hover:border-white/20"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 <Utensils className="w-4 h-4 text-violet-800 dark:text-violet-300 shrink-0" />
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs text-muted">Walk-in / table</p>
                   <p className="text-sm font-semibold text-foreground">Dine-in order</p>
                 </div>
@@ -842,20 +835,12 @@ export function StaffDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setOfflineIntent("takeaway");
-                setViewMode("offline");
-              }}
-              className={cn(
-                "text-left rounded-2xl border p-3 transition-all",
-                viewMode === "offline" && offlineIntent === "takeaway"
-                  ? "border-orange-500/50 bg-orange-500/10"
-                  : "border-white/10 bg-white/5 hover:border-white/20",
-              )}
+              onClick={() => router.push(takeOrderPath("/staff/dashboard", "takeaway"))}
+              className="text-left rounded-2xl border p-3 transition-all border-white/10 bg-white/5 hover:border-white/20"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 <ShoppingBag className="w-4 h-4 text-orange-800 dark:text-orange-300 shrink-0" />
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs text-muted">Takeaway</p>
                   <p className="text-sm font-semibold text-foreground">Pack & collect</p>
                 </div>
@@ -863,20 +848,12 @@ export function StaffDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setOfflineIntent("delivery");
-                setViewMode("offline");
-              }}
-              className={cn(
-                "text-left rounded-2xl border p-3 transition-all",
-                viewMode === "offline" && offlineIntent === "delivery"
-                  ? "border-sky-500/50 bg-sky-500/10"
-                  : "border-white/10 bg-white/5 hover:border-white/20",
-              )}
+              onClick={() => router.push(takeOrderPath("/staff/dashboard", "delivery"))}
+              className="text-left rounded-2xl border p-3 transition-all border-white/10 bg-white/5 hover:border-white/20"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 <Truck className="w-4 h-4 text-sky-800 dark:text-sky-300 shrink-0" />
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs text-muted">Delivery</p>
                   <p className="text-sm font-semibold text-foreground">Send out</p>
                 </div>
@@ -937,10 +914,7 @@ export function StaffDashboard() {
                 <p className="text-zinc-400 mb-2">No active orders right now.</p>
                 {showTab("offline") && (
                   <button
-                    onClick={() => {
-                      setOfflineIntent("walkin");
-                      setViewMode("offline");
-                    }}
+                    onClick={() => router.push(takeOrderPath("/staff/dashboard", "walkin"))}
                     className="text-sm text-violet-800 dark:text-violet-400 hover:text-violet-900 dark:hover:text-violet-300 mr-4"
                   >
                     Take a walk-in order →

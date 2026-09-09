@@ -428,10 +428,19 @@ export function MenuView({
   const expandAll = () => setExpandedSlugs(new Set(categories.map((c) => c.slug)));
   const collapseAll = () => setExpandedSlugs(new Set());
 
+  const dense = layout === "dense";
+
   return (
-    <div className="pb-32">
-      {/* Sticky category jump nav */}
-      <div className="sticky top-0 z-20 -mx-4 px-2 py-2 bg-customer-shell/95 backdrop-blur-xl border-b border-[color:var(--surface-border)] space-y-2">
+    <div className={dense ? "pb-2" : "pb-32"}>
+      {/* Sticky category jump nav — stay in flow on staff Take Order so it does not cover the table picker */}
+      <div
+        className={cn(
+          "z-10 py-2 space-y-2 border-b border-[color:var(--surface-border)]",
+          dense
+            ? "relative -mx-1 px-1 bg-app-shell/95"
+            : "sticky top-0 z-20 -mx-4 px-2 bg-customer-shell/95 backdrop-blur-xl",
+        )}
+      >
         <div className="relative px-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
           <Input
@@ -558,7 +567,12 @@ export function MenuView({
             <button
               type="button"
               onClick={() => toggleCategory(cat.slug)}
-              className="w-full text-left text-lg font-bold text-foreground mb-3 flex items-center gap-2 sticky top-[4.5rem] z-10 py-2 bg-customer-shell/90 backdrop-blur-sm -mx-1 px-1 rounded-lg hover:bg-[color:var(--surface-hover)] transition-colors"
+              className={cn(
+                "w-full text-left text-lg font-bold text-foreground mb-3 flex items-center gap-2 py-2 -mx-1 px-1 rounded-lg hover:bg-[color:var(--surface-hover)] transition-colors",
+                dense
+                  ? "relative bg-transparent"
+                  : "sticky top-[4.5rem] z-10 bg-customer-shell/90 backdrop-blur-sm",
+              )}
               aria-expanded={isExpanded}
             >
               <span className="text-xl">{cat.icon}</span>

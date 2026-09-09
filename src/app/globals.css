@@ -208,3 +208,8 @@ body.cook-kiosk footer.site-footer-global,
 body.cook-kiosk .fixed-theme-toggle {
   display: none !important;
 }
+
+body.take-order-open > .site-footer-global,
+body.take-order-open footer.site-footer-global {
+  display: none !important;
+}

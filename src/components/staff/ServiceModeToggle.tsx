@@ -5,10 +5,10 @@ import { cn } from "@/lib/utils";
 import type { RestaurantServiceMode } from "@/lib/fulfillment/constants";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
 
-const BUTTONS: { id: RestaurantServiceMode; label: string }[] = [
-  { id: "FULL_SERVICE", label: "FULL SERVICE" },
-  { id: "SELF_SERVICE", label: "SELF SERVICE" },
-  { id: "HYBRID", label: "HYBRID" },
+const BUTTONS: { id: RestaurantServiceMode; label: string; short: string }[] = [
+  { id: "FULL_SERVICE", label: "FULL SERVICE", short: "FULL" },
+  { id: "SELF_SERVICE", label: "SELF SERVICE", short: "SELF" },
+  { id: "HYBRID", label: "HYBRID", short: "HYBRID" },
 ];
 
 function nextServiceMode(
@@ -85,7 +85,7 @@ export function ServiceModeToggle() {
         <p className="text-xs text-muted">One-click · at least one on</p>
       </div>
       <div className="grid grid-cols-3 gap-2">
-        {BUTTONS.map(({ id, label }) => {
+        {BUTTONS.map(({ id, label, short }) => {
           const on = isLit(mode, id);
           return (
             <button
@@ -95,7 +95,7 @@ export function ServiceModeToggle() {
               onClick={() => void apply(id)}
               aria-pressed={on}
               className={cn(
-                "px-2 py-2 rounded-xl border text-[11px] sm:text-xs font-semibold tracking-wide transition-colors disabled:opacity-60",
+                "px-1.5 py-2 rounded-xl border text-[10px] sm:text-xs font-semibold tracking-wide transition-colors disabled:opacity-60",
                 on
                   ? id === "HYBRID"
                     ? "bg-violet-500/20 border-violet-500/40 text-violet-900 dark:text-violet-100"
@@ -105,7 +105,8 @@ export function ServiceModeToggle() {
                   : "bg-white/5 border-white/10 text-muted hover:text-foreground",
               )}
             >
-              {label}
+              <span className="sm:hidden">{short}</span>
+              <span className="hidden sm:inline">{label}</span>
             </button>
           );
         })}

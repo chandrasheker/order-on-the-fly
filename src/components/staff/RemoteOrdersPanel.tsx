@@ -94,6 +94,7 @@ export function RemoteOrdersPanel({
   const [orderNotes, setOrderNotes] = useState("");
   const [staffFulfillment, setStaffFulfillment] = useState<"TABLE_SERVICE" | "SELF_PICKUP">("TABLE_SERVICE");
   const [cartOpen, setCartOpen] = useState(false);
+  const [tablesOpen, setTablesOpen] = useState(true);
   const [lastChit, setLastChit] = useState<KitchenChitPayload | null>(null);
   const { states } = useFloorTableStates();
   const { printKitchenChit, printing } = useThermalPrinter();
@@ -183,6 +184,7 @@ export function RemoteOrdersPanel({
     setError("");
     setSuccess("");
     setCartOpen(false);
+    setTablesOpen(true);
   };
 
   useEffect(() => {
@@ -350,15 +352,32 @@ export function RemoteOrdersPanel({
           )}
         </div>
       )}
-      <div className={cn("sticky z-20 -mx-1 px-1 py-3 bg-app-shell/95 backdrop-blur-md border-b border-[color:var(--surface-border)] space-y-3", stickyClassName)}>
+      <div className={cn("sticky z-20 -mx-1 px-1 py-2 sm:py-3 bg-app-shell/95 backdrop-blur-md border-b border-[color:var(--surface-border)] space-y-2 sm:space-y-3", stickyClassName)}>
         <ModePicker modes={modes} mode={mode} onChange={resetMode} compact />
 
         {meta.needsTable && (
           <div>
-            <p className="text-xs text-muted mb-2">
-              {selectedTable ? `Table ${selectedTable.number}` : "Pick a table, then add items"}
-            </p>
-            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
+            {selectedTable && (
+              <button
+                type="button"
+                onClick={() => setTablesOpen((open) => !open)}
+                className="lg:hidden mb-2 inline-flex w-full items-center justify-between rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-sm font-semibold text-orange-900 dark:text-orange-100"
+              >
+                <span>Table {selectedTable.number}</span>
+                <span className="text-xs font-medium text-muted">{tablesOpen ? "Hide tables" : "Change"}</span>
+              </button>
+            )}
+            {!selectedTable ? (
+              <p className="text-xs text-muted mb-2">Pick a table, then add items</p>
+            ) : (
+              <p className="hidden lg:block text-xs text-muted mb-2">Table {selectedTable.number}</p>
+            )}
+            <div
+              className={cn(
+                "grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-1.5 sm:gap-2",
+                selectedTable && !tablesOpen && "hidden lg:grid",
+              )}
+            >
               {dineInTables.map((table) => {
                 const floorState = states[table.id]?.state;
                 const closed = !table.orderingEnabled && (!floorState || floorState === "available");
@@ -367,9 +386,12 @@ export function RemoteOrdersPanel({
                   <button
                     key={table.id}
                     type="button"
-                    onClick={() => setTable(table.id === tableId ? null : table.id)}
+                    onClick={() => {
+                      setTable(table.id === tableId ? null : table.id);
+                      if (table.id !== tableId) setTablesOpen(false);
+                    }}
                     className={cn(
-                      "min-h-[3.5rem] rounded-xl border text-base font-bold transition-colors",
+                      "min-h-10 sm:min-h-[3.5rem] rounded-xl border text-sm sm:text-base font-bold transition-colors",
                       closed
                         ? TABLE_CLOSED_STYLE
                         : FLOOR_STATE_STYLES[floorState ?? "available"] ?? FLOOR_STATE_STYLES.available,
@@ -384,13 +406,13 @@ export function RemoteOrdersPanel({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-3 justify-between">
-          <div className="min-w-0">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="min-w-0 hidden md:block">
             <p className="font-semibold text-foreground">{meta.label}</p>
             <p className="text-xs text-muted">{meta.description}</p>
           </div>
 
-          <div className="flex flex-wrap gap-2 flex-1 justify-end">
+          <div className="flex flex-wrap gap-2 min-w-0 sm:flex-1 sm:justify-end">
             {mode === "walkin" ? (
               <button
                 type="button"
@@ -400,7 +422,7 @@ export function RemoteOrdersPanel({
                   )
                 }
                 className={cn(
-                  "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold",
+                  "inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold",
                   isSelf
                     ? "bg-sky-500/20 border-sky-500/40 text-sky-800 dark:text-sky-200"
                     : "bg-orange-500/15 border-orange-500/40 text-orange-800 dark:text-orange-200",
@@ -409,7 +431,7 @@ export function RemoteOrdersPanel({
                 {isSelf ? "Self" : "Table service"}
               </button>
             ) : null}
-            <div className="flex items-center gap-2 w-full min-w-0 sm:w-auto sm:min-w-[180px]">
+            <div className="flex items-center gap-2 min-w-0 flex-1 sm:min-w-[180px] sm:flex-none">
               <UserRound className="w-4 h-4 text-muted shrink-0" />
               <Input
                 placeholder="Guest name"
@@ -543,6 +565,12 @@ export function RemoteOrdersPanel({
   );
 }
 
+const MODE_SHORT: Record<OrderMode, string> = {
+  walkin: "Walk-in",
+  takeaway: "Takeaway",
+  delivery: "Delivery",
+};
+
 function ModePicker({
   modes,
   mode,
@@ -555,7 +583,7 @@ function ModePicker({
   compact?: boolean;
 }) {
   return (
-    <div className={cn("flex flex-wrap gap-2", compact ? "" : "mb-2")}>
+    <div className={cn(compact ? "grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:gap-2" : "flex flex-wrap gap-2 mb-2")}>
       {modes.map((entry) => {
         const meta = MODE_META[entry];
         const Icon = meta.icon;
@@ -566,14 +594,15 @@ function ModePicker({
             type="button"
             onClick={() => onChange(entry)}
             className={cn(
-              "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors",
+              "inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl border font-medium transition-colors",
+              compact ? "px-2 py-2 text-[11px] sm:px-3 sm:text-sm" : "px-3 py-2 text-sm",
               active
                 ? "bg-violet-500/20 border-violet-500/40 text-violet-800 dark:text-violet-100"
                 : "bg-white/5 border-white/10 text-muted hover:text-foreground",
             )}
           >
-            <Icon className="w-4 h-4" />
-            {meta.label}
+            <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span className="truncate">{compact ? MODE_SHORT[entry] : meta.label}</span>
           </button>
         );
       })}

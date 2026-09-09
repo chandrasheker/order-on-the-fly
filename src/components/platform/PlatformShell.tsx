@@ -144,7 +144,7 @@ export function PlatformShell({
   );
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground lg:flex">
+    <div className="min-h-screen max-w-full overflow-x-clip bg-app-shell text-foreground lg:flex">
       <aside className="hidden lg:flex lg:w-60 xl:w-64 shrink-0 flex-col border-r border-white/5 bg-black/20">
         {brand}
         {nav}
