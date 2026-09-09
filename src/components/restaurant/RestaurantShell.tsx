@@ -29,6 +29,7 @@ import {
   canPlaceOfflineOrder,
 } from "@/lib/staff-permissions";
 import { TakeOrderOverlay } from "@/components/staff/TakeOrderOverlay";
+import { forgetTakeOrderSession } from "@/store/staff-cart";
 import type { Role } from "@/generated/prisma/client";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
 import { LOGO_CHANGED_EVENT } from "@/lib/admin-api-error";
@@ -234,8 +235,16 @@ export function RestaurantShell({
     setTakeOrderOpen(true);
   };
 
+  const closeTakeOrder = () => {
+    forgetTakeOrderSession();
+    setTakeOrderOpen(false);
+  };
+
   useEffect(() => {
     setTakeOrderOpen(false);
+    return () => {
+      forgetTakeOrderSession();
+    };
   }, [pathname]);
 
   const takeOrderButtonClass =
@@ -438,7 +447,7 @@ export function RestaurantShell({
         </button>
       ) : null}
 
-      {takeOrderOpen ? <TakeOrderOverlay onClose={() => setTakeOrderOpen(false)} /> : null}
+      {takeOrderOpen ? <TakeOrderOverlay onClose={closeTakeOrder} /> : null}
     </div>
   );
 }

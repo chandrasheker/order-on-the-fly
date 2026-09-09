@@ -101,6 +101,10 @@ function DenseMenuItemCard({
           </span>
         )}
       </div>
+      <p className="text-[10px] text-muted mt-1 leading-snug">
+        {item.prepTimeMinutes} min
+        {item.trackInventory && item.stockQuantity != null ? ` · Qty ${item.stockQuantity}` : ""}
+      </p>
       <div className="mt-auto pt-1 flex items-center justify-between gap-1">
         <span className="text-xs font-bold text-orange-400">{formatCurrency(item.price)}</span>
         {outOfStock ? (

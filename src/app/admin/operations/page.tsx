@@ -192,8 +192,9 @@ function InventoryPanel({ onMessage }: { onMessage: (m: string) => void }) {
   return (
     <Card className="p-4 space-y-3">
       <p className="text-sm text-zinc-400">
-        Tick Track, then enter how many portions you have. 0 marks the item out of stock on the
-        menu, digital board, and aggregators. Untick Track to stop counting and put it back on the menu.
+        Tick Track, then enter how many portions you have. This is the same quantity as Menu
+        (price / qty / serve time). 0 marks the item out of stock on the menu, digital board, and
+        aggregators. Untick Track to stop counting and put it back on the menu.
       </p>
       {items.map((item) => {
         const outOfStock = Boolean(

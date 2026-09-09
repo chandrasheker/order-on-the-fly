@@ -9,10 +9,12 @@ export function FeedbackButton({
   tableToken,
   customerName,
   orderId,
+  placement = "fixed",
 }: {
   tableToken: string;
   customerName?: string;
   orderId?: string;
+  placement?: "fixed" | "inline";
 }) {
   const [open, setOpen] = useState(false);
   const [stars, setStars] = useState(0);
@@ -58,10 +60,15 @@ export function FeedbackButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-24 right-4 z-40 w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center text-white active:scale-95 transition-transform"
+        className={
+          placement === "inline"
+            ? "inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/30 px-3 py-1 text-xs font-semibold text-foreground"
+            : "fixed bottom-24 right-4 z-40 w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center text-white active:scale-95 transition-transform"
+        }
         aria-label="Leave feedback"
       >
-        <MessageSquare className="w-5 h-5" />
+        <MessageSquare className={placement === "inline" ? "w-3.5 h-3.5" : "w-5 h-5"} />
+        {placement === "inline" ? "Feedback" : null}
       </button>
 
       <AnimatePresence>

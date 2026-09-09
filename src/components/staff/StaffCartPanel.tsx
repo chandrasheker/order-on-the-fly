@@ -18,6 +18,7 @@ type StaffCartPanelProps = {
   onPrint?: () => void;
   printing?: boolean;
   placeLabel?: string;
+  allowEmpty?: boolean;
 };
 
 function CartLines({
@@ -111,11 +112,20 @@ function CartLines({
 }
 
 export function StaffCartPanel(props: StaffCartPanelProps) {
-  if (props.items.length === 0) return null;
+  if (props.items.length === 0 && !props.allowEmpty) return null;
 
   return (
     <div className={props.className}>
-      <CartLines {...props} />
+      {props.items.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-4">
+          <p className="text-sm font-semibold text-foreground">Cart</p>
+          <p className="text-xs text-muted mt-1">
+            Add dishes on the left. This list updates as you tap.
+          </p>
+        </div>
+      ) : (
+        <CartLines {...props} />
+      )}
     </div>
   );
 }

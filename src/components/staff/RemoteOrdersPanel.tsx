@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Phone, UserRound, ShoppingBag, Truck, Printer } from "lucide-react";
 import { MenuView } from "@/components/customer/MenuView";
-import { StaffCartDrawer } from "@/components/staff/StaffCartPanel";
+import { StaffCartDrawer, StaffCartPanel } from "@/components/staff/StaffCartPanel";
 import { Button, Input, Spinner } from "@/components/ui";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useStaffCartStore } from "@/store/staff-cart";
@@ -47,6 +47,7 @@ interface RemoteOrdersPanelProps {
   onOrderPlaced?: (result?: { kitchenChit?: KitchenChitPayload | null }) => void;
   initialMode?: OrderMode;
   stickyClassName?: string;
+  splitCart?: boolean;
 }
 
 const MODE_META: Record<
@@ -79,6 +80,7 @@ export function RemoteOrdersPanel({
   onOrderPlaced,
   initialMode = "walkin",
   stickyClassName = "top-[4.5rem]",
+  splitCart = false,
 }: RemoteOrdersPanelProps) {
   const [mode, setMode] = useState<OrderMode>(initialMode);
   const [tables, setTables] = useState<TableRow[]>([]);
@@ -106,7 +108,6 @@ export function RemoteOrdersPanel({
     updateQuantity,
     updateNotes,
     clearCart,
-    resetSession,
     total,
     maxPrepTime,
   } = useStaffCartStore();
@@ -164,20 +165,6 @@ export function RemoteOrdersPanel({
       setLoadingMenu(false);
     }
   }, [cachedMenu, storeMenu]);
-
-  useEffect(() => {
-    resetSession();
-    setCustomerPhone("");
-    setOrderNotes("");
-    setCartOpen(false);
-    return () => {
-      const previousTableId = useStaffCartStore.getState().tableId;
-      resetSession();
-      if (previousTableId) {
-        void clearRemoteCartDraft({ source: "STAFF", tableId: previousTableId });
-      }
-    };
-  }, [resetSession]);
 
   useEffect(() => {
     void loadTables();
@@ -335,8 +322,22 @@ export function RemoteOrdersPanel({
 
   const modes = Object.keys(MODE_META) as OrderMode[];
 
-  return (
-    <div className="space-y-4 pb-28">
+  const cartProps = {
+    items,
+    total: total(),
+    maxPrepTime: maxPrepTime(),
+    placing,
+    printing,
+    onUpdateQuantity: updateQuantity,
+    onUpdateNotes: updateNotes,
+    onPlaceOrder: () => void placeOrder(isSelf),
+    onClearCart: handleClearCart,
+    onPrint: () => void handlePrint(),
+    placeLabel: isSelf ? "Send & print" : "Send to kitchen",
+  };
+
+  const menuBlock = (
+    <div className={cn("space-y-4", splitCart ? "pb-4" : "pb-28")}>
       {(!online || pendingCount > 0) && (
         <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-200 flex items-center justify-between gap-3">
           <span>
@@ -485,15 +486,6 @@ export function RemoteOrdersPanel({
         />
       )}
 
-      {cartCount > 0 && !cartOpen ? (
-        <div className="fixed bottom-5 left-1/2 z-[85] -translate-x-1/2">
-          <Button type="button" size="lg" onClick={() => setCartOpen(true)}>
-            <ShoppingBag className="w-5 h-5" />
-            View cart ({cartCount}) · {formatCurrency(total())}
-          </Button>
-        </div>
-      ) : null}
-
       {lastChit && cartCount === 0 && success ? (
         <div className="flex justify-end">
           <Button type="button" variant="secondary" size="sm" onClick={() => void printTicket(lastChit)}>
@@ -502,23 +494,37 @@ export function RemoteOrdersPanel({
           </Button>
         </div>
       ) : null}
+    </div>
+  );
 
+  if (splitCart) {
+    return (
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6 h-full min-h-0">
+        <div className="min-w-0 flex-1 min-h-0 overflow-y-auto">{menuBlock}</div>
+        <aside className="w-full md:w-[22rem] shrink-0 max-h-[38vh] md:max-h-none md:h-full overflow-y-auto border-t md:border-t-0 border-[color:var(--surface-border)] pt-3 md:pt-0 bg-app-shell sticky bottom-0 md:sticky md:top-0 z-10">
+          <StaffCartPanel {...cartProps} allowEmpty />
+        </aside>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {menuBlock}
+      {cartCount > 0 && !cartOpen ? (
+        <div className="fixed bottom-5 left-1/2 z-[85] -translate-x-1/2">
+          <Button type="button" size="lg" onClick={() => setCartOpen(true)}>
+            <ShoppingBag className="w-5 h-5" />
+            View cart ({cartCount}) · {formatCurrency(total())}
+          </Button>
+        </div>
+      ) : null}
       <StaffCartDrawer
         open={cartOpen}
         onClose={() => setCartOpen(false)}
-        items={items}
-        total={total()}
-        maxPrepTime={maxPrepTime()}
-        placing={placing}
-        printing={printing}
-        onUpdateQuantity={updateQuantity}
-        onUpdateNotes={updateNotes}
-        onPlaceOrder={() => void placeOrder(isSelf)}
-        onClearCart={handleClearCart}
-        onPrint={() => void handlePrint()}
-        placeLabel={isSelf ? "Send & print" : "Send to kitchen"}
+        {...cartProps}
       />
-    </div>
+    </>
   );
 }
 

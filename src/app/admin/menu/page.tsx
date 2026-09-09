@@ -67,7 +67,6 @@ function AddItemForm({
   onAdded: (notice?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [more, setMore] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [prepTimeMinutes, setPrepTimeMinutes] = useState("10");
@@ -90,7 +89,6 @@ function AddItemForm({
     setPrepTimeMinutes("10");
     setIsVeg(true);
     setStockQuantity("");
-    setMore(false);
     clearImage();
     setError("");
   };
@@ -156,42 +154,74 @@ function AddItemForm({
   return (
     <form onSubmit={submit} className="rounded-xl border border-orange-500/25 bg-orange-500/5 p-3 space-y-2">
       <div className="grid sm:grid-cols-[1fr_6.5rem_5.5rem_auto] gap-2">
-        <Input
-          placeholder="Item name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          autoFocus
-        />
-        <Input
-          type="number"
-          placeholder="₹ Price"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          required
-          min="0"
-        />
-        <Input
-          type="number"
-          min="0"
-          placeholder="Qty"
-          title="Optional stock quantity. Same as Operations → Inventory."
-          value={stockQuantity}
-          onChange={(e) => setStockQuantity(e.target.value)}
-        />
-        <Button type="submit" disabled={saving} size="sm">
-          {saving ? "…" : "Add"}
-        </Button>
+        <label className="block space-y-1 min-w-0">
+          <span className="text-[11px] font-medium text-muted">Item name</span>
+          <Input
+            placeholder="e.g. Mineral Water"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            autoFocus
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-[11px] font-medium text-muted">Price (₹)</span>
+          <Input
+            type="number"
+            placeholder="0"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            required
+            min="0"
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-[11px] font-medium text-muted">Qty</span>
+          <Input
+            type="number"
+            min="0"
+            placeholder="Optional"
+            title="Same stock field as Operations → Inventory"
+            value={stockQuantity}
+            onChange={(e) => setStockQuantity(e.target.value)}
+          />
+        </label>
+        <div className="flex items-end">
+          <Button type="submit" disabled={saving} size="sm">
+            {saving ? "…" : "Add"}
+          </Button>
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-end gap-2">
         <DietToggle isVeg={isVeg} onChange={setIsVeg} disabled={saving} />
-        <button
-          type="button"
-          onClick={() => setMore((v) => !v)}
-          className="text-xs text-muted hover:text-foreground"
-        >
-          {more ? "Fewer options" : "Photo, prep"}
-        </button>
+        <label className="space-y-1">
+          <span className="block text-[11px] font-medium text-muted">Prep (min)</span>
+          <Input
+            type="number"
+            value={prepTimeMinutes}
+            onChange={(e) => setPrepTimeMinutes(e.target.value)}
+            min="1"
+            max="120"
+            className="w-20"
+          />
+        </label>
+        <label className="inline-flex items-center gap-2 text-xs text-muted cursor-pointer h-10 px-2 rounded-lg border border-white/10">
+          <ImagePlus className="w-4 h-4" />
+          {imageFile ? imageFile.name : "Photo"}
+          <input
+            type="file"
+            accept={MENU_IMAGE_ACCEPT}
+            className="sr-only"
+            disabled={saving}
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              if (imagePreview) URL.revokeObjectURL(imagePreview);
+              setImageFile(file);
+              setImagePreview(file ? URL.createObjectURL(file) : "");
+              e.target.value = "";
+            }}
+          />
+        </label>
         <button
           type="button"
           onClick={() => {
@@ -203,35 +233,6 @@ function AddItemForm({
           Cancel
         </button>
       </div>
-      {more && (
-        <div className="grid sm:grid-cols-2 gap-2 pt-1">
-          <Input
-            type="number"
-            placeholder="Prep min"
-            value={prepTimeMinutes}
-            onChange={(e) => setPrepTimeMinutes(e.target.value)}
-            min="1"
-            max="120"
-          />
-          <label className="inline-flex items-center gap-2 text-xs text-muted cursor-pointer">
-            <ImagePlus className="w-4 h-4" />
-            {imageFile ? imageFile.name : "Photo"}
-            <input
-              type="file"
-              accept={MENU_IMAGE_ACCEPT}
-              className="sr-only"
-              disabled={saving}
-              onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
-                if (imagePreview) URL.revokeObjectURL(imagePreview);
-                setImageFile(file);
-                setImagePreview(file ? URL.createObjectURL(file) : "");
-                e.target.value = "";
-              }}
-            />
-          </label>
-        </div>
-      )}
       {error && <p className="text-xs text-red-400">{error}</p>}
     </form>
   );
@@ -271,7 +272,13 @@ export default function MenuManagePage() {
         return;
       }
       const menuData = await menuRes.json();
-      setCategories(menuData.categories ?? []);
+      const nextCategories = (menuData.categories ?? []) as Category[];
+      setCategories(nextCategories);
+      setExpanded((prev) => {
+        if (Object.keys(prev).length > 0) return prev;
+        const first = nextCategories[0];
+        return first ? { [first.id]: true } : prev;
+      });
       if (settingsRes.ok) {
         const s = await settingsRes.json();
         setRewardSettings(s.settings);
@@ -801,9 +808,49 @@ function ItemRow({
           className="min-w-0 flex-1 text-left"
         >
           <p className="text-sm font-medium truncate">{item.name}</p>
-          <p className="text-xs text-muted">{formatCurrency(item.price)}</p>
+          <p className="text-xs text-muted">
+            {formatCurrency(item.price)}
+            {" · "}
+            {item.prepTimeMinutes} min serve
+            {" · "}
+            {item.trackInventory
+              ? `Qty ${item.stockQuantity ?? 0}`
+              : "Qty not tracked"}
+          </p>
         </button>
         <DietToggle isVeg={item.isVeg !== false} onChange={(next) => onDietChange(item.id, next)} size="sm" />
+        <label className="space-y-0.5">
+          <span className="block text-[10px] font-medium text-muted">Prep</span>
+          <Input
+            type="number"
+            defaultValue={item.prepTimeMinutes}
+            key={`${item.id}-prep-${item.prepTimeMinutes}`}
+            onBlur={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (!Number.isNaN(val) && val !== item.prepTimeMinutes) {
+                onUpdate(item.id, "prepTimeMinutes", String(val));
+              }
+            }}
+            className="w-16 h-8 text-sm"
+            min="1"
+            max="120"
+          />
+        </label>
+        <label className="inline-flex items-center gap-1 text-xs text-orange-200 cursor-pointer">
+          <ImagePlus className="w-3.5 h-3.5" />
+          Photo
+          <input
+            type="file"
+            accept={MENU_IMAGE_ACCEPT}
+            className="sr-only"
+            disabled={imageBusy}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void uploadImage(file);
+            }}
+          />
+        </label>
         <Badge className={statusClass}>{statusLabel}</Badge>
         <Button
           type="button"
@@ -827,108 +874,84 @@ function ItemRow({
           type="button"
           onClick={() => setOpen((v) => !v)}
           className="p-1 text-muted"
-          title={open ? "Close details" : "Edit photo, prep, stock"}
+          title={open ? "Close details" : "Edit name, price, and quantity"}
         >
           {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
       </div>
 
       {open && (
-        <div className="grid sm:grid-cols-[1fr_6.5rem_5.5rem_5.5rem] gap-2 px-2.5 pb-2.5">
-          <Input
-            defaultValue={item.name}
-            onBlur={(e) => {
-              if (e.target.value.trim() && e.target.value !== item.name) {
-                onUpdate(item.id, "name", e.target.value.trim());
-              }
-            }}
-            className="text-sm"
-          />
-          <Input
-            type="number"
-            defaultValue={item.price}
-            onBlur={(e) => {
-              if (e.target.value && parseFloat(e.target.value) !== item.price) {
-                onUpdate(item.id, "price", e.target.value);
-              }
-            }}
-            className="text-sm"
-            min="0"
-            title="Price"
-          />
-          <Input
-            type="number"
-            defaultValue={item.prepTimeMinutes}
-            onBlur={(e) => {
-              const val = parseInt(e.target.value, 10);
-              if (!Number.isNaN(val) && val !== item.prepTimeMinutes) {
-                onUpdate(item.id, "prepTimeMinutes", String(val));
-              }
-            }}
-            className="text-sm"
-            min="1"
-            max="120"
-            title="Prep minutes"
-            placeholder="Prep"
-          />
-          <Input
-            type="number"
-            min="0"
-            defaultValue={item.trackInventory ? (item.stockQuantity ?? "") : ""}
-            placeholder="Qty"
-            title="Quantity available"
-            className="text-sm"
-            onBlur={(e) => {
-              const raw = e.target.value.trim();
-              if (raw === "") {
-                if (item.trackInventory) {
-                  void fetch("/api/menu/manage", {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ itemId: item.id, trackInventory: false }),
-                  }).then(() => onChanged());
+        <div className="grid sm:grid-cols-3 gap-2 px-2.5 pb-2.5">
+          <label className="block space-y-1 min-w-0">
+            <span className="text-[11px] font-medium text-muted">Item name</span>
+            <Input
+              defaultValue={item.name}
+              key={`${item.id}-name`}
+              onBlur={(e) => {
+                if (e.target.value.trim() && e.target.value !== item.name) {
+                  onUpdate(item.id, "name", e.target.value.trim());
                 }
-                return;
-              }
-              const qty = parseInt(raw, 10);
-              if (Number.isNaN(qty) || qty === item.stockQuantity) return;
-              void fetch("/api/menu/manage", {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ itemId: item.id, trackInventory: true, stockQuantity: qty }),
-              }).then(() => onChanged());
-            }}
-          />
-          <div className="sm:col-span-4 flex flex-wrap items-center gap-3 text-xs">
-            <label className="inline-flex items-center gap-1.5 text-orange-200 cursor-pointer">
-              <ImagePlus className="w-3.5 h-3.5" />
-              <span className="underline">{item.imageUrl ? "Change photo" : "Add photo"}</span>
-              <input
-                type="file"
-                accept={MENU_IMAGE_ACCEPT}
-                className="sr-only"
-                disabled={imageBusy}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (file) void uploadImage(file);
-                }}
-              />
-            </label>
-            {item.imageUrl ? (
-              <button
-                type="button"
-                disabled={imageBusy}
-                onClick={() => void removeImage()}
-                className="text-muted hover:text-red-300 disabled:opacity-50"
-              >
-                Remove photo
-              </button>
-            ) : (
-              <span className="text-muted">JPEG, PNG, WebP · 5 MB</span>
-            )}
-            {imageBusy && <span className="text-muted">Saving photo…</span>}
-          </div>
+              }}
+              className="text-sm"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-[11px] font-medium text-muted">Price (₹)</span>
+            <Input
+              type="number"
+              defaultValue={item.price}
+              key={`${item.id}-price-${item.price}`}
+              onBlur={(e) => {
+                if (e.target.value && parseFloat(e.target.value) !== item.price) {
+                  onUpdate(item.id, "price", e.target.value);
+                }
+              }}
+              className="text-sm"
+              min="0"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-[11px] font-medium text-muted">Qty (same as Inventory)</span>
+            <Input
+              type="number"
+              min="0"
+              key={`${item.id}-qty-${item.stockQuantity}-${item.trackInventory}`}
+              defaultValue={item.trackInventory ? (item.stockQuantity ?? "") : ""}
+              placeholder="Optional"
+              className="text-sm"
+              onBlur={(e) => {
+                const raw = e.target.value.trim();
+                if (raw === "") {
+                  if (item.trackInventory) {
+                    void fetch("/api/menu/manage", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ itemId: item.id, trackInventory: false }),
+                    }).then(() => onChanged());
+                  }
+                  return;
+                }
+                const qty = parseInt(raw, 10);
+                if (Number.isNaN(qty) || qty === item.stockQuantity) return;
+                void fetch("/api/menu/manage", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ itemId: item.id, trackInventory: true, stockQuantity: qty }),
+                }).then(() => onChanged());
+              }}
+            />
+          </label>
+          {item.imageUrl ? (
+            <button
+              type="button"
+              disabled={imageBusy}
+              onClick={() => void removeImage()}
+              className="text-xs text-muted hover:text-red-300 disabled:opacity-50 sm:col-span-3 text-left"
+            >
+              Remove photo
+            </button>
+          ) : null}
+          {imageBusy && <span className="text-xs text-muted sm:col-span-3">Saving photo…</span>}
         </div>
       )}
     </div>

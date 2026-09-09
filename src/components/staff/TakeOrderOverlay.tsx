@@ -4,28 +4,28 @@ import { useEffect } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui";
 import { RemoteOrdersPanel } from "@/components/staff/RemoteOrdersPanel";
-import { useStaffCartStore } from "@/store/staff-cart";
-import { clearRemoteCartDraft } from "@/hooks/useCartDraftSync";
+import { forgetTakeOrderSession } from "@/store/staff-cart";
 
 export function TakeOrderOverlay({ onClose }: { onClose: () => void }) {
+  const close = () => {
+    forgetTakeOrderSession();
+    onClose();
+  };
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") close();
     };
     document.addEventListener("keydown", onKey);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    useStaffCartStore.getState().resetSession();
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
-      const tableId = useStaffCartStore.getState().tableId;
-      useStaffCartStore.getState().resetSession();
-      if (tableId) {
-        void clearRemoteCartDraft({ source: "STAFF", tableId });
-      }
     };
-  }, [onClose]);
+    // Only bind once. Re-running this on parent re-renders used to wipe the cart.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div
@@ -40,18 +40,16 @@ export function TakeOrderOverlay({ onClose }: { onClose: () => void }) {
             Take Order
           </p>
           <p className="text-xs text-muted mt-0.5">
-            Pick dishes, choose a table or channel, then send to the kitchen
+            Pick dishes on the left. The cart on the right updates as you go.
           </p>
         </div>
-        <Button type="button" variant="secondary" size="sm" onClick={onClose} aria-label="Close take order">
+        <Button type="button" variant="secondary" size="sm" onClick={close} aria-label="Close take order">
           <X className="w-4 h-4" />
           Close
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6">
-        <div className="mx-auto max-w-5xl">
-          <RemoteOrdersPanel stickyClassName="top-0" />
-        </div>
+      <div className="min-h-0 flex-1 overflow-hidden px-4 py-4 lg:px-6">
+        <RemoteOrdersPanel stickyClassName="top-0" splitCart />
       </div>
     </div>
   );

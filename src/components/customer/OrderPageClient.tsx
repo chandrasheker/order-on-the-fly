@@ -415,11 +415,26 @@ export function OrderPageClient({ slug, token }: Props) {
               </p>
             </div>
           </div>
-          <div className="mt-4 text-center">
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-sm text-orange-800 dark:text-orange-300">
               <UtensilsCrossed className="w-4 h-4" />
               Table {data.table.number}
             </div>
+            {data.features?.callWaiter && tableSession.diningVerified ? (
+              <CallWaiterBar
+                tableToken={token}
+                sessionKey={tableSession.sessionKey}
+                enabled={Boolean(data.features.callWaiter)}
+                serviceMode={data.restaurant.serviceMode}
+                placement="inline"
+              />
+            ) : null}
+            <FeedbackButton
+              tableToken={token}
+              customerName={customerName}
+              orderId={latestOrderId}
+              placement="inline"
+            />
           </div>
         </div>
       </div>
@@ -603,20 +618,6 @@ export function OrderPageClient({ slug, token }: Props) {
         )}
       </div>
 
-      {data.features?.callWaiter && tableSession.diningVerified ? (
-        <CallWaiterBar
-          tableToken={token}
-          sessionKey={tableSession.sessionKey}
-          enabled={Boolean(data.features.callWaiter)}
-          serviceMode={data.restaurant.serviceMode}
-        />
-      ) : null}
-
-      <FeedbackButton
-        tableToken={token}
-        customerName={customerName}
-        orderId={latestOrderId}
-      />
     </div>
   );
 }

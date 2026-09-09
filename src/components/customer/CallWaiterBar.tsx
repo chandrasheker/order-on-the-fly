@@ -19,11 +19,13 @@ export function CallWaiterBar({
   sessionKey,
   enabled,
   serviceMode,
+  placement = "fixed",
 }: {
   tableToken: string;
   sessionKey: string | null;
   enabled: boolean;
   serviceMode?: string;
+  placement?: "fixed" | "inline";
 }) {
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState<RequestType | null>(null);
@@ -65,20 +67,30 @@ export function CallWaiterBar({
   };
 
   return (
-    <>
+    <div className={placement === "inline" ? "relative" : ""}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-24 left-4 z-40 inline-flex items-center gap-1.5 rounded-full bg-white/90 dark:bg-white/10 border border-black/10 dark:border-white/15 px-3 py-2 text-xs font-semibold text-foreground shadow-lg"
+        className={
+          placement === "inline"
+            ? "inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/30 px-3 py-1 text-xs font-semibold text-foreground"
+            : "fixed bottom-24 left-4 z-40 inline-flex items-center gap-1.5 rounded-full bg-white/90 dark:bg-white/10 border border-black/10 dark:border-white/15 px-3 py-2 text-xs font-semibold text-foreground shadow-lg"
+        }
         aria-expanded={open}
         aria-label={title}
       >
-        <Bell className="w-4 h-4" />
+        <Bell className="w-3.5 h-3.5" />
         Help
       </button>
 
       {open ? (
-        <div className="fixed bottom-40 left-4 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-app-shell p-3 shadow-2xl space-y-3">
+        <div
+          className={
+            placement === "inline"
+              ? "absolute left-0 top-full mt-2 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-app-shell p-3 shadow-2xl space-y-3"
+              : "fixed bottom-40 left-4 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-white/10 bg-app-shell p-3 shadow-2xl space-y-3"
+          }
+        >
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">{title}</p>
             <button
@@ -116,6 +128,6 @@ export function CallWaiterBar({
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
