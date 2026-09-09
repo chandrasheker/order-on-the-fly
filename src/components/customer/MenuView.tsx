@@ -4,6 +4,7 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Minus, ShoppingBag, Flame, ChevronLeft, ChevronRight, ChevronDown, Search, X } from "lucide-react";
 import { formatCurrency, getPrepTimeLabel, cn } from "@/lib/utils";
+import { isOutOfStock } from "@/lib/menu-stock";
 import { Button, Badge, Input } from "@/components/ui";
 import { useCartStore, type CartItem } from "@/store/cart";
 import { ModifierPickerModal } from "@/components/customer/ModifierPickerModal";
@@ -42,6 +43,8 @@ interface MenuItem {
   isSpicy: boolean;
   isAvailable: boolean;
   imageUrl?: string | null;
+  trackInventory?: boolean;
+  stockQuantity?: number | null;
   modifierGroups?: ModifierGroup[];
 }
 
@@ -66,7 +69,9 @@ function DenseMenuItemCard({
   onAddWithModifiers?: () => void;
   hasModifiers?: boolean;
 }) {
+  const outOfStock = isOutOfStock(item) || item.isAvailable === false;
   const handleTapSelect = () => {
+    if (outOfStock) return;
     if (hasModifiers && onAddWithModifiers) onAddWithModifiers();
     else onAdd();
   };
@@ -74,10 +79,13 @@ function DenseMenuItemCard({
   return (
     <button
       type="button"
+      disabled={outOfStock}
       onClick={handleTapSelect}
       className={cn(
         "rounded-xl border p-2 text-left transition-colors min-h-[4.25rem]",
-        inCart
+        outOfStock
+          ? "border-red-500/30 bg-red-500/10 opacity-80 cursor-not-allowed"
+          : inCart
           ? "border-orange-500/40 bg-orange-500/10"
           : "border-white/10 bg-white/5 hover:border-orange-500/25 hover:bg-white/10",
       )}
@@ -96,7 +104,9 @@ function DenseMenuItemCard({
       </div>
       <div className="mt-1 flex items-center justify-between gap-1">
         <span className="text-xs font-bold text-orange-400">{formatCurrency(item.price)}</span>
-        {inCart ? (
+        {outOfStock ? (
+          <span className="text-[10px] font-semibold text-red-300">OUT OF STOCK</span>
+        ) : inCart ? (
           <span className="text-[10px] font-semibold text-orange-200">×{inCart.quantity}</span>
         ) : (
           <span className="text-[10px] text-muted">{hasModifiers ? "Customize" : "Add"}</span>
@@ -123,7 +133,9 @@ function MenuItemCard({
   onUpdateQty: (qty: number) => void;
   tapToSelect?: boolean;
 }) {
+  const outOfStock = isOutOfStock(item) || item.isAvailable === false;
   const handleTapSelect = () => {
+    if (outOfStock) return;
     if (hasModifiers && onAddWithModifiers) onAddWithModifiers();
     else onAdd();
   };
@@ -132,10 +144,11 @@ function MenuItemCard({
     <div
       className={cn(
         "flex gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 hover:border-orange-500/20 transition-all",
-        tapToSelect && !inCart && "cursor-pointer active:bg-white/10 active:border-orange-500/30",
+        outOfStock && "opacity-80 border-red-500/25",
+        tapToSelect && !inCart && !outOfStock && "cursor-pointer active:bg-white/10 active:border-orange-500/30",
         tapToSelect && inCart && "border-orange-500/40 bg-orange-500/5",
       )}
-      onClick={tapToSelect && !inCart ? handleTapSelect : undefined}
+      onClick={tapToSelect && !inCart && !outOfStock ? handleTapSelect : undefined}
       onKeyDown={
         tapToSelect && !inCart
           ? (e) => {
@@ -172,6 +185,11 @@ function MenuItemCard({
             </span>
           )}
           {item.isSpicy && <Flame className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
+          {outOfStock ? (
+            <span className="text-[10px] font-bold uppercase tracking-wide text-red-300 border border-red-500/40 px-1.5 py-0.5 rounded">
+              Out of stock
+            </span>
+          ) : null}
         </div>
         {item.description && (
           <p className="text-sm text-muted mb-2 line-clamp-2">{item.description}</p>
@@ -187,7 +205,9 @@ function MenuItemCard({
         className="flex flex-col items-end justify-center flex-shrink-0"
         onClick={tapToSelect ? (e) => e.stopPropagation() : undefined}
       >
-        {inCart ? (
+        {outOfStock ? (
+          <span className="text-xs font-semibold text-red-300 px-2">OUT OF STOCK</span>
+        ) : inCart ? (
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -547,7 +567,7 @@ export function MenuView({
                         inCart: inCartQty > 0 ? { quantity: inCartQty } : undefined,
                         hasModifiers,
                         onAdd: () => {
-                          if (!canOrder) return;
+                          if (!canOrder || isOutOfStock(item) || item.isAvailable === false) return;
                           addItem({
                             menuItemId: item.id,
                             name: item.name,
@@ -557,7 +577,7 @@ export function MenuView({
                           });
                         },
                         onAddWithModifiers: () => {
-                          if (!canOrder) return;
+                          if (!canOrder || isOutOfStock(item) || item.isAvailable === false) return;
                           setPickerItem(item);
                         },
                       };

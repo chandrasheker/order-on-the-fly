@@ -10,6 +10,7 @@ import { auditMenuItemSnapshot } from "@/platform/forensics/snapshots";
 import { setForensicResource } from "@/platform/forensics/request-context";
 import { deleteManagedMenuMediaBestEffort } from "@/lib/menu-media/service";
 import { omitMenuItemStorageKey } from "@/lib/menu-media/keys";
+import { adjustMenuItemStock } from "@/lib/inventory-service";
 
 async function handleGET() {
   const session = await requireSession();
@@ -43,7 +44,7 @@ async function handlePOST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { name, price, categoryId, prepTimeMinutes, isVeg } = await req.json();
+  const { name, price, categoryId, prepTimeMinutes, isVeg, stockQuantity } = await req.json();
 
   if (!name?.trim() || !categoryId || price === undefined || price === null) {
     return NextResponse.json(
@@ -77,6 +78,12 @@ async function handlePOST(req: NextRequest) {
     _max: { sortOrder: true },
   });
 
+  const qtyRaw =
+    stockQuantity === undefined || stockQuantity === null || stockQuantity === ""
+      ? null
+      : Math.max(0, Math.floor(Number(stockQuantity)));
+  const trackStock = qtyRaw !== null && !Number.isNaN(qtyRaw);
+
   const item = await prisma.$transaction(async (tx) => {
     const created = await tx.menuItem.create({
       data: {
@@ -85,8 +92,11 @@ async function handlePOST(req: NextRequest) {
         categoryId: category.id,
         prepTimeMinutes: prepTimeMinutes ?? 10,
         sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
-        isAvailable: true,
+        isAvailable: trackStock ? qtyRaw > 0 : true,
         isVeg: typeof isVeg === "boolean" ? isVeg : true,
+        ...(trackStock
+          ? { trackInventory: true, stockQuantity: qtyRaw }
+          : {}),
       },
     });
     setForensicResource({ type: "MenuItem", id: created.id, label: created.name });
@@ -115,8 +125,18 @@ async function handlePATCH(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { itemId, isAvailable, isVeg, prepTimeMinutes, price, name, swiggyItemId, zomatoItemId } =
-    await req.json();
+  const {
+    itemId,
+    isAvailable,
+    isVeg,
+    prepTimeMinutes,
+    price,
+    name,
+    swiggyItemId,
+    zomatoItemId,
+    stockQuantity,
+    trackInventory,
+  } = await req.json();
 
   if (!itemId) {
     return NextResponse.json({ error: "Item ID required" }, { status: 400 });
@@ -138,6 +158,19 @@ async function handlePATCH(req: NextRequest) {
         id: { not: itemId },
       },
       data: { isAvailable: false },
+    });
+  }
+
+  if (stockQuantity !== undefined || trackInventory !== undefined) {
+    const stockProvided =
+      stockQuantity !== undefined && stockQuantity !== null && stockQuantity !== "";
+    await adjustMenuItemStock({
+      restaurantId: session.restaurantId,
+      itemId,
+      ...(stockProvided ? { stockQuantity: Number(stockQuantity) } : {}),
+      trackInventory: trackInventory !== undefined ? Boolean(trackInventory) : undefined,
+      actorUserId: session.id,
+      actorName: session.name,
     });
   }
 

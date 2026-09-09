@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { sellableOrOutOfStockWhere } from "@/lib/menu-stock";
 
 export async function getRestaurantDisplayMenu(slug: string) {
   const restaurant = await prisma.restaurant.findUnique({
@@ -23,7 +24,7 @@ export async function getRestaurantDisplayMenu(slug: string) {
     orderBy: { sortOrder: "asc" },
     include: {
       items: {
-        where: { isAvailable: true },
+        where: sellableOrOutOfStockWhere,
         orderBy: { sortOrder: "asc" },
         select: {
           id: true,
@@ -34,6 +35,9 @@ export async function getRestaurantDisplayMenu(slug: string) {
           isSpicy: true,
           prepTimeMinutes: true,
           imageUrl: true,
+          trackInventory: true,
+          stockQuantity: true,
+          isAvailable: true,
         },
       },
     },

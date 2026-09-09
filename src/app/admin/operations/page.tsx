@@ -167,11 +167,19 @@ function InventoryPanel({ onMessage }: { onMessage: (m: string) => void }) {
     void load();
   }, [load]);
 
-  const save = async (itemId: string, trackInventory: boolean, stockQuantity: number) => {
+  const save = async (
+    itemId: string,
+    trackInventory: boolean,
+    stockQuantity?: number | null,
+  ) => {
     const res = await fetch("/api/inventory", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemId, trackInventory, stockQuantity }),
+      body: JSON.stringify({
+        itemId,
+        trackInventory,
+        ...(stockQuantity !== undefined && stockQuantity !== null ? { stockQuantity } : {}),
+      }),
     });
     if (res.ok) {
       onMessage("Stock updated");
@@ -184,9 +192,14 @@ function InventoryPanel({ onMessage }: { onMessage: (m: string) => void }) {
   return (
     <Card className="p-4 space-y-3">
       <p className="text-sm text-zinc-400">
-        Track stock per item. When stock hits 0, item is auto-86&apos;d on menu and aggregators.
+        Tick Track, then enter how many portions you have. 0 marks the item out of stock on the
+        menu, digital board, and aggregators. Untick Track to stop counting and put it back on the menu.
       </p>
-      {items.map((item) => (
+      {items.map((item) => {
+        const outOfStock = Boolean(
+          item.trackInventory && item.stockQuantity != null && item.stockQuantity <= 0,
+        );
+        return (
         <div key={item.id} className="flex flex-wrap items-center gap-3 py-2 border-b border-white/5">
           <div className="flex-1 min-w-[140px]">
             <p className="font-medium">{item.name}</p>
@@ -196,30 +209,42 @@ function InventoryPanel({ onMessage }: { onMessage: (m: string) => void }) {
             <input
               type="checkbox"
               checked={item.trackInventory}
-              onChange={(e) => void save(item.id, e.target.checked, item.stockQuantity ?? 0)}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  void save(item.id, true);
+                } else {
+                  void save(item.id, false);
+                }
+              }}
             />
             Track
           </label>
           <Input
             type="number"
             className="w-24"
-            value={item.stockQuantity ?? 0}
+            min={0}
+            placeholder="Qty"
+            value={item.trackInventory ? (item.stockQuantity ?? "") : ""}
             disabled={!item.trackInventory}
             onChange={(e) => {
-              const v = parseInt(e.target.value, 10);
+              const raw = e.target.value;
+              const v = raw === "" ? null : parseInt(raw, 10);
               setItems((prev) =>
-                prev.map((i) => (i.id === item.id ? { ...i, stockQuantity: v } : i))
+                prev.map((i) => (i.id === item.id ? { ...i, stockQuantity: Number.isNaN(v as number) ? null : v } : i))
               );
             }}
-            onBlur={() =>
-              item.trackInventory && void save(item.id, true, item.stockQuantity ?? 0)
-            }
+            onBlur={() => {
+              if (!item.trackInventory) return;
+              if (item.stockQuantity == null) return;
+              void save(item.id, true, item.stockQuantity);
+            }}
           />
-          <Badge className={item.isAvailable ? "text-emerald-300" : "text-red-300"}>
-            {item.isAvailable ? "Available" : "86'd"}
+          <Badge className={outOfStock || !item.isAvailable ? "text-red-300" : "text-emerald-300"}>
+            {outOfStock ? "Out of stock" : item.isAvailable ? "Available" : "Unavailable"}
           </Badge>
         </div>
-      ))}
+        );
+      })}
     </Card>
   );
 }

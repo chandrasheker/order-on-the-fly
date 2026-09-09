@@ -389,8 +389,27 @@ export function OrderPageClient({ slug, token }: Props) {
                 className="h-12 w-12 rounded-xl object-contain bg-white/90 p-1 shrink-0"
               />
             ) : null}
-            <div className="min-w-0 text-left">
-              <h1 className="text-2xl font-bold drop-shadow-lg truncate">{data.restaurant.name}</h1>
+            <div className="min-w-0 text-left flex-1">
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="text-2xl font-bold drop-shadow-lg truncate">{data.restaurant.name}</h1>
+                {data.restaurant.serviceMode === "HYBRID" && !showThankYou ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFulfillmentChoice(
+                        (fulfillmentChoice || data.restaurant.hybridDefaultFulfillment) === "SELF_PICKUP"
+                          ? "TABLE_SERVICE"
+                          : "SELF_PICKUP",
+                      )
+                    }
+                    className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold border-2 border-orange-500 bg-orange-500 text-white shadow-sm"
+                  >
+                    {(fulfillmentChoice || data.restaurant.hybridDefaultFulfillment) === "SELF_PICKUP"
+                      ? "I'll collect"
+                      : "Serve at table"}
+                  </button>
+                ) : null}
+              </div>
               <p className="text-sm text-muted mt-0.5 flex items-center gap-1 drop-shadow">
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
                 Scan · Order · Enjoy
@@ -484,14 +503,6 @@ export function OrderPageClient({ slug, token }: Props) {
             sessionKey={tableSession.sessionKey}
             enabled={Boolean(data.features.callWaiter)}
             serviceMode={data.restaurant.serviceMode}
-          />
-        )}
-
-        {data.restaurant.serviceMode === "HYBRID" && canOrder && !showThankYou && (
-          <HybridFulfillmentPicker
-            selected={fulfillmentChoice || data.restaurant.hybridDefaultFulfillment || "TABLE_SERVICE"}
-            pickupLabel={data.restaurant.pickupLocationLabel || "the pickup counter"}
-            onSelect={setFulfillmentChoice}
           />
         )}
 
@@ -616,49 +627,3 @@ export function OrderPageClient({ slug, token }: Props) {
   );
 }
 
-function HybridFulfillmentPicker({
-  selected,
-  pickupLabel,
-  onSelect,
-}: {
-  selected: OrderFulfillmentMode;
-  pickupLabel: string;
-  onSelect: (mode: OrderFulfillmentMode) => void;
-}) {
-  return (
-    <div className="p-4 rounded-2xl border-2 border-orange-400/60 bg-orange-500/15 space-y-3">
-      <p className="font-semibold text-center text-lg text-foreground">How should we serve you?</p>
-      <p className="text-sm text-center text-muted">Tap one option. You can change it before you place the order.</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => onSelect("TABLE_SERVICE")}
-          className={`rounded-2xl px-4 py-4 text-left border-2 transition-colors min-h-[6.5rem] ${
-            selected === "TABLE_SERVICE"
-              ? "border-orange-400 bg-orange-500 text-white shadow-lg shadow-orange-500/25"
-              : "border-white/20 bg-black/30 text-foreground hover:border-orange-400/50"
-          }`}
-        >
-          <span className="block text-base font-bold">Serve at my table</span>
-          <span className={`block text-sm mt-1 ${selected === "TABLE_SERVICE" ? "text-white/90" : "text-muted"}`}>
-            Staff will bring your order when it is ready.
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onSelect("SELF_PICKUP")}
-          className={`rounded-2xl px-4 py-4 text-left border-2 transition-colors min-h-[6.5rem] ${
-            selected === "SELF_PICKUP"
-              ? "border-orange-400 bg-orange-500 text-white shadow-lg shadow-orange-500/25"
-              : "border-white/20 bg-black/30 text-foreground hover:border-orange-400/50"
-          }`}
-        >
-          <span className="block text-base font-bold">I&apos;ll collect</span>
-          <span className={`block text-sm mt-1 ${selected === "SELF_PICKUP" ? "text-white/90" : "text-muted"}`}>
-            Pick up from {pickupLabel}. Pay before collection.
-          </span>
-        </button>
-      </div>
-    </div>
-  );
-}

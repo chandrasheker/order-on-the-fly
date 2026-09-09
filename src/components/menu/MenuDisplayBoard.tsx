@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/utils";
+import { isOutOfStock } from "@/lib/menu-stock";
 import { Printer, RefreshCw } from "lucide-react";
 import { DietBadge } from "@/components/menu/DietToggle";
 
@@ -13,6 +14,9 @@ type DisplayItem = {
   isVeg: boolean;
   isSpicy: boolean;
   imageUrl?: string | null;
+  trackInventory?: boolean;
+  stockQuantity?: number | null;
+  isAvailable?: boolean;
 };
 
 type DisplayCategory = {
@@ -191,6 +195,11 @@ export function MenuDisplayBoard({
                               Spicy
                             </span>
                           )}
+                          {isOutOfStock(item) || item.isAvailable === false ? (
+                            <span className="text-xs font-bold uppercase tracking-wide text-red-800 dark:text-red-300 border border-red-500/40 px-1.5 py-0.5 rounded">
+                              Out of stock
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                       <p

@@ -12,6 +12,7 @@ import { assertPathSlugForResolution, opaqueNotFoundJson } from "@/platform/tena
 import { isRazorpayAutomaticReady } from "@/lib/automatic-gateway";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 import { omitMenuItemStorageKey } from "@/lib/menu-media/keys";
+import { sellableOrOutOfStockWhere } from "@/lib/menu-stock";
 
 async function handleGET(
   req: NextRequest,
@@ -93,7 +94,7 @@ async function handleGET(
       where: { restaurantId: restaurant.id, isEnabled: true },
       include: {
         items: {
-          where: { isAvailable: true },
+          where: sellableOrOutOfStockWhere,
           orderBy: { sortOrder: "asc" },
         },
       },

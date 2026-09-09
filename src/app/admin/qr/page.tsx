@@ -139,77 +139,69 @@ export default function QRPage() {
         </Button>
       </div>
 
-        <Card className="p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Users className="w-5 h-5 text-orange-400" />
-            <h2 className="text-lg font-bold">Tables</h2>
-          </div>
-          <p className="text-sm text-zinc-400 mb-4">
-            Limit how many phones can order at each table at the same time. Default is 2 — increase
-            for large tables (e.g. Table 8 with 10 seats → set 4–6 sessions).
-          </p>
-          <div className="flex flex-wrap items-end gap-3 mb-6 pb-6 border-b border-white/10">
-            <div>
-              <label className="text-xs text-zinc-500 block mb-1">Default for new tables</label>
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-orange-400" />
+              <h2 className="text-base font-semibold">Tables</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted">Default phones</label>
               <Input
                 type="number"
                 min={1}
                 max={20}
                 value={defaultMaxSessions}
                 onChange={(e) => setDefaultMaxSessions(parseInt(e.target.value, 10) || 2)}
-                className="w-24"
+                className="w-16 h-8 text-center text-sm"
               />
+              <Button size="sm" onClick={saveDefault} disabled={savingDefault}>
+                {savingDefault ? "…" : "Save"}
+              </Button>
             </div>
-            <Button size="sm" onClick={saveDefault} disabled={savingDefault}>
-              {savingDefault ? "Saving..." : "Save default"}
-            </Button>
           </div>
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="divide-y divide-white/10 rounded-xl border border-white/10 overflow-hidden">
             {tables.map((t) => (
               <div
                 key={t.id}
-                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/5 border border-white/10"
+                className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] text-sm"
               >
-                <div>
-                  <p className="font-medium">Table {t.number}</p>
-                  <p className="text-xs text-zinc-500">
-                    {t.activeSessions} active now · max {t.maxSessions}
-                    {t.orderingEnabled ? " · ordering open" : " · ordering closed"}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <Button
-                    size="sm"
-                    variant={t.orderingEnabled ? "secondary" : "primary"}
-                    onClick={() => saveTableOrdering(t.id, !t.orderingEnabled)}
-                  >
-                    {t.orderingEnabled ? "Close ordering" : "Open ordering"}
-                  </Button>
-                  <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={t.maxSessions}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10) || 2;
-                      setTables((prev) =>
-                        prev.map((row) =>
-                          row.id === t.id ? { ...row, maxSessions: val } : row
-                        )
-                      );
-                    }}
-                    className="w-16 text-center"
-                  />
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => saveTableSessions(t.id, t.maxSessions)}
-                  >
-                    Save
-                  </Button>
-                  </div>
-                </div>
+                <span className="font-medium w-14 shrink-0">T{t.number}</span>
+                <span className="text-xs text-muted w-16 shrink-0">{t.activeSessions} sat</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={t.maxSessions}
+                  title="Max phones"
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10) || 2;
+                    setTables((prev) =>
+                      prev.map((row) =>
+                        row.id === t.id ? { ...row, maxSessions: val } : row
+                      )
+                    );
+                  }}
+                  className="w-14 h-8 text-center text-sm"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => saveTableSessions(t.id, t.maxSessions)}
+                >
+                  Save
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => saveTableOrdering(t.id, !t.orderingEnabled)}
+                  className={`ml-auto text-xs font-semibold px-2 py-1 rounded-md border ${
+                    t.orderingEnabled
+                      ? "border-emerald-500/30 text-emerald-300 bg-emerald-500/10"
+                      : "border-zinc-500/30 text-muted bg-white/5"
+                  }`}
+                >
+                  {t.orderingEnabled ? "Open" : "Closed"}
+                </button>
               </div>
             ))}
           </div>
