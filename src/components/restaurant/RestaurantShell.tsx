@@ -416,7 +416,9 @@ export function RestaurantShell({
                 />
               ) : null}
               <div className="min-w-0">
-                <p className="lg:hidden text-sm font-semibold truncate">{user?.restaurantName || "TableTap"}</p>
+                {user?.restaurantName && user.restaurantName !== title ? (
+                  <p className="lg:hidden text-sm font-semibold truncate">{user.restaurantName}</p>
+                ) : null}
                 <h1 className="text-xl font-semibold truncate">{title}</h1>
                 {subtitle ? <p className="text-sm text-muted mt-0.5 line-clamp-2">{subtitle}</p> : null}
               </div>
