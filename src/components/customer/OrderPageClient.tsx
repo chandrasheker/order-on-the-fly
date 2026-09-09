@@ -547,6 +547,22 @@ export function OrderPageClient({ slug, token }: Props) {
           </p>
         )}
 
+        {hasVisibleOrders && !showThankYou && (
+          <OrderTracker
+            orders={orders}
+            tableToken={token}
+            paymentQrUrl={data.restaurant.paymentQrUrl}
+            upiVpa={data.restaurant.upiVpa}
+            upiMerchantName={data.restaurant.upiMerchantName}
+            automaticUpiEnabled={data.restaurant.automaticUpiEnabled}
+            tabRemaining={tabRemaining}
+            onRefresh={fetchOrders}
+            onPaymentRequested={() => setTabPaymentPending(true)}
+            serviceMode={data.restaurant.serviceMode}
+            pickupLocationLabel={data.restaurant.pickupLocationLabel}
+          />
+        )}
+
         <div id="customer-menu">
           <MenuView
             categories={data.categories}
@@ -575,22 +591,6 @@ export function OrderPageClient({ slug, token }: Props) {
           <p className="text-sm text-center text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
             Payment must be completed before collection from {data.restaurant.pickupLocationLabel || "the pickup counter"}.
           </p>
-        )}
-
-        {hasVisibleOrders && !showThankYou && (
-          <OrderTracker
-            orders={orders}
-            tableToken={token}
-            paymentQrUrl={data.restaurant.paymentQrUrl}
-            upiVpa={data.restaurant.upiVpa}
-            upiMerchantName={data.restaurant.upiMerchantName}
-            automaticUpiEnabled={data.restaurant.automaticUpiEnabled}
-            tabRemaining={tabRemaining}
-            onRefresh={fetchOrders}
-            onPaymentRequested={() => setTabPaymentPending(true)}
-            serviceMode={data.restaurant.serviceMode}
-            pickupLocationLabel={data.restaurant.pickupLocationLabel}
-          />
         )}
 
         {hasVisibleOrders && !showThankYou && (

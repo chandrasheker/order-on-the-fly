@@ -28,8 +28,8 @@ import {
   canAccessReports,
   canPlaceOfflineOrder,
 } from "@/lib/staff-permissions";
-import { TakeOrderOverlay } from "@/components/staff/TakeOrderOverlay";
 import { forgetTakeOrderSession } from "@/store/staff-cart";
+import { takeOrderPath } from "@/lib/take-order-return";
 import type { Role } from "@/generated/prisma/client";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
 import { LOGO_CHANGED_EVENT } from "@/lib/admin-api-error";
@@ -148,7 +148,6 @@ export function RestaurantShell({
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [takeOrderOpen, setTakeOrderOpen] = useState(false);
   const [fetchedUser, setFetchedUser] = useState<RestaurantShellUser | null>(null);
   const [fetchedFeatures, setFetchedFeatures] = useState<FeatureFlags>({});
   const [sessionResolved, setSessionResolved] = useState(false);
@@ -230,19 +229,18 @@ export function RestaurantShell({
   const navItems = useMemo(() => buildNav(user?.role, features), [features, user?.role]);
   const canTakeOrder = Boolean(user?.role && canPlaceOfflineOrder(user.role));
 
+  const onTakeOrderPage = (pathname ?? "") === "/staff/take-order";
+
   const openTakeOrder = () => {
     setMenuOpen(false);
-    setTakeOrderOpen(true);
-  };
-
-  const closeTakeOrder = () => {
-    forgetTakeOrderSession();
-    setTakeOrderOpen(false);
+    router.push(takeOrderPath(pathname));
   };
 
   useEffect(() => {
-    setTakeOrderOpen(false);
     return () => {
+      if (typeof window !== "undefined" && window.location.pathname === "/staff/take-order") {
+        return;
+      }
       forgetTakeOrderSession();
     };
   }, [pathname]);
@@ -324,7 +322,7 @@ export function RestaurantShell({
     <div className="min-h-screen bg-app-shell text-foreground lg:flex">
       <aside className="hidden lg:flex lg:w-60 xl:w-64 shrink-0 flex-col border-r border-white/5 bg-black/20">
         {brand}
-        {canTakeOrder ? (
+        {canTakeOrder && !onTakeOrderPage ? (
           <div className="px-3 pt-3">
             <button
               type="button"
@@ -372,7 +370,7 @@ export function RestaurantShell({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            {canTakeOrder ? (
+            {canTakeOrder && !onTakeOrderPage ? (
               <div className="px-3 pt-3">
                 <button
                   type="button"
@@ -416,7 +414,7 @@ export function RestaurantShell({
               </div>
             </div>
             <div className="header-trailing-actions flex flex-wrap items-center justify-end gap-2 shrink-0">
-              {canTakeOrder ? (
+              {canTakeOrder && !onTakeOrderPage ? (
                 <button
                   type="button"
                   onClick={openTakeOrder}
@@ -436,7 +434,7 @@ export function RestaurantShell({
         </main>
       </div>
 
-      {canTakeOrder && !takeOrderOpen ? (
+      {canTakeOrder && !onTakeOrderPage ? (
         <button
           type="button"
           onClick={openTakeOrder}
@@ -446,8 +444,6 @@ export function RestaurantShell({
           Take Order
         </button>
       ) : null}
-
-      {takeOrderOpen ? <TakeOrderOverlay onClose={closeTakeOrder} /> : null}
     </div>
   );
 }
