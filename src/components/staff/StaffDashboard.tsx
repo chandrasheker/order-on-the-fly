@@ -40,9 +40,10 @@ import { TableOrdersTodayPanel } from "@/components/staff/TableOrdersTodayPanel"
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { ThermalPrinterButton } from "@/components/staff/ThermalPrinterButton";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
-import { canManageTableOrdering, canPlaceOfflineOrder } from "@/lib/staff-permissions";
+import { canAccessAdminMenu, canManageTableOrdering, canPlaceOfflineOrder } from "@/lib/staff-permissions";
 import { GuestRequestsPanel } from "@/components/staff/GuestRequestsPanel";
 import { KitchenCapacityPanel } from "@/components/staff/KitchenCapacityPanel";
+import { ServiceModeToggle } from "@/components/staff/ServiceModeToggle";
 import { useStaffPush } from "@/hooks/useStaffPush";
 import type { ReceiptPayload } from "@/lib/receipt-service";
 import { isClientOffline, isNetworkFetchError, swallowPollingFetchError } from "@/lib/client-fetch";
@@ -615,6 +616,7 @@ export function StaffDashboard() {
         )}
         <div className="flex flex-col lg:flex-row lg:items-start gap-4 mb-6">
           <div className="min-w-0 flex-1 space-y-6">
+        {user && canAccessAdminMenu(user.role) && <ServiceModeToggle />}
         <GuestRequestsPanel enabled={Boolean(features.call_waiter)} />
 
         {tableSwitchRequests.length > 0 && (
