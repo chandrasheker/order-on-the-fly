@@ -41,6 +41,7 @@ type MenuCategory = {
 
 interface RemoteOrdersPanelProps {
   onOrderPlaced?: (result?: { kitchenChit?: KitchenChitPayload | null }) => void;
+  initialMode?: OrderMode;
 }
 
 const MODE_META: Record<
@@ -69,8 +70,8 @@ const MODE_META: Record<
   },
 };
 
-export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
-  const [mode, setMode] = useState<OrderMode>("walkin");
+export function RemoteOrdersPanel({ onOrderPlaced, initialMode = "walkin" }: RemoteOrdersPanelProps) {
+  const [mode, setMode] = useState<OrderMode>(initialMode);
   const [tables, setTables] = useState<TableRow[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
@@ -178,6 +179,14 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
     setError("");
     setSuccess("");
   };
+
+  useEffect(() => {
+    if (initialMode !== mode) {
+      resetMode(initialMode);
+    }
+    // Sync only when the dashboard button changes the starting mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- parent intent, not every mode flip
+  }, [initialMode]);
 
   const handleClearCart = () => {
     clearCart();

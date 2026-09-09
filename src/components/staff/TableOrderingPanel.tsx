@@ -15,7 +15,7 @@ type TableRow = {
   activeSessions: number;
 };
 
-export function TableOrderingPanel() {
+export function TableOrderingPanel({ compact = false }: { compact?: boolean }) {
   const [tables, setTables] = useState<TableRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -63,19 +63,25 @@ export function TableOrderingPanel() {
 
   if (loading) {
     return (
-      <div className="h-full p-4 rounded-2xl border border-white/10 bg-white/5 flex justify-center items-center min-h-[7rem]">
+      <div className={cn(
+        "rounded-2xl border border-white/10 bg-white/5 flex justify-center items-center",
+        compact ? "p-3 min-h-[4rem]" : "h-full p-4 min-h-[7rem]",
+      )}>
         <Spinner className="w-5 h-5" />
       </div>
     );
   }
 
   return (
-    <div className="h-full p-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5">
-      <div className="flex items-start justify-between gap-3 mb-3">
+    <div className={cn(
+      "rounded-2xl border border-emerald-500/20 bg-emerald-500/5",
+      compact ? "p-3" : "h-full p-4",
+    )}>
+      <div className={cn("flex items-start justify-between gap-3", compact ? "mb-2" : "mb-3")}>
         <div className="min-w-0">
-          <p className="font-semibold text-emerald-300">Table ordering</p>
-          <p className="text-xs text-zinc-400 mt-1">
-            {openCount} of {tables.length} table{tables.length === 1 ? "" : "s"} open for QR ordering
+          <p className={cn("font-semibold text-emerald-800 dark:text-emerald-300", compact && "text-sm")}>Table ordering</p>
+          <p className="text-xs text-muted mt-1">
+            {openCount} of {tables.length} table{tables.length === 1 ? "" : "s"} open
           </p>
         </div>
         <button
@@ -90,11 +96,13 @@ export function TableOrderingPanel() {
       </div>
       {expanded && (
         <>
-          <p className="text-xs text-zinc-500 mb-3">
+          {!compact && (
+          <p className="text-xs text-muted mb-3">
             Open a table when guests are seated so they can scan the QR and order. Close it when
             they leave to block remote misuse of saved links.
           </p>
-          <div className="flex flex-wrap gap-2">
+          )}
+          <div className={cn(compact ? "grid grid-cols-2 gap-2" : "flex flex-wrap gap-2")}>
             {tables.map((table) => (
               <button
                 key={table.id}

@@ -19,8 +19,10 @@ import {
   CircleDollarSign,
   IndianRupee,
   ArrowRightLeft,
-  Phone,
   ClipboardList,
+  ShoppingBag,
+  Truck,
+  Plug,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
@@ -160,6 +162,7 @@ interface TableSwitchRequest {
 }
 
 type ViewMode = StaffTab;
+type OfflineIntent = "walkin" | "takeaway" | "delivery" | "aggregators";
 type ItemFilter = "all" | "overdue" | "alarm";
 
 type RestaurantFeatures = {
@@ -207,6 +210,7 @@ export function StaffDashboard() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [viewMode, setViewMode] = useState<ViewMode>("active");
+  const [offlineIntent, setOfflineIntent] = useState<OfflineIntent>("walkin");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
   const [features, setFeatures] = useState<RestaurantFeatures>({});
   const [restaurantLogoUrl, setRestaurantLogoUrl] = useState<string | null>(null);
@@ -513,22 +517,6 @@ export function StaffDashboard() {
             <button onClick={fetchData} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
               <RefreshCw className="w-4 h-4" />
             </button>
-            {user && canPlaceOfflineOrder(user.role) && features.phone_orders && (
-              <button
-                type="button"
-                onClick={() => setViewMode("offline")}
-                className={cn(
-                  "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors",
-                  viewMode === "offline"
-                    ? "bg-violet-500/20 border-violet-500/40 text-violet-200"
-                    : "bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20",
-                )}
-                title="Takeaway, delivery, phone & aggregator orders"
-              >
-                <Phone className="w-4 h-4" />
-                <span className="hidden sm:inline">Remote orders</span>
-              </button>
-            )}
             {user && canPerformOrderAction(user.role, "mark-paid") && features.thermal_receipts && (
               <ThermalPrinterButton
                 status={status}
@@ -625,12 +613,8 @@ export function StaffDashboard() {
             {printMessage}
           </div>
         )}
-        {(user && canManageTableOrdering(user.role)) || features.kitchen_capacity ? (
-          <div className="grid lg:grid-cols-2 gap-4 mb-6 items-start">
-            {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
-            <KitchenCapacityPanel enabled={Boolean(features.kitchen_capacity)} />
-          </div>
-        ) : null}
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4 mb-6">
+          <div className="min-w-0 flex-1 space-y-6">
         <GuestRequestsPanel enabled={Boolean(features.call_waiter)} />
 
         {tableSwitchRequests.length > 0 && (
@@ -823,26 +807,95 @@ export function StaffDashboard() {
               </button>
             )}
 
-            {showTab("offline") && (
-              <button
-                type="button"
-                onClick={() => setViewMode("offline")}
-                className={cn(
-                  "text-left rounded-2xl border p-4 transition-all col-span-2 md:col-span-1",
-                  viewMode === "offline"
-                    ? "border-violet-500/50 bg-violet-500/10"
-                    : "border-violet-500/20 bg-violet-500/5 hover:border-violet-500/40"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <Phone className="w-5 h-5 text-violet-400" />
-                  <div>
-                    <p className="text-xs text-zinc-500">Offline Order</p>
-                    <p className="text-sm font-semibold text-violet-200">Phone / walk-in</p>
-                  </div>
+          </div>
+        )}
+
+        {showTab("offline") && user && canPlaceOfflineOrder(user.role) && (
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setOfflineIntent("walkin");
+                setViewMode("offline");
+              }}
+              className={cn(
+                "text-left rounded-2xl border p-3 transition-all",
+                viewMode === "offline" && offlineIntent === "walkin"
+                  ? "border-violet-500/50 bg-violet-500/10"
+                  : "border-white/10 bg-white/5 hover:border-white/20",
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Utensils className="w-4 h-4 text-violet-800 dark:text-violet-300 shrink-0" />
+                <div>
+                  <p className="text-xs text-muted">Walk-in / table</p>
+                  <p className="text-sm font-semibold text-foreground">Dine-in order</p>
                 </div>
-              </button>
-            )}
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOfflineIntent("takeaway");
+                setViewMode("offline");
+              }}
+              className={cn(
+                "text-left rounded-2xl border p-3 transition-all",
+                viewMode === "offline" && offlineIntent === "takeaway"
+                  ? "border-orange-500/50 bg-orange-500/10"
+                  : "border-white/10 bg-white/5 hover:border-white/20",
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-orange-800 dark:text-orange-300 shrink-0" />
+                <div>
+                  <p className="text-xs text-muted">Takeaway</p>
+                  <p className="text-sm font-semibold text-foreground">Pack & collect</p>
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOfflineIntent("delivery");
+                setViewMode("offline");
+              }}
+              className={cn(
+                "text-left rounded-2xl border p-3 transition-all",
+                viewMode === "offline" && offlineIntent === "delivery"
+                  ? "border-sky-500/50 bg-sky-500/10"
+                  : "border-white/10 bg-white/5 hover:border-white/20",
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Truck className="w-4 h-4 text-sky-800 dark:text-sky-300 shrink-0" />
+                <div>
+                  <p className="text-xs text-muted">Delivery</p>
+                  <p className="text-sm font-semibold text-foreground">Send out</p>
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOfflineIntent("aggregators");
+                setViewMode("offline");
+              }}
+              className={cn(
+                "text-left rounded-2xl border p-3 transition-all",
+                viewMode === "offline" && offlineIntent === "aggregators"
+                  ? "border-orange-500/50 bg-orange-500/10"
+                  : "border-white/10 bg-white/5 hover:border-white/20",
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Plug className="w-4 h-4 text-orange-800 dark:text-orange-300 shrink-0" />
+                <div>
+                  <p className="text-xs text-muted">Swiggy / Zomato</p>
+                  <p className="text-sm font-semibold text-foreground">Aggregator</p>
+                </div>
+              </div>
+            </button>
           </div>
         )}
 
@@ -877,10 +930,13 @@ export function StaffDashboard() {
                 <p className="text-zinc-400 mb-2">No active orders right now.</p>
                 {showTab("offline") && (
                   <button
-                    onClick={() => setViewMode("offline")}
-                    className="text-sm text-violet-400 hover:text-violet-300 mr-4"
+                    onClick={() => {
+                      setOfflineIntent("walkin");
+                      setViewMode("offline");
+                    }}
+                    className="text-sm text-violet-800 dark:text-violet-400 hover:text-violet-900 dark:hover:text-violet-300 mr-4"
                   >
-                    Take an offline order →
+                    Take a walk-in order →
                   </button>
                 )}
                 {showTab("pending") && (
@@ -1094,8 +1150,30 @@ export function StaffDashboard() {
 
         {viewMode === "offline" && (
           <div className="space-y-5">
-            {features.aggregator_inbox && <AggregatorInboxBanner />}
-            <RemoteOrdersPanel onOrderPlaced={handleRemoteOrderPlaced} />
+            {offlineIntent === "aggregators" ? (
+              features.aggregator_inbox ? (
+                <AggregatorInboxBanner />
+              ) : (
+                <div className="rounded-2xl border border-orange-500/25 bg-orange-500/5 p-4">
+                  <p className="font-medium text-orange-800 dark:text-orange-100">Swiggy & Zomato</p>
+                  <p className="text-sm text-muted mt-1">
+                    Connect outlets from Admin → Integrations. Incoming orders then appear on the kitchen board automatically.
+                  </p>
+                  <Link
+                    href="/admin/integrations"
+                    className="inline-flex items-center gap-2 mt-3 text-sm text-orange-800 dark:text-orange-300"
+                  >
+                    <Plug className="w-4 h-4" /> Open integrations
+                  </Link>
+                </div>
+              )
+            ) : (
+              <RemoteOrdersPanel
+                key={offlineIntent}
+                initialMode={offlineIntent}
+                onOrderPlaced={handleRemoteOrderPlaced}
+              />
+            )}
           </div>
         )}
 
@@ -1190,7 +1268,15 @@ export function StaffDashboard() {
             )}
           </>
         )}
+          </div>
 
+          {(user && canManageTableOrdering(user.role)) || features.kitchen_capacity ? (
+            <aside className="lg:w-72 xl:w-80 shrink-0 space-y-3 lg:sticky lg:top-4">
+              <KitchenCapacityPanel compact enabled={Boolean(features.kitchen_capacity)} />
+              {user && canManageTableOrdering(user.role) && <TableOrderingPanel compact />}
+            </aside>
+          ) : null}
+        </div>
       </div>
     </RestaurantShell>
   );
