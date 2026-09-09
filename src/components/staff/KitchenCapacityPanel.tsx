@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Pause, Play, ChefHat, ChevronDown, ChevronUp } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -23,15 +23,16 @@ export function KitchenCapacityPanel({
   const [state, setState] = useState<KitchenState | null>(null);
   const [message, setMessage] = useState("");
   const [threshold, setThreshold] = useState(0);
-  const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(!compact);
+  const savingRef = useRef(false);
 
   const load = useCallback(async () => {
-    if (!enabled) return;
+    if (!enabled || savingRef.current) return;
     try {
       const res = await fetch("/api/realtime/kitchen");
       if (res.ok) {
         const json = await res.json();
+        if (savingRef.current) return;
         setState(json.state);
         setMessage(json.state.message ?? "");
         setThreshold(json.state.autoPauseThreshold ?? 0);
@@ -49,7 +50,10 @@ export function KitchenCapacityPanel({
   }, [enabled, load]);
 
   const save = async (paused: boolean) => {
-    setSaving(true);
+    if (!state || savingRef.current) return;
+    const previous = state;
+    savingRef.current = true;
+    setState({ ...state, paused });
     try {
       const res = await fetch("/api/realtime/kitchen", {
         method: "PATCH",
@@ -63,11 +67,16 @@ export function KitchenCapacityPanel({
       if (res.ok) {
         const json = await res.json();
         setState(json.state);
+        setMessage(json.state.message ?? message);
+        setThreshold(json.state.autoPauseThreshold ?? threshold);
+      } else {
+        setState(previous);
       }
     } catch (error) {
+      setState(previous);
       swallowPollingFetchError(error);
     } finally {
-      setSaving(false);
+      savingRef.current = false;
     }
   };
 
@@ -109,7 +118,7 @@ export function KitchenCapacityPanel({
       {compact && !expanded && (
         <div className="mt-2">
           {paused ? (
-            <Button size="sm" disabled={saving} onClick={() => void save(false)} className="w-full gap-1.5">
+            <Button size="sm" onClick={() => void save(false)} className="w-full gap-1.5">
               <Play className="w-3.5 h-3.5" />
               Resume
             </Button>
@@ -117,7 +126,6 @@ export function KitchenCapacityPanel({
             <Button
               size="sm"
               variant="secondary"
-              disabled={saving}
               onClick={() => void save(true)}
               className="w-full gap-1.5 border-amber-500/30 text-amber-800 dark:text-amber-300"
             >
@@ -152,14 +160,13 @@ export function KitchenCapacityPanel({
 
       <div className="flex gap-2">
         {paused ? (
-          <Button disabled={saving} onClick={() => void save(false)} className="gap-1.5">
+          <Button onClick={() => void save(false)} className="gap-1.5">
             <Play className="w-4 h-4" />
             Resume orders
           </Button>
         ) : (
           <Button
             variant="secondary"
-            disabled={saving}
             onClick={() => void save(true)}
             className="gap-1.5 border-amber-500/30 text-amber-300"
           >
