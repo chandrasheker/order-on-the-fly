@@ -31,6 +31,10 @@ export const useStaffCartStore = create<StaffCartStore>((set, get) => ({
   setTable: (tableId) =>
     set((state) => {
       if (state.tableId === tableId) return state;
+      // Keep the ticket when first attaching a table so staff can pick items, then a table.
+      if (!state.tableId || !tableId) {
+        return { ...state, tableId };
+      }
       return { tableId, items: [], customerName: "" };
     }),
   setCustomerName: (name) => set({ customerName: name }),

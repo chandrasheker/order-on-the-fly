@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Phone, UserRound, ShoppingBag, Truck } from "lucide-react";
+import { Phone, UserRound, ShoppingBag, Truck } from "lucide-react";
 import { MenuView } from "@/components/customer/MenuView";
 import { StaffCartPanel } from "@/components/staff/StaffCartPanel";
 import { Input, Spinner } from "@/components/ui";
@@ -42,6 +42,7 @@ type MenuCategory = {
 interface RemoteOrdersPanelProps {
   onOrderPlaced?: (result?: { kitchenChit?: KitchenChitPayload | null }) => void;
   initialMode?: OrderMode;
+  stickyClassName?: string;
 }
 
 const MODE_META: Record<
@@ -70,7 +71,11 @@ const MODE_META: Record<
   },
 };
 
-export function RemoteOrdersPanel({ onOrderPlaced, initialMode = "walkin" }: RemoteOrdersPanelProps) {
+export function RemoteOrdersPanel({
+  onOrderPlaced,
+  initialMode = "walkin",
+  stickyClassName = "top-[4.5rem]",
+}: RemoteOrdersPanelProps) {
   const [mode, setMode] = useState<OrderMode>(initialMode);
   const [tables, setTables] = useState<TableRow[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
@@ -104,8 +109,6 @@ export function RemoteOrdersPanel({ onOrderPlaced, initialMode = "walkin" }: Rem
     () => dineInTables.find((table) => table.id === tableId) ?? null,
     [dineInTables, tableId],
   );
-
-  const readyForMenu = meta.needsTable ? Boolean(tableId) : true;
 
   useEffect(() => {
     void fetch("/api/restaurant/service-mode")
@@ -167,8 +170,8 @@ export function RemoteOrdersPanel({ onOrderPlaced, initialMode = "walkin" }: Rem
   }, [loadTables]);
 
   useEffect(() => {
-    if (readyForMenu) void loadMenu();
-  }, [readyForMenu, loadMenu]);
+    void loadMenu();
+  }, [loadMenu]);
 
   const resetMode = (next: OrderMode) => {
     setMode(next);
@@ -204,7 +207,10 @@ export function RemoteOrdersPanel({ onOrderPlaced, initialMode = "walkin" }: Rem
 
   const placeOrder = async () => {
     if (items.length === 0) return;
-    if (meta.needsTable && !tableId) return;
+    if (meta.needsTable && !tableId) {
+      setError("Pick a table before sending this order to the kitchen.");
+      return;
+    }
 
     setPlacing(true);
     setError("");
@@ -287,42 +293,6 @@ export function RemoteOrdersPanel({ onOrderPlaced, initialMode = "walkin" }: Rem
 
   const modes = Object.keys(MODE_META) as OrderMode[];
 
-  if (meta.needsTable && !tableId) {
-    return (
-      <div className="space-y-5">
-        <ModePicker modes={modes} mode={mode} onChange={resetMode} />
-
-        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
-          <p className="text-sm text-zinc-400">{meta.description}</p>
-        </div>
-
-        <div>
-          <p className="text-sm text-zinc-400 mb-3">Select table</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {dineInTables.map((table) => (
-              <button
-                key={table.id}
-                type="button"
-                onClick={() => setTable(table.id)}
-                className={cn(
-                  "rounded-2xl border p-4 text-left transition-all hover:border-violet-500/40 hover:bg-violet-500/10",
-                  table.orderingEnabled
-                    ? "border-emerald-500/30 bg-emerald-500/5"
-                    : "border-white/10 bg-white/5",
-                )}
-              >
-                <p className="text-lg font-bold text-white">Table {table.number}</p>
-                <p className="text-xs text-zinc-400 mt-1">
-                  {table.orderingEnabled ? "Open" : "Closed · staff can order"}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-5 pb-28">
       {(!online || pendingCount > 0) && (
@@ -337,27 +307,38 @@ export function RemoteOrdersPanel({ onOrderPlaced, initialMode = "walkin" }: Rem
           )}
         </div>
       )}
-      <div className="sticky top-[4.5rem] z-20 -mx-1 px-1 py-3 bg-app-shell/95 backdrop-blur-md border-b border-[color:var(--surface-border)] space-y-3">
+      <div className={cn("sticky z-20 -mx-1 px-1 py-3 bg-app-shell/95 backdrop-blur-md border-b border-[color:var(--surface-border)] space-y-3", stickyClassName)}>
         <ModePicker modes={modes} mode={mode} onChange={resetMode} compact />
 
-        <div className="flex flex-wrap items-center gap-3 justify-between">
-          <div className="flex items-center gap-3">
-            {meta.needsTable && (
-              <button
-                type="button"
-                onClick={() => setTable(null)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Tables
-              </button>
-            )}
-            <div>
-              <p className="font-semibold text-white">{meta.label}</p>
-              {selectedTable && (
-                <p className="text-xs text-zinc-500">Table {selectedTable.number}</p>
-              )}
+        {meta.needsTable && (
+          <div>
+            <p className="text-xs text-muted mb-2">
+              {selectedTable ? `Table ${selectedTable.number}` : "Pick a table, then send to kitchen"}
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {dineInTables.map((table) => (
+                <button
+                  key={table.id}
+                  type="button"
+                  onClick={() => setTable(table.id === tableId ? null : table.id)}
+                  className={cn(
+                    "shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors",
+                    tableId === table.id
+                      ? "bg-orange-500 text-white border-orange-400"
+                      : "bg-white/5 border-white/10 text-foreground hover:bg-white/10",
+                  )}
+                >
+                  T{table.number}
+                </button>
+              ))}
             </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 justify-between">
+          <div className="min-w-0">
+            <p className="font-semibold text-foreground">{meta.label}</p>
+            <p className="text-xs text-muted">{meta.description}</p>
           </div>
 
           <div className="flex flex-wrap gap-2 flex-1 justify-end">

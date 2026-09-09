@@ -18,6 +18,7 @@ import {
   QrCode,
   Radio,
   Utensils,
+  UtensilsCrossed,
   X,
 } from "lucide-react";
 import {
@@ -25,7 +26,9 @@ import {
   canAccessFloorPlan,
   canAccessKitchen,
   canAccessReports,
+  canPlaceOfflineOrder,
 } from "@/lib/staff-permissions";
+import { TakeOrderOverlay } from "@/components/staff/TakeOrderOverlay";
 import type { Role } from "@/generated/prisma/client";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
 import { cn } from "@/lib/utils";
@@ -160,6 +163,7 @@ export function RestaurantShell({
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [takeOrderOpen, setTakeOrderOpen] = useState(false);
   const [fetchedUser, setFetchedUser] = useState<RestaurantShellUser | null>(null);
   const [fetchedFeatures, setFetchedFeatures] = useState<FeatureFlags>({});
   const [sessionResolved, setSessionResolved] = useState(false);
@@ -205,6 +209,15 @@ export function RestaurantShell({
   const current = activeItem ?? navFromPath(pathname ?? "/staff/dashboard");
   const contentWidth = full ? "max-w-none" : wide ? "max-w-[88rem]" : "max-w-5xl";
   const navItems = useMemo(() => buildNav(user?.role, features), [features, user?.role]);
+  const canTakeOrder = Boolean(user?.role && canPlaceOfflineOrder(user.role));
+
+  const openTakeOrder = () => {
+    setMenuOpen(false);
+    setTakeOrderOpen(true);
+  };
+
+  const takeOrderButtonClass =
+    "inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-semibold shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40";
 
   const logout = async () => {
     try {
@@ -271,6 +284,18 @@ export function RestaurantShell({
     <div className="min-h-screen bg-app-shell text-foreground lg:flex">
       <aside className="hidden lg:flex lg:w-60 xl:w-64 shrink-0 flex-col border-r border-white/5 bg-black/20">
         {brand}
+        {canTakeOrder ? (
+          <div className="px-3 pt-3">
+            <button
+              type="button"
+              onClick={openTakeOrder}
+              className={`${takeOrderButtonClass} w-full px-3 py-2.5 text-sm`}
+            >
+              <UtensilsCrossed className="w-4 h-4 shrink-0" />
+              Take Order
+            </button>
+          </div>
+        ) : null}
         {nav}
         {account}
       </aside>
@@ -298,6 +323,18 @@ export function RestaurantShell({
                 <X className="w-5 h-5" />
               </button>
             </div>
+            {canTakeOrder ? (
+              <div className="px-3 pt-3">
+                <button
+                  type="button"
+                  onClick={openTakeOrder}
+                  className={`${takeOrderButtonClass} w-full px-3 py-2.5 text-sm`}
+                >
+                  <UtensilsCrossed className="w-4 h-4 shrink-0" />
+                  Take Order
+                </button>
+              </div>
+            ) : null}
             {nav}
             {account}
           </aside>
@@ -305,7 +342,7 @@ export function RestaurantShell({
       )}
 
       <div className="min-w-0 flex-1">
-        <header className="border-b border-white/5 px-4 py-3 lg:px-6">
+        <header className="sticky top-0 z-30 border-b border-white/5 bg-app-shell/95 backdrop-blur-md px-4 py-3 lg:px-6">
           <div className={`${contentWidth} mx-auto flex items-start justify-between gap-3`}>
             <div className="flex items-start gap-3 min-w-0">
               <button
@@ -322,12 +359,38 @@ export function RestaurantShell({
               </div>
             </div>
             <div className="header-trailing-actions flex flex-wrap items-center justify-end gap-2 shrink-0">
+              {canTakeOrder ? (
+                <button
+                  type="button"
+                  onClick={openTakeOrder}
+                  className={`${takeOrderButtonClass} px-3 py-2 text-sm`}
+                >
+                  <UtensilsCrossed className="w-4 h-4 shrink-0" />
+                  <span className="hidden sm:inline">Take Order</span>
+                  <span className="sm:hidden">Order</span>
+                </button>
+              ) : null}
               {actions}
             </div>
           </div>
         </header>
-        <main className={`${contentWidth} mx-auto px-4 py-5 lg:px-6`}>{children}</main>
+        <main className={`${contentWidth} mx-auto px-4 py-5 lg:px-6 ${canTakeOrder ? "pb-24 lg:pb-5" : ""}`}>
+          {children}
+        </main>
       </div>
+
+      {canTakeOrder && !takeOrderOpen ? (
+        <button
+          type="button"
+          onClick={openTakeOrder}
+          className={`${takeOrderButtonClass} lg:hidden fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 px-6 py-3 text-base`}
+        >
+          <UtensilsCrossed className="w-5 h-5 shrink-0" />
+          Take Order
+        </button>
+      ) : null}
+
+      {takeOrderOpen ? <TakeOrderOverlay onClose={() => setTakeOrderOpen(false)} /> : null}
     </div>
   );
 }
