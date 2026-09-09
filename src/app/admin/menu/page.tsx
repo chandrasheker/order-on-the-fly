@@ -16,6 +16,7 @@ import {
   Upload,
 } from "lucide-react";
 import { Button, Card, Spinner, Badge, Input } from "@/components/ui";
+import { DietToggle } from "@/components/menu/DietToggle";
 import { formatCurrency } from "@/lib/utils";
 
 interface MenuItem {
@@ -24,6 +25,7 @@ interface MenuItem {
   price: number;
   prepTimeMinutes: number;
   isAvailable: boolean;
+  isVeg: boolean;
   imageUrl?: string | null;
   imageRevision?: number;
 }
@@ -67,6 +69,7 @@ function AddItemForm({
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [prepTimeMinutes, setPrepTimeMinutes] = useState("10");
+  const [isVeg, setIsVeg] = useState(true);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [saving, setSaving] = useState(false);
@@ -91,6 +94,7 @@ function AddItemForm({
         name: name.trim(),
         price,
         prepTimeMinutes: parseInt(prepTimeMinutes, 10) || 10,
+        isVeg,
       }),
     });
     const json = await res.json();
@@ -118,6 +122,7 @@ function AddItemForm({
     setName("");
     setPrice("");
     setPrepTimeMinutes("10");
+    setIsVeg(true);
     clearImage();
     setSaving(false);
     onAdded(notice);
@@ -157,6 +162,7 @@ function AddItemForm({
           <Plus className="w-4 h-4" /> {saving ? "Adding…" : "Add item"}
         </Button>
       </div>
+      <DietToggle isVeg={isVeg} onChange={setIsVeg} disabled={saving} />
       <div className="flex flex-wrap items-center gap-3">
         {imagePreview ? (
           <img src={imagePreview} alt="" className="w-14 h-14 rounded-lg object-cover bg-black/20" />
@@ -397,6 +403,15 @@ export default function MenuManagePage() {
               ? parseInt(value, 10) || 10
               : parseFloat(value),
       }),
+    });
+    await fetchMenu();
+  };
+
+  const updateItemDiet = async (itemId: string, nextIsVeg: boolean) => {
+    await fetch("/api/menu/manage", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId, isVeg: nextIsVeg }),
     });
     await fetchMenu();
   };
@@ -645,6 +660,7 @@ export default function MenuManagePage() {
                           toggling={togglingItemId === item.id}
                           onToggle={toggleAvailability}
                           onUpdate={updateItem}
+                          onDietChange={updateItemDiet}
                           onDelete={deleteItem}
                           onChanged={fetchMenu}
                           onNotice={flash}
@@ -726,6 +742,7 @@ function ItemRow({
   toggling,
   onToggle,
   onUpdate,
+  onDietChange,
   onDelete,
   onChanged,
   onNotice,
@@ -734,6 +751,7 @@ function ItemRow({
   toggling: boolean;
   onToggle: (id: string, available: boolean) => void;
   onUpdate: (id: string, field: "name" | "price" | "prepTimeMinutes", value: string) => void;
+  onDietChange: (id: string, isVeg: boolean) => void;
   onDelete: (id: string) => void;
   onChanged: () => void;
   onNotice: (text: string, isError?: boolean) => void;
@@ -847,6 +865,7 @@ function ItemRow({
         />
       </div>
       <div className="flex items-center gap-2 justify-between sm:justify-end shrink-0 flex-wrap">
+        <DietToggle isVeg={item.isVeg !== false} onChange={(next) => onDietChange(item.id, next)} size="sm" />
         <Badge
           className={
             item.isAvailable

@@ -43,7 +43,7 @@ async function handlePOST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { name, price, categoryId, prepTimeMinutes } = await req.json();
+  const { name, price, categoryId, prepTimeMinutes, isVeg } = await req.json();
 
   if (!name?.trim() || !categoryId || price === undefined || price === null) {
     return NextResponse.json(
@@ -86,6 +86,7 @@ async function handlePOST(req: NextRequest) {
         prepTimeMinutes: prepTimeMinutes ?? 10,
         sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
         isAvailable: true,
+        isVeg: typeof isVeg === "boolean" ? isVeg : true,
       },
     });
     setForensicResource({ type: "MenuItem", id: created.id, label: created.name });
@@ -114,7 +115,7 @@ async function handlePATCH(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { itemId, isAvailable, prepTimeMinutes, price, name, swiggyItemId, zomatoItemId } =
+  const { itemId, isAvailable, isVeg, prepTimeMinutes, price, name, swiggyItemId, zomatoItemId } =
     await req.json();
 
   if (!itemId) {
@@ -146,6 +147,7 @@ async function handlePATCH(req: NextRequest) {
     item,
     nextPrice,
     isAvailable,
+    isVeg: typeof isVeg === "boolean" ? isVeg : undefined,
     prepTimeMinutes,
     name,
     swiggyItemId,
