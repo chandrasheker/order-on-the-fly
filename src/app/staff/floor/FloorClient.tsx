@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft,
   LayoutGrid,
   RefreshCw,
   User,
@@ -11,7 +10,6 @@ import {
   CircleDollarSign,
   Users,
 } from "lucide-react";
-import Link from "next/link";
 import { Button, Badge, Spinner, Input, Select } from "@/components/ui";
 import { cn, formatCurrency } from "@/lib/utils";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
@@ -181,7 +179,7 @@ export default function FloorPlanPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-app-shell flex items-center justify-center">
+      <div className="flex justify-center py-16">
         <Spinner />
       </div>
     );
@@ -189,20 +187,15 @@ export default function FloorPlanPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-app-shell text-foreground flex items-center justify-center p-6">
+      <div className="flex justify-center p-6">
         <div className="max-w-md w-full text-center space-y-4 rounded-2xl border border-[color:var(--surface-border)] bg-[color:var(--surface)] p-8">
           <LayoutGrid className="w-10 h-10 text-red-400 mx-auto" />
           <h1 className="text-xl font-bold">Could not load floor plan</h1>
-          <p className="text-sm text-[color:var(--muted)]">{error}</p>
+          <p className="text-sm text-muted">{error}</p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button variant="secondary" onClick={() => void load()}>
               <RefreshCw className="w-4 h-4" /> Retry
             </Button>
-            <Link href="/staff/dashboard">
-              <Button variant="ghost">
-                <ArrowLeft className="w-4 h-4" /> Dashboard
-              </Button>
-            </Link>
           </div>
         </div>
       </div>
@@ -221,23 +214,12 @@ export default function FloorPlanPage() {
   );
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/10 px-4 py-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <h1 className="font-bold flex items-center gap-2">
-              <LayoutGrid className="w-5 h-5 text-violet-400" /> Floor plan
-            </h1>
-            <p className="text-xs text-zinc-500">Server assignment · guest count · live bill</p>
-          </div>
-        </div>
-        <Button variant="secondary" size="sm" onClick={() => void loadFloor()} className="header-trailing-actions">
+    <div>
+      <div className="flex justify-end mb-4">
+        <Button variant="secondary" size="sm" onClick={() => void loadFloor()}>
           <RefreshCw className="w-4 h-4" />
         </Button>
-      </header>
+      </div>
 
       <div className="flex flex-col lg:flex-row">
         <div className="flex-1 overflow-auto p-4">

@@ -28,7 +28,7 @@ html.light {
   color-scheme: light;
   --background: #f4f4f8;
   --foreground: #171717;
-  --muted: #71717a;
+  --muted: #3f3f46;
   --app-shell: #eef0f6;
   --customer-shell: #e8ebf3;
   --footer-bg: rgba(244, 244, 248, 0.95);
@@ -84,13 +84,22 @@ html {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
+.light .text-zinc-200,
+.light .text-zinc-300,
 .light .text-zinc-400,
-.light .text-zinc-500 {
+.light .text-zinc-500,
+.light .text-zinc-600 {
   color: var(--muted);
 }
 
-.light .text-white {
+.light .text-white,
+.light .hover\:text-white:hover {
   color: var(--foreground);
+}
+
+.light .text-orange-100,
+.light .text-orange-200 {
+  color: #9a3412;
 }
 
 .light .border-white\/5,

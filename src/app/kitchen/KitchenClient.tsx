@@ -1,15 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import {
-  ArrowLeft,
-  ChefHat,
-  LogOut,
-  RefreshCw,
-  LayoutDashboard,
-} from "lucide-react";
-import Link from "next/link";
+import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -52,7 +44,6 @@ export default function KitchenClient() {
   const [tickets, setTickets] = useState<KitchenBoardTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
-  const [role, setRole] = useState<string>("COOK");
   const [userId, setUserId] = useState<string | null>(null);
 
   const { showEnableBanner, enableAlerts, enabling, statusMessage } = useStaffNotifications([], userId);
@@ -100,7 +91,6 @@ export default function KitchenClient() {
       if (meRes.ok) {
         const me = await meRes.json();
         const userRole = me.user?.role ?? "COOK";
-        setRole(userRole);
         setUserId(me.user?.id ?? null);
         if (userRole === "COOK") {
           router.replace("/staff/dashboard");
@@ -146,105 +136,71 @@ export default function KitchenClient() {
     }
   };
 
-  const logout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } catch (error) {
-      swallowPollingFetchError(error);
-    }
-    router.push("/");
-  };
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-app-shell flex items-center justify-center">
+      <div className="flex justify-center py-16">
         <Spinner />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="sticky top-0 z-20 border-b border-white/10 bg-app-shell/95 backdrop-blur-xl px-4 py-3">
-        <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/staff/dashboard"
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300"
-              title="Back to dashboard"
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          {selectedCategorySlugs.size === 0
+            ? "Showing all categories · tap to filter"
+            : `${selectedCategorySlugs.size} categor${selectedCategorySlugs.size === 1 ? "y" : "ies"} selected`}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={clearCategoryFilter}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-sm border transition-colors",
+                selectedCategorySlugs.size === 0
+                  ? "bg-white/10 border-white/20 text-foreground"
+                  : "border-white/5 text-muted hover:text-foreground",
+              )}
             >
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-            <ChefHat className="w-6 h-6 text-orange-400" />
-            <div>
-              <h1 className="text-lg font-bold">Kitchen Display</h1>
-              <p className="text-xs text-zinc-500">
-                {selectedCategorySlugs.size === 0
-                  ? "Showing all categories · tap to filter"
-                  : `${selectedCategorySlugs.size} categor${selectedCategorySlugs.size === 1 ? "y" : "ies"} selected`}
-              </p>
-            </div>
+              All
+            </button>
+            {stations.map((station) => {
+              const isSelected = selectedCategorySlugs.has(station.slug);
+              return (
+                <button
+                  key={station.id}
+                  type="button"
+                  onClick={() => toggleCategoryFilter(station.slug)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-sm border transition-colors",
+                    isSelected
+                      ? "text-foreground border-white/20"
+                      : "border-white/5 text-muted hover:text-foreground",
+                  )}
+                  style={
+                    isSelected
+                      ? { backgroundColor: `${station.color}33`, borderColor: `${station.color}66` }
+                      : undefined
+                  }
+                  aria-pressed={isSelected}
+                >
+                  {station.name}
+                </button>
+              );
+            })}
           </div>
-          <div className="header-trailing-actions flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={clearCategoryFilter}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-sm border transition-colors",
-                  selectedCategorySlugs.size === 0
-                    ? "bg-white/10 border-white/20 text-foreground"
-                    : "border-white/5 text-zinc-400 hover:text-white",
-                )}
-              >
-                All
-              </button>
-              {stations.map((station) => {
-                const isSelected = selectedCategorySlugs.has(station.slug);
-                return (
-                  <button
-                    key={station.id}
-                    type="button"
-                    onClick={() => toggleCategoryFilter(station.slug)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-sm border transition-colors",
-                      isSelected
-                        ? "text-white border-white/20"
-                        : "border-white/5 text-zinc-400 hover:text-white",
-                    )}
-                    style={
-                      isSelected
-                        ? { backgroundColor: `${station.color}33`, borderColor: `${station.color}66` }
-                        : undefined
-                    }
-                    aria-pressed={isSelected}
-                  >
-                    {station.name}
-                  </button>
-                );
-              })}
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => void loadKitchen()}>
-              <RefreshCw className="w-4 h-4" />
-            </Button>
-            {(role === "OWNER" || role === "MANAGER") && (
-              <Link href="/staff/dashboard">
-                <Button variant="secondary" size="sm">
-                  <LayoutDashboard className="w-4 h-4" /> Dashboard
-                </Button>
-              </Link>
-            )}
-            <Button variant="secondary" size="sm" onClick={() => void logout()}>
-              <LogOut className="w-4 h-4" />
-            </Button>
-          </div>
+          <Button variant="secondary" size="sm" onClick={() => void loadKitchen()}>
+            <RefreshCw className="w-4 h-4" />
+          </Button>
         </div>
-      </header>
+      </div>
 
       {showEnableBanner && (
-        <div className="border-b border-orange-500/30 bg-orange-500/10 px-4 py-3">
-          <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-start gap-2 text-sm text-orange-100">
+        <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-start gap-2 text-sm text-orange-900 dark:text-orange-100">
               <Bell className="w-4 h-4 mt-0.5 shrink-0" />
               <p>
                 Enable kitchen alerts to hear a chime when new tickets arrive for your selected
@@ -257,20 +213,18 @@ export default function KitchenClient() {
             </Button>
           </div>
           {statusMessage && (
-            <p className="max-w-[1600px] mx-auto mt-2 text-xs text-orange-200/80">{statusMessage}</p>
+            <p className="mt-2 text-xs text-orange-800 dark:text-orange-200/80">{statusMessage}</p>
           )}
         </div>
       )}
 
-      <main className="max-w-[1600px] mx-auto p-4">
-        <KitchenTicketBoard
-          tickets={tickets}
-          now={now}
-          matchesCategoryFilter={matchesCategoryFilter}
-          onUpdateItem={updateItem}
-          mode="standard"
-        />
-      </main>
+      <KitchenTicketBoard
+        tickets={tickets}
+        now={now}
+        matchesCategoryFilter={matchesCategoryFilter}
+        onUpdateItem={updateItem}
+        mode="standard"
+      />
     </div>
   );
 }

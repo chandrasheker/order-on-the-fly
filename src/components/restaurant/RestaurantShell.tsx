@@ -66,6 +66,7 @@ interface RestaurantShellProps {
   children: ReactNode;
   actions?: ReactNode;
   wide?: boolean;
+  full?: boolean;
   user?: RestaurantShellUser | null;
   features?: FeatureFlags;
   activeItem?: RestaurantNavId;
@@ -151,6 +152,7 @@ export function RestaurantShell({
   children,
   actions,
   wide,
+  full,
   user: userProp,
   features: featuresProp,
   activeItem,
@@ -201,7 +203,7 @@ export function RestaurantShell({
   const user = userProp ?? fetchedUser;
   const features = featuresProp ?? fetchedFeatures;
   const current = activeItem ?? navFromPath(pathname ?? "/staff/dashboard");
-  const contentWidth = wide ? "max-w-[88rem]" : "max-w-5xl";
+  const contentWidth = full ? "max-w-none" : wide ? "max-w-[88rem]" : "max-w-5xl";
   const navItems = useMemo(() => buildNav(user?.role, features), [features, user?.role]);
 
   const logout = async () => {
@@ -225,8 +227,8 @@ export function RestaurantShell({
             className={cn(
               "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
               active
-                ? "bg-orange-500/15 text-orange-100 border border-orange-500/30"
-                : "text-zinc-400 border border-transparent hover:bg-white/5 hover:text-white",
+                ? "bg-orange-500/15 text-orange-900 dark:text-orange-100 border border-orange-500/30"
+                : "text-muted border border-transparent hover:bg-white/5 hover:text-foreground",
             )}
           >
             <Icon className="w-4 h-4 shrink-0" />
@@ -239,17 +241,17 @@ export function RestaurantShell({
 
   const brand = (
     <div className="px-4 py-4 border-b border-white/5">
-      <p className="text-sm font-semibold text-white truncate">{user?.restaurantName || "TableTap"}</p>
-      <p className="text-xs text-zinc-500">Restaurant</p>
+      <p className="text-sm font-semibold text-foreground truncate">{user?.restaurantName || "TableTap"}</p>
+      <p className="text-xs text-muted">Restaurant</p>
     </div>
   );
 
   const account = (
     <div className="mt-auto border-t border-white/5 px-4 py-4 space-y-3">
       <div className="min-w-0">
-        <p className="text-sm font-medium text-zinc-200 truncate">{user?.name ?? "Staff"}</p>
-        <p className="text-xs text-zinc-500 truncate capitalize">{user?.role?.toLowerCase() ?? ""}</p>
-        {user?.email ? <p className="text-xs text-zinc-600 truncate">{user.email}</p> : null}
+        <p className="text-sm font-medium text-foreground truncate">{user?.name ?? "Staff"}</p>
+        <p className="text-xs text-muted truncate capitalize">{user?.role?.toLowerCase() ?? ""}</p>
+        {user?.email ? <p className="text-xs text-muted truncate">{user.email}</p> : null}
       </div>
       <Button variant="secondary" size="sm" className="w-full justify-center" onClick={() => void logout()}>
         <LogOut className="w-4 h-4" /> Logout
@@ -281,15 +283,15 @@ export function RestaurantShell({
             aria-label="Close navigation"
             onClick={() => setMenuOpen(false)}
           />
-          <aside className="relative z-50 flex h-full w-72 max-w-[85vw] flex-col border-r border-white/10 bg-zinc-950">
+          <aside className="relative z-50 flex h-full w-72 max-w-[85vw] flex-col border-r border-white/10 bg-app-shell">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{user?.restaurantName || "TableTap"}</p>
-                <p className="text-xs text-zinc-500">Restaurant</p>
+                <p className="text-sm font-semibold text-foreground truncate">{user?.restaurantName || "TableTap"}</p>
+                <p className="text-xs text-muted">Restaurant</p>
               </div>
               <button
                 type="button"
-                className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5"
+                className="p-2 rounded-lg text-muted hover:text-foreground hover:bg-white/5"
                 aria-label="Close menu"
                 onClick={() => setMenuOpen(false)}
               >
@@ -308,7 +310,7 @@ export function RestaurantShell({
             <div className="flex items-start gap-3 min-w-0">
               <button
                 type="button"
-                className="lg:hidden mt-0.5 p-2 rounded-lg bg-white/5 text-zinc-300 hover:text-white"
+                className="lg:hidden mt-0.5 p-2 rounded-lg bg-white/5 text-foreground hover:text-foreground"
                 aria-label="Open navigation"
                 onClick={() => setMenuOpen(true)}
               >
@@ -316,7 +318,7 @@ export function RestaurantShell({
               </button>
               <div className="min-w-0">
                 <h1 className="text-xl font-semibold truncate">{title}</h1>
-                {subtitle ? <p className="text-sm text-zinc-500 mt-0.5">{subtitle}</p> : null}
+                {subtitle ? <p className="text-sm text-muted mt-0.5">{subtitle}</p> : null}
               </div>
             </div>
             <div className="header-trailing-actions flex flex-wrap items-center justify-end gap-2 shrink-0">
