@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { flushSync } from "react-dom";
 import { Pause, Play, ChefHat, ChevronDown, ChevronUp } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -24,15 +25,16 @@ export function KitchenCapacityPanel({
   const [message, setMessage] = useState("");
   const [threshold, setThreshold] = useState(0);
   const [expanded, setExpanded] = useState(!compact);
-  const savingRef = useRef(false);
+  const pendingPaused = useRef<boolean | null>(null);
+  const saveGen = useRef(0);
 
   const load = useCallback(async () => {
-    if (!enabled || savingRef.current) return;
+    if (!enabled || pendingPaused.current !== null) return;
     try {
       const res = await fetch("/api/realtime/kitchen");
       if (res.ok) {
         const json = await res.json();
-        if (savingRef.current) return;
+        if (pendingPaused.current !== null) return;
         setState(json.state);
         setMessage(json.state.message ?? "");
         setThreshold(json.state.autoPauseThreshold ?? 0);
@@ -50,10 +52,13 @@ export function KitchenCapacityPanel({
   }, [enabled, load]);
 
   const save = async (paused: boolean) => {
-    if (!state || savingRef.current) return;
+    if (!state) return;
+    const generation = ++saveGen.current;
     const previous = state;
-    savingRef.current = true;
-    setState({ ...state, paused });
+    pendingPaused.current = paused;
+    flushSync(() => {
+      setState((current) => (current ? { ...current, paused } : current));
+    });
     try {
       const res = await fetch("/api/realtime/kitchen", {
         method: "PATCH",
@@ -64,8 +69,10 @@ export function KitchenCapacityPanel({
           autoPauseOverdueThreshold: threshold,
         }),
       });
+      if (generation !== saveGen.current) return;
       if (res.ok) {
         const json = await res.json();
+        if (generation !== saveGen.current) return;
         setState(json.state);
         setMessage(json.state.message ?? message);
         setThreshold(json.state.autoPauseThreshold ?? threshold);
@@ -73,10 +80,10 @@ export function KitchenCapacityPanel({
         setState(previous);
       }
     } catch (error) {
-      setState(previous);
+      if (generation === saveGen.current) setState(previous);
       swallowPollingFetchError(error);
     } finally {
-      savingRef.current = false;
+      if (generation === saveGen.current) pendingPaused.current = null;
     }
   };
 

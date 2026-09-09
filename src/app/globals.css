@@ -92,6 +92,11 @@ html {
   color: var(--muted);
 }
 
+.light .text-white,
+.light .hover\:text-white:hover {
+  color: var(--foreground);
+}
+
 .light .placeholder\:text-zinc-500::placeholder,
 .light .placeholder\:text-zinc-400::placeholder {
   color: var(--muted);
