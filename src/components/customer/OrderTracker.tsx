@@ -199,12 +199,12 @@ export function OrderTracker({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-zinc-300">Your orders</p>
+        <p className="text-sm font-medium text-foreground">Your orders</p>
         <button
           type="button"
           onClick={handleRefresh}
           disabled={refreshing}
-          className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs text-muted hover:text-foreground transition-colors disabled:opacity-50"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
           Refresh
@@ -343,7 +343,7 @@ export function OrderTracker({
               </div>
               {pendingItems.length > 0 && (
                 <div className="text-right">
-                  <div className="flex items-center gap-1.5 text-2xl font-mono font-bold text-white">
+                  <div className="flex items-center gap-1.5 text-2xl font-mono font-bold text-foreground">
                     <Clock className="w-5 h-5 text-orange-400" />
                     {remaining > 0 ? formatCountdown(remaining) : "0:00"}
                   </div>
@@ -385,7 +385,7 @@ export function OrderTracker({
                             ? "text-zinc-500 line-through"
                             : isUnavailable
                               ? "text-amber-100 font-medium"
-                              : "text-white font-medium"
+                              : "text-foreground font-medium"
                         }`}
                       >
                         {item.quantity}x {item.itemName}

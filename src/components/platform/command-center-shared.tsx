@@ -21,10 +21,10 @@ export const TIME_RANGE_OPTIONS = [
 ] as const;
 
 export function healthTone(level: string) {
-  if (level === "OVERWHELMED" || level === "OFFLINE" || level === "ATTENTION") return "bg-red-500/15 text-red-300 border-red-500/30";
-  if (level === "HIGH" || level === "DEGRADED" || level === "BUSY") return "bg-amber-500/15 text-amber-200 border-amber-500/30";
-  if (level === "NEVER" || level === "HEALTHY" || level === "NORMAL") return "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
-  return "bg-white/5 text-zinc-300 border-white/10";
+  if (level === "OVERWHELMED" || level === "OFFLINE" || level === "ATTENTION") return "bg-red-500/15 text-red-800 dark:text-red-300 border-red-500/30";
+  if (level === "HIGH" || level === "DEGRADED" || level === "BUSY") return "bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30";
+  if (level === "NEVER" || level === "HEALTHY" || level === "NORMAL") return "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/30";
+  return "bg-white/5 text-muted border-white/10";
 }
 
 export function HealthBadge({ level, children }: { level: string; children?: React.ReactNode }) {
@@ -37,7 +37,7 @@ export function Trend({ value, invert }: { value?: TrendValue; invert?: boolean 
   const up = (value.percent ?? 0) > 0;
   const good = invert ? !up : up;
   return (
-    <span className={value.percent == null ? "text-zinc-500" : good ? "text-emerald-300" : "text-red-300"}>
+    <span className={value.percent == null ? "text-muted" : good ? "text-emerald-800 dark:text-emerald-300" : "text-red-800 dark:text-red-300"}>
       {text}
     </span>
   );
@@ -189,7 +189,7 @@ export function RestaurantHealthTable({
   const colSpan = compact ? (showTenant ? 9 : 8) : showTenant ? 16 : 15;
 
   const header = (key: string, label: string) => (
-    <button type="button" className="text-left hover:text-white" onClick={() => onSort(key)}>
+    <button type="button" className="text-left hover:text-foreground" onClick={() => onSort(key)}>
       {label}
       {sort === key ? " ↓" : ""}
     </button>
@@ -264,14 +264,14 @@ export function RestaurantHealthTable({
                           onClick={() => list.toggleExpanded(row.restaurantId)}
                           aria-expanded={open}
                           aria-label={`${open ? "Collapse" : "Expand"} ${row.restaurantName}`}
-                          className="text-zinc-400 hover:text-white"
+                          className="text-muted hover:text-foreground"
                         >
                           {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </button>
                       </td>
                       {showTenant && <td className="px-3 py-2 text-zinc-400">{row.tenantName}</td>}
                       <td className="px-3 py-2">
-                        <Link href={row.hrefs.overview} className="text-violet-200 hover:text-white font-medium">
+                        <Link href={row.hrefs.overview} className="text-violet-800 dark:text-violet-200 hover:text-foreground font-medium">
                           {row.restaurantName}
                         </Link>
                         {row.needsAttention && (
@@ -301,7 +301,7 @@ export function RestaurantHealthTable({
                       {!compact && <td className="px-3 py-2">{row.current.overdue}</td>}
                       {!compact && (
                         <td className="px-3 py-2">
-                          <Link href={row.hrefs.sla} className="hover:text-white">
+                          <Link href={row.hrefs.sla} className="hover:text-foreground">
                             {row.kitchen.sla.label}
                           </Link>
                         </td>
@@ -315,7 +315,7 @@ export function RestaurantHealthTable({
                         <Link href={row.hrefs.printingAmbiguous}><HealthBadge level={row.printing.health.level} /></Link>
                       </td>
                       <td className="px-3 py-2">
-                        <Link href={row.hrefs.errors} className="hover:text-white">
+                        <Link href={row.hrefs.errors} className="hover:text-foreground">
                           {row.reliability.failedRequests}
                         </Link>
                       </td>

@@ -94,21 +94,21 @@ export function ModifierPickerModal({
       <motion.div
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl bg-zinc-900 border border-white/10 p-5 space-y-4"
+        className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl bg-app-shell border border-white/10 p-5 space-y-4"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="font-bold text-white">{itemName}</h3>
-            <p className="text-sm text-orange-400">{formatCurrency(totalPrice)}</p>
+            <h3 className="font-bold text-foreground">{itemName}</h3>
+            <p className="text-sm text-orange-800 dark:text-orange-400">{formatCurrency(totalPrice)}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-zinc-400 hover:text-white">
+          <button type="button" onClick={onClose} className="text-muted hover:text-foreground">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {groups.map((group) => (
           <div key={group.id} className="space-y-2">
-            <p className="text-sm font-medium text-zinc-300">
+            <p className="text-sm font-medium text-foreground">
               {group.name}
               {group.required && <span className="text-red-400"> *</span>}
             </p>
@@ -123,8 +123,8 @@ export function ModifierPickerModal({
                     className={cn(
                       "w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-colors",
                       active
-                        ? "border-orange-500/50 bg-orange-500/15 text-white"
-                        : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10",
+                        ? "border-orange-500/50 bg-orange-500/15 text-foreground"
+                        : "border-white/10 bg-white/5 text-muted hover:bg-white/10",
                     )}
                   >
                     <span>{opt.name}</span>

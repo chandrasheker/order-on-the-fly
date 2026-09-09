@@ -297,7 +297,7 @@ export function TenantHubHome() {
   const showRange = tab === "overview" || tab === "restaurants" || tab === "operations" || tab === "analytics";
 
   return (
-    <div className="min-h-screen bg-app-shell text-white">
+    <div className="min-h-screen bg-app-shell text-foreground">
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between gap-4">
         <div>
           <p className="text-xs text-zinc-500">Tenant administrator</p>

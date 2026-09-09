@@ -111,9 +111,9 @@ function RewardClaimModal({
           <>
             <p className="text-4xl mb-2">🎉</p>
             <h3 className="text-xl font-bold text-orange-300 mb-1">{winHeadline}</h3>
-            <p className="text-lg font-medium text-white mb-1">{prize}</p>
+            <p className="text-lg font-medium text-foreground mb-1">{prize}</p>
             <p className="text-sm text-zinc-400 mb-4">
-              Valid for <strong className="text-white">48 hours</strong> after claim. Enter your name so staff can verify on your next visit.
+              Valid for <strong className="text-foreground">48 hours</strong> after claim. Enter your name so staff can verify on your next visit.
             </p>
             <Input
               placeholder="Your full name *"
@@ -335,7 +335,7 @@ function SpinWheel({
             exit={{ opacity: 0 }}
             className="p-4 rounded-2xl bg-gradient-to-r from-orange-500/20 to-emerald-500/20 border border-orange-500/40"
           >
-            <p className="text-lg font-bold text-white">{winBannerText}</p>
+            <p className="text-lg font-bold text-foreground">{winBannerText}</p>
             <p className="text-sm text-emerald-300 mt-1">Tap below to claim your reward</p>
           </motion.div>
         )}
@@ -479,8 +479,8 @@ export function WaitingGames({
       <div className="flex items-center gap-2 mb-4">
         <span className="text-2xl">🎮</span>
         <div>
-          <h3 className="font-bold text-white">While You Wait...</h3>
-          <p className="text-xs text-zinc-400">Play a game while your order is prepared</p>
+          <h3 className="font-bold text-foreground">While You Wait...</h3>
+          <p className="text-xs text-muted">Play a game while your order is prepared</p>
         </div>
       </div>
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">

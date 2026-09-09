@@ -140,7 +140,7 @@ export function TableSwitchRequest({
   return (
     <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
       <div>
-        <p className="font-semibold text-white flex items-center gap-2">
+        <p className="font-semibold text-foreground flex items-center gap-2">
           <ArrowRightLeft className="w-4 h-4 text-sky-300" />
           Need to switch tables?
         </p>

@@ -65,8 +65,8 @@ export function PlatformSection({
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="text-sm font-semibold tracking-wide text-zinc-200">{title}</h2>
-        {description ? <p className="text-xs text-zinc-500 mt-1">{description}</p> : null}
+        <h2 className="text-sm font-semibold tracking-wide text-foreground">{title}</h2>
+        {description ? <p className="text-xs text-muted mt-1">{description}</p> : null}
       </div>
       {children}
     </section>
@@ -112,8 +112,8 @@ export function PlatformShell({
             className={cn(
               "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
               active
-                ? "bg-violet-500/15 text-violet-100 border border-violet-500/30"
-                : "text-zinc-400 border border-transparent hover:bg-white/5 hover:text-white",
+                ? "bg-violet-500/15 text-violet-900 dark:text-violet-100 border border-violet-500/30"
+                : "text-muted border border-transparent hover:bg-white/5 hover:text-foreground",
             )}
           >
             <Icon className="w-4 h-4 shrink-0" />
@@ -126,16 +126,16 @@ export function PlatformShell({
 
   const brand = (
     <div className="px-4 py-4 border-b border-white/5">
-      <p className="text-sm font-semibold text-white">TableTap</p>
-      <p className="text-xs text-zinc-500">Platform</p>
+      <p className="text-sm font-semibold text-foreground">TableTap</p>
+      <p className="text-xs text-muted">Platform</p>
     </div>
   );
 
   const account = (
     <div className="mt-auto border-t border-white/5 px-4 py-4 space-y-3">
       <div className="min-w-0">
-        <p className="text-sm font-medium text-zinc-200 truncate">{admin?.name ?? "Platform Admin"}</p>
-        <p className="text-xs text-zinc-500 truncate">{admin?.email ?? ""}</p>
+        <p className="text-sm font-medium text-foreground truncate">{admin?.name ?? "Platform Admin"}</p>
+        <p className="text-xs text-muted truncate">{admin?.email ?? ""}</p>
       </div>
       <Button variant="secondary" size="sm" className="w-full justify-center" onClick={() => void logout()}>
         <LogOut className="w-4 h-4" /> Logout
@@ -159,15 +159,15 @@ export function PlatformShell({
             aria-label="Close navigation"
             onClick={() => setMenuOpen(false)}
           />
-          <aside className="relative z-50 flex h-full w-72 max-w-[85vw] flex-col border-r border-white/10 bg-zinc-950">
+          <aside className="relative z-50 flex h-full w-72 max-w-[85vw] flex-col border-r border-white/10 bg-app-shell">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
               <div>
-                <p className="text-sm font-semibold text-white">TableTap</p>
-                <p className="text-xs text-zinc-500">Platform</p>
+                <p className="text-sm font-semibold text-foreground">TableTap</p>
+                <p className="text-xs text-muted">Platform</p>
               </div>
               <button
                 type="button"
-                className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5"
+                className="p-2 rounded-lg text-muted hover:text-foreground hover:bg-white/5"
                 aria-label="Close menu"
                 onClick={() => setMenuOpen(false)}
               >
@@ -186,7 +186,7 @@ export function PlatformShell({
             <div className="flex items-start gap-3 min-w-0">
               <button
                 type="button"
-                className="lg:hidden mt-0.5 p-2 rounded-lg bg-white/5 text-zinc-300 hover:text-white"
+                className="lg:hidden mt-0.5 p-2 rounded-lg bg-white/5 text-foreground hover:text-foreground"
                 aria-label="Open navigation"
                 onClick={() => setMenuOpen(true)}
               >
@@ -194,16 +194,16 @@ export function PlatformShell({
               </button>
               <div className="min-w-0">
                 {breadcrumb && breadcrumb.length > 0 && (
-                  <nav aria-label="Breadcrumb" className="mb-1 flex flex-wrap items-center gap-1 text-xs text-zinc-500">
+                  <nav aria-label="Breadcrumb" className="mb-1 flex flex-wrap items-center gap-1 text-xs text-muted">
                     {breadcrumb.map((item, i) => (
                       <span key={`${item.label}-${i}`} className="flex items-center gap-1">
                         {i > 0 && <ChevronRight className="w-3 h-3" />}
                         {item.href ? (
-                          <Link href={item.href} className="hover:text-violet-300">
+                          <Link href={item.href} className="hover:text-violet-800 dark:hover:text-violet-300">
                             {item.label}
                           </Link>
                         ) : (
-                          <span className="text-zinc-400">{item.label}</span>
+                          <span className="text-muted">{item.label}</span>
                         )}
                       </span>
                     ))}
@@ -222,7 +222,7 @@ export function PlatformShell({
                   ) : null}
                   <h1 className="text-xl font-semibold truncate">{title}</h1>
                 </div>
-                {subtitle ? <p className="text-sm text-zinc-500 mt-0.5">{subtitle}</p> : null}
+                {subtitle ? <p className="text-sm text-muted mt-0.5">{subtitle}</p> : null}
               </div>
             </div>
             <div className="header-trailing-actions flex flex-wrap items-center justify-end gap-2 shrink-0">

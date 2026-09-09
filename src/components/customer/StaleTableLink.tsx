@@ -30,7 +30,7 @@ export function StaleTableLink({
           </Link>
           <Link
             href={`/order/${slug}/${slug}-table-1`}
-            className="text-sm text-zinc-400 hover:text-white transition-colors"
+            className="text-sm text-muted hover:text-foreground transition-colors"
           >
             Or use stable link: /order/{slug}/{slug}-table-1
           </Link>

@@ -322,7 +322,7 @@ export function OrderPageClient({ slug, token }: Props) {
       <div className="min-h-screen flex items-center justify-center bg-customer-shell text-foreground p-6 relative">
         <div className="text-center max-w-sm space-y-3 relative z-10">
           <p className="font-medium">Could not load this table&apos;s menu.</p>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted">
             Try scanning the QR code again, or open{" "}
             <a href={`/order/${slug}/demo`} className="text-orange-400 underline">
               Table 1 demo
@@ -347,7 +347,7 @@ export function OrderPageClient({ slug, token }: Props) {
     !hasVisibleOrders;
 
   return (
-    <div className="min-h-screen text-white relative">
+    <div className="min-h-screen text-foreground relative">
       <CustomerPageBackground imageUrl={data.restaurant.backgroundImageUrl} />
 
       <AnimatePresence>
@@ -367,9 +367,9 @@ export function OrderPageClient({ slug, token }: Props) {
               <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
                 <Heart className="w-8 h-8 text-emerald-400" />
               </div>
-              <h2 className="text-2xl font-bold text-white mb-2">Thank you!</h2>
-              <p className="text-emerald-300 font-medium mb-1">Payment confirmed</p>
-              <p className="text-zinc-400 text-sm">
+              <h2 className="text-2xl font-bold text-foreground mb-2">Thank you!</h2>
+              <p className="text-emerald-800 dark:text-emerald-300 font-medium mb-1">Payment confirmed</p>
+              <p className="text-muted text-sm">
                 We hope you enjoyed dining at {data.restaurant.name}. Please visit again!
               </p>
             </motion.div>
@@ -380,12 +380,12 @@ export function OrderPageClient({ slug, token }: Props) {
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-orange-600/15 via-transparent to-purple-600/10" />
         <div className="relative px-4 pt-8 pb-6 max-w-lg mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-sm text-orange-300 mb-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-sm text-orange-800 dark:text-orange-300 mb-3">
             <UtensilsCrossed className="w-4 h-4" />
             Table {data.table.number}
           </div>
           <h1 className="text-2xl font-bold drop-shadow-lg">{data.restaurant.name}</h1>
-          <p className="text-sm text-zinc-300 mt-1 flex items-center justify-center gap-1 drop-shadow">
+          <p className="text-sm text-muted mt-1 flex items-center justify-center gap-1 drop-shadow">
             <Sparkles className="w-3.5 h-3.5" />
             Scan · Order · Enjoy
           </p>
@@ -396,7 +396,7 @@ export function OrderPageClient({ slug, token }: Props) {
         {tabPaymentPending && (
           <div className="p-4 rounded-2xl bg-yellow-500/15 border border-yellow-500/30 text-center space-y-2">
             <p className="font-semibold text-yellow-300">Payment pending</p>
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-muted">
               Staff is confirming your bill. You can still order more — new items will be added to
               the same table bill until payment is complete.
             </p>
@@ -410,7 +410,7 @@ export function OrderPageClient({ slug, token }: Props) {
                 <ShieldAlert className="w-8 h-8 text-amber-400 mx-auto" />
                 <div>
                   <p className="font-semibold text-amber-300">Ordering not open yet</p>
-                  <p className="text-sm text-zinc-400 mt-1">
+                  <p className="text-sm text-muted mt-1">
                     {tableSession.gateMessage ||
                       "Please ask your server to enable ordering when you are seated at this table."}
                   </p>
@@ -421,14 +421,14 @@ export function OrderPageClient({ slug, token }: Props) {
                 <QrCode className="w-8 h-8 text-red-400 mx-auto" />
                 <div>
                   <p className="font-semibold text-red-300">Scan the QR at your table</p>
-                  <p className="text-sm text-zinc-400 mt-1">
+                  <p className="text-sm text-muted mt-1">
                     {tableSession.gateMessage ||
                       "Saved links cannot be used to order remotely. Scan the QR code on your table to verify you are dining here."}
                   </p>
                 </div>
                 <Link
                   href={tableSession.checkInPath}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-white"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-foreground"
                 >
                   Scan / check in again
                 </Link>
@@ -438,14 +438,14 @@ export function OrderPageClient({ slug, token }: Props) {
                 <Users className="w-8 h-8 text-red-400 mx-auto" />
                 <div>
                   <p className="font-semibold text-red-300">Session unavailable</p>
-                  <p className="text-sm text-zinc-400 mt-1">
+                  <p className="text-sm text-muted mt-1">
                     {tableSession.gateMessage ||
                       "Your table session expired or this table is full. Scan the QR code again."}
                   </p>
                 </div>
                 <Link
                   href={tableSession.checkInPath}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-white"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-foreground"
                 >
                   Scan QR again
                 </Link>
@@ -475,7 +475,7 @@ export function OrderPageClient({ slug, token }: Props) {
 
         {showNameInput && canOrder && (
           <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
-            <label className="text-sm text-zinc-400 mb-2 block">Your name (optional)</label>
+            <label className="text-sm text-muted mb-2 block">Your name (optional)</label>
             <div className="flex gap-2">
               <Input
                 placeholder="e.g. Rahul"
@@ -587,7 +587,7 @@ export function OrderPageClient({ slug, token }: Props) {
               />
               <span>
                 <span className="block font-medium">Serve at my table</span>
-                <span className="text-sm text-zinc-400">Staff will bring your order when it is ready.</span>
+                <span className="text-sm text-muted">Staff will bring your order when it is ready.</span>
               </span>
             </label>
             <label className="flex items-start gap-3">
@@ -599,7 +599,7 @@ export function OrderPageClient({ slug, token }: Props) {
               />
               <span>
                 <span className="block font-medium">I&apos;ll collect from the counter</span>
-                <span className="text-sm text-zinc-400">
+                <span className="text-sm text-muted">
                   We&apos;ll notify you when the order is ready. Payment must be completed before collection.
                 </span>
               </span>

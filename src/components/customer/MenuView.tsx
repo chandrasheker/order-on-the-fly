@@ -108,7 +108,7 @@ function MenuItemCard({
       ) : null}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <h3 className="font-semibold text-white">{item.name}</h3>
+          <h3 className="font-semibold text-foreground">{item.name}</h3>
           {item.isVeg ? (
             <span className="w-4 h-4 rounded-sm border-2 border-emerald-500 flex items-center justify-center flex-shrink-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -121,11 +121,11 @@ function MenuItemCard({
           {item.isSpicy && <Flame className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
         </div>
         {item.description && (
-          <p className="text-sm text-zinc-400 mb-2 line-clamp-2">{item.description}</p>
+          <p className="text-sm text-muted mb-2 line-clamp-2">{item.description}</p>
         )}
         <div className="flex items-center gap-3 flex-wrap">
           <span className="font-bold text-orange-400">{formatCurrency(item.price)}</span>
-          <Badge className="bg-white/5 text-zinc-400 border-white/10">
+          <Badge className="bg-white/5 text-muted border-white/10">
             ⏱ {getPrepTimeLabel(item.prepTimeMinutes)}
           </Badge>
         </div>
@@ -139,11 +139,11 @@ function MenuItemCard({
             <button
               type="button"
               onClick={() => onUpdateQty(inCart.quantity - 1)}
-              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white active:bg-white/20"
+              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-foreground active:bg-white/20"
             >
               <Minus className="w-4 h-4" />
             </button>
-            <span className="w-6 text-center font-bold text-white">{inCart.quantity}</span>
+            <span className="w-6 text-center font-bold text-foreground">{inCart.quantity}</span>
             <button
               type="button"
               onClick={() => onUpdateQty(inCart.quantity + 1)}

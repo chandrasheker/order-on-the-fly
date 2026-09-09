@@ -77,7 +77,7 @@ export function FeedbackButton({
               initial={{ y: 40, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 40, opacity: 0 }}
-              className="w-full max-w-sm rounded-2xl bg-[#1a1a2e] border border-white/10 p-6"
+              className="w-full max-w-sm rounded-2xl bg-app-shell border border-white/10 p-6"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-4">
@@ -88,7 +88,7 @@ export function FeedbackButton({
               </div>
 
               {done ? (
-                <p className="text-center text-emerald-400 py-8">Thank you for your feedback! 🙏</p>
+                <p className="text-center text-emerald-800 dark:text-emerald-400 py-8">Thank you for your feedback! 🙏</p>
               ) : (
                 <>
                   <div className="flex justify-center gap-2 mb-4">
@@ -126,7 +126,7 @@ export function FeedbackButton({
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 mb-4 resize-none"
+                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-foreground placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 mb-4 resize-none"
                   />
 
                   <Button

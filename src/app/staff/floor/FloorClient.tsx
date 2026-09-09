@@ -224,7 +224,7 @@ export default function FloorPlanPage() {
       <div className="flex flex-col lg:flex-row">
         <div className="flex-1 overflow-auto p-4">
           <div
-            className="relative rounded-2xl border border-white/10 bg-[#111118] mx-auto"
+            className="relative rounded-2xl border border-white/10 bg-app-shell mx-auto"
             style={{ width: canvasWidth, height: canvasHeight, minWidth: "100%" }}
           >
             {tables.map((table) => (

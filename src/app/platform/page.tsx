@@ -225,7 +225,7 @@ function PlatformHomePageInner() {
               </div>
               <button
                 type="button"
-                className="text-sm text-amber-200 hover:text-white"
+                className="text-sm text-amber-800 dark:text-amber-200 hover:text-foreground"
                 onClick={() => {
                   setFilter("attention");
                   selectDirectory("fleet");
