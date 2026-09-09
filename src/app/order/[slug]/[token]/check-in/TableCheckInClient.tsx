@@ -64,9 +64,9 @@ export function TableCheckInClient({
   return (
     <div className="min-h-screen bg-customer-shell text-foreground flex items-center justify-center p-6">
       <div className="max-w-sm w-full text-center space-y-4">
-        <UtensilsCrossed className="w-10 h-10 text-orange-400 mx-auto" />
+        <UtensilsCrossed className="w-10 h-10 text-orange-800 dark:text-orange-400 mx-auto" />
         {!expired && <Spinner className="w-8 h-8 mx-auto" />}
-        <p className="text-zinc-300">{message}</p>
+        <p className="text-foreground">{message}</p>
         {message !== "Verifying your table…" && (
           <p className="text-sm text-zinc-500">
             {expired

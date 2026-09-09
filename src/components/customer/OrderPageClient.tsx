@@ -407,9 +407,9 @@ export function OrderPageClient({ slug, token }: Props) {
           <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-center space-y-3">
             {!tableSession.orderingEnabled ? (
               <>
-                <ShieldAlert className="w-8 h-8 text-amber-400 mx-auto" />
+                <ShieldAlert className="w-8 h-8 text-amber-800 dark:text-amber-400 mx-auto" />
                 <div>
-                  <p className="font-semibold text-amber-300">Ordering not open yet</p>
+                  <p className="font-semibold text-amber-800 dark:text-amber-300">Ordering not open yet</p>
                   <p className="text-sm text-muted mt-1">
                     {tableSession.gateMessage ||
                       "Please ask your server to enable ordering when you are seated at this table."}
@@ -418,9 +418,9 @@ export function OrderPageClient({ slug, token }: Props) {
               </>
             ) : !tableSession.diningVerified ? (
               <>
-                <QrCode className="w-8 h-8 text-red-400 mx-auto" />
+                <QrCode className="w-8 h-8 text-red-800 dark:text-red-400 mx-auto" />
                 <div>
-                  <p className="font-semibold text-red-300">Scan the QR at your table</p>
+                  <p className="font-semibold text-red-800 dark:text-red-300">Scan the QR at your table</p>
                   <p className="text-sm text-muted mt-1">
                     {tableSession.gateMessage ||
                       "Saved links cannot be used to order remotely. Scan the QR code on your table to verify you are dining here."}
@@ -435,9 +435,9 @@ export function OrderPageClient({ slug, token }: Props) {
               </>
             ) : (
               <>
-                <Users className="w-8 h-8 text-red-400 mx-auto" />
+                <Users className="w-8 h-8 text-red-800 dark:text-red-400 mx-auto" />
                 <div>
-                  <p className="font-semibold text-red-300">Session unavailable</p>
+                  <p className="font-semibold text-red-800 dark:text-red-300">Session unavailable</p>
                   <p className="text-sm text-muted mt-1">
                     {tableSession.gateMessage ||
                       "Your table session expired or this table is full. Scan the QR code again."}

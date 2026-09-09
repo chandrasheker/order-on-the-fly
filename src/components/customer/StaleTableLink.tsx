@@ -15,7 +15,7 @@ export function StaleTableLink({
           <QrCode className="w-7 h-7 text-amber-400" />
         </div>
         <h1 className="text-xl font-bold">This table link is no longer valid</h1>
-        <p className="text-sm text-zinc-400 leading-relaxed">
+        <p className="text-sm text-muted leading-relaxed">
           The QR code or bookmark you used is from an older database reset. Table links
           change when the database is reset unless you use the stable URLs below.
         </p>

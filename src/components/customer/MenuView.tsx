@@ -381,7 +381,7 @@ export function MenuView({
                   "flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap",
                   activeCategory === cat.slug
                     ? "bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg shadow-orange-500/25"
-                    : "bg-white/5 text-zinc-400 border border-white/10 active:bg-white/10"
+                    : "bg-white/5 text-muted border border-white/10 active:bg-white/10"
                 )}
               >
                 <span>{cat.icon}</span>
@@ -402,7 +402,7 @@ export function MenuView({
           )}
         </div>
         )}
-        <p className="text-center text-xs text-zinc-500 px-4">
+        <p className="text-center text-xs text-muted px-4">
           {isSearching
             ? `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`
             : tapToSelect
@@ -414,7 +414,7 @@ export function MenuView({
             <button
               type="button"
               onClick={expandAll}
-              className="text-xs text-orange-400 hover:text-orange-300"
+              className="text-xs text-orange-800 dark:text-orange-400 hover:text-orange-900 dark:hover:text-orange-300"
             >
               Expand all
             </button>
@@ -422,7 +422,7 @@ export function MenuView({
             <button
               type="button"
               onClick={collapseAll}
-              className="text-xs text-zinc-400 hover:text-zinc-300"
+              className="text-xs text-muted hover:text-foreground"
             >
               Collapse all
             </button>
