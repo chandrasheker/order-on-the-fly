@@ -1,16 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Phone, UserRound, ShoppingBag, Truck } from "lucide-react";
+import { Phone, UserRound, ShoppingBag, Truck, Printer } from "lucide-react";
 import { MenuView } from "@/components/customer/MenuView";
-import { StaffCartPanel } from "@/components/staff/StaffCartPanel";
-import { Input, Spinner } from "@/components/ui";
-import { cn } from "@/lib/utils";
+import { StaffCartDrawer } from "@/components/staff/StaffCartPanel";
+import { Button, Input, Spinner } from "@/components/ui";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useStaffCartStore } from "@/store/staff-cart";
 import { useOfflineOrderSync } from "@/hooks/useOfflineOrderSync";
 import { useCartDraftSync, clearRemoteCartDraft } from "@/hooks/useCartDraftSync";
+import { useFloorTableStates } from "@/hooks/useFloorTableStates";
+import { useThermalPrinter } from "@/hooks/useThermalPrinter";
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
+import { FLOOR_STATE_STYLES, TABLE_CLOSED_STYLE, notifyFloorChanged } from "@/lib/floor-state-styles";
+import { printStaffTicketHtml } from "@/lib/print-staff-ticket";
 
 type OrderMode = "walkin" | "takeaway" | "delivery";
 
@@ -86,8 +90,11 @@ export function RemoteOrdersPanel({
   const [success, setSuccess] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
-  const [serviceMode, setServiceMode] = useState<string>("FULL_SERVICE");
   const [staffFulfillment, setStaffFulfillment] = useState<"TABLE_SERVICE" | "SELF_PICKUP">("TABLE_SERVICE");
+  const [cartOpen, setCartOpen] = useState(false);
+  const [lastChit, setLastChit] = useState<KitchenChitPayload | null>(null);
+  const { states } = useFloorTableStates();
+  const { printKitchenChit, printing } = useThermalPrinter();
 
   const {
     tableId,
@@ -109,16 +116,8 @@ export function RemoteOrdersPanel({
     () => dineInTables.find((table) => table.id === tableId) ?? null,
     [dineInTables, tableId],
   );
-
-  useEffect(() => {
-    void fetch("/api/restaurant/service-mode")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (!json?.settings) return;
-        setServiceMode(json.settings.serviceMode);
-        setStaffFulfillment(json.settings.hybridDefaultFulfillment ?? "TABLE_SERVICE");
-      });
-  }, []);
+  const cartCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const isSelf = !meta.channel && staffFulfillment === "SELF_PICKUP";
 
   const loadTables = useCallback(async () => {
     try {
@@ -181,6 +180,7 @@ export function RemoteOrdersPanel({
     setOrderNotes("");
     setError("");
     setSuccess("");
+    setCartOpen(false);
   };
 
   useEffect(() => {
@@ -205,10 +205,19 @@ export function RemoteOrdersPanel({
     [items, addItem, updateQuantity, total, maxPrepTime],
   );
 
-  const placeOrder = async () => {
+  const printTicket = async (chit: KitchenChitPayload) => {
+    try {
+      await printKitchenChit(chit);
+    } catch {
+      printStaffTicketHtml(chit);
+    }
+  };
+
+  const placeOrder = async (alsoPrint: boolean) => {
     if (items.length === 0) return;
     if (meta.needsTable && !tableId) {
       setError("Pick a table before sending this order to the kitchen.");
+      setCartOpen(false);
       return;
     }
 
@@ -244,7 +253,7 @@ export function RemoteOrdersPanel({
               ...payload,
               tableId,
               openTable: true,
-              fulfillmentMode: serviceMode === "HYBRID" ? staffFulfillment : undefined,
+              fulfillmentMode: staffFulfillment,
             }),
           });
         }
@@ -260,11 +269,15 @@ export function RemoteOrdersPanel({
         });
         setSuccess("Offline — order queued and will sync when connection returns.");
         clearCart();
+        setCartOpen(false);
         return;
       }
 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Could not place order");
+
+      const chit = (json.kitchenChit ?? null) as KitchenChitPayload | null;
+      if (chit) setLastChit(chit);
 
       const label =
         mode === "walkin" && selectedTable
@@ -274,13 +287,27 @@ export function RemoteOrdersPanel({
       clearCart();
       setCustomerPhone("");
       setOrderNotes("");
+      setCartOpen(false);
       await loadTables();
-      onOrderPlaced?.({ kitchenChit: json.kitchenChit ?? null });
+      notifyFloorChanged();
+      onOrderPlaced?.({ kitchenChit: chit });
+
+      if ((alsoPrint || isSelf) && chit) {
+        await printTicket(chit);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not place order");
     } finally {
       setPlacing(false);
     }
+  };
+
+  const handlePrint = async () => {
+    if (lastChit && items.length === 0) {
+      await printTicket(lastChit);
+      return;
+    }
+    await placeOrder(true);
   };
 
   if (loadingTables) {
@@ -294,7 +321,7 @@ export function RemoteOrdersPanel({
   const modes = Object.keys(MODE_META) as OrderMode[];
 
   return (
-    <div className="space-y-5 pb-28">
+    <div className="space-y-4 pb-28">
       {(!online || pendingCount > 0) && (
         <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-200 flex items-center justify-between gap-3">
           <span>
@@ -313,24 +340,30 @@ export function RemoteOrdersPanel({
         {meta.needsTable && (
           <div>
             <p className="text-xs text-muted mb-2">
-              {selectedTable ? `Table ${selectedTable.number}` : "Pick a table, then send to kitchen"}
+              {selectedTable ? `Table ${selectedTable.number}` : "Pick a table, then add items"}
             </p>
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {dineInTables.map((table) => (
-                <button
-                  key={table.id}
-                  type="button"
-                  onClick={() => setTable(table.id === tableId ? null : table.id)}
-                  className={cn(
-                    "shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors",
-                    tableId === table.id
-                      ? "bg-orange-500 text-white border-orange-400"
-                      : "bg-white/5 border-white/10 text-foreground hover:bg-white/10",
-                  )}
-                >
-                  T{table.number}
-                </button>
-              ))}
+            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
+              {dineInTables.map((table) => {
+                const floorState = states[table.id]?.state;
+                const closed = !table.orderingEnabled && (!floorState || floorState === "available");
+                const selected = tableId === table.id;
+                return (
+                  <button
+                    key={table.id}
+                    type="button"
+                    onClick={() => setTable(table.id === tableId ? null : table.id)}
+                    className={cn(
+                      "min-h-[3.5rem] rounded-xl border text-base font-bold transition-colors",
+                      closed
+                        ? TABLE_CLOSED_STYLE
+                        : FLOOR_STATE_STYLES[floorState ?? "available"] ?? FLOOR_STATE_STYLES.available,
+                      selected && "ring-2 ring-orange-400 border-orange-400",
+                    )}
+                  >
+                    T{table.number}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -342,8 +375,26 @@ export function RemoteOrdersPanel({
           </div>
 
           <div className="flex flex-wrap gap-2 flex-1 justify-end">
+            {mode === "walkin" ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setStaffFulfillment((current) =>
+                    current === "SELF_PICKUP" ? "TABLE_SERVICE" : "SELF_PICKUP",
+                  )
+                }
+                className={cn(
+                  "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold",
+                  isSelf
+                    ? "bg-sky-500/20 border-sky-500/40 text-sky-800 dark:text-sky-200"
+                    : "bg-orange-500/15 border-orange-500/40 text-orange-800 dark:text-orange-200",
+                )}
+              >
+                {isSelf ? "Self" : "Table service"}
+              </button>
+            ) : null}
             <div className="flex items-center gap-2 min-w-[180px]">
-              <UserRound className="w-4 h-4 text-zinc-500 shrink-0" />
+              <UserRound className="w-4 h-4 text-muted shrink-0" />
               <Input
                 placeholder="Guest name"
                 value={customerName}
@@ -361,27 +412,6 @@ export function RemoteOrdersPanel({
             )}
           </div>
         </div>
-
-        {serviceMode === "HYBRID" && !meta.channel && (
-          <div className="flex gap-3 text-sm">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                checked={staffFulfillment === "TABLE_SERVICE"}
-                onChange={() => setStaffFulfillment("TABLE_SERVICE")}
-              />
-              Table Service
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                checked={staffFulfillment === "SELF_PICKUP"}
-                onChange={() => setStaffFulfillment("SELF_PICKUP")}
-              />
-              Self Pickup
-            </label>
-          </div>
-        )}
         {mode === "delivery" && (
           <Input
             placeholder="Delivery address / notes"
@@ -398,20 +428,12 @@ export function RemoteOrdersPanel({
             className="h-10"
           />
         )}
+        {isSelf ? (
+          <p className="text-xs text-muted">
+            Self tickets go to the kitchen and print a customer slip.
+          </p>
+        ) : null}
       </div>
-
-      {items.length > 0 && (
-        <StaffCartPanel
-          items={items}
-          total={total()}
-          maxPrepTime={maxPrepTime()}
-          placing={placing}
-          onUpdateQuantity={updateQuantity}
-          onUpdateNotes={updateNotes}
-          onPlaceOrder={() => void placeOrder()}
-          onClearCart={handleClearCart}
-        />
-      )}
 
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -438,18 +460,49 @@ export function RemoteOrdersPanel({
             ...category,
             icon: category.icon ?? "🍽️",
           }))}
-          onOrder={() => void placeOrder()}
+          onOrder={() => setCartOpen(true)}
           ordering={placing}
           canOrder
           cart={cartControls}
           tapToSelect
-          orderButtonLabel={
-            placing
-              ? "Sending order..."
-              : `Send to kitchen · ${items.reduce((sum, item) => sum + item.quantity, 0)} items`
-          }
+          layout="dense"
+          hideCheckout
         />
       )}
+
+      {cartCount > 0 && !cartOpen ? (
+        <div className="fixed bottom-5 left-1/2 z-[85] -translate-x-1/2">
+          <Button type="button" size="lg" onClick={() => setCartOpen(true)}>
+            <ShoppingBag className="w-5 h-5" />
+            View cart ({cartCount}) · {formatCurrency(total())}
+          </Button>
+        </div>
+      ) : null}
+
+      {lastChit && cartCount === 0 && success ? (
+        <div className="flex justify-end">
+          <Button type="button" variant="secondary" size="sm" onClick={() => void printTicket(lastChit)}>
+            <Printer className="w-4 h-4" />
+            Print last ticket
+          </Button>
+        </div>
+      ) : null}
+
+      <StaffCartDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        items={items}
+        total={total()}
+        maxPrepTime={maxPrepTime()}
+        placing={placing}
+        printing={printing}
+        onUpdateQuantity={updateQuantity}
+        onUpdateNotes={updateNotes}
+        onPlaceOrder={() => void placeOrder(isSelf)}
+        onClearCart={handleClearCart}
+        onPrint={() => void handlePrint()}
+        placeLabel={isSelf ? "Send & print" : "Send to kitchen"}
+      />
     </div>
   );
 }
@@ -479,8 +532,8 @@ function ModePicker({
             className={cn(
               "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors",
               active
-                ? "bg-violet-500/20 border-violet-500/40 text-violet-100"
-                : "bg-white/5 border-white/10 text-zinc-400 hover:text-white",
+                ? "bg-violet-500/20 border-violet-500/40 text-violet-800 dark:text-violet-100"
+                : "bg-white/5 border-white/10 text-muted hover:text-foreground",
             )}
           >
             <Icon className="w-4 h-4" />

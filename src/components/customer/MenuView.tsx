@@ -53,6 +53,59 @@ interface Category {
   items: MenuItem[];
 }
 
+function DenseMenuItemCard({
+  item,
+  inCart,
+  onAdd,
+  onAddWithModifiers,
+  hasModifiers,
+}: {
+  item: MenuItem;
+  inCart: { quantity: number } | undefined;
+  onAdd: () => void;
+  onAddWithModifiers?: () => void;
+  hasModifiers?: boolean;
+}) {
+  const handleTapSelect = () => {
+    if (hasModifiers && onAddWithModifiers) onAddWithModifiers();
+    else onAdd();
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleTapSelect}
+      className={cn(
+        "rounded-xl border p-2 text-left transition-colors min-h-[4.25rem]",
+        inCart
+          ? "border-orange-500/40 bg-orange-500/10"
+          : "border-white/10 bg-white/5 hover:border-orange-500/25 hover:bg-white/10",
+      )}
+    >
+      <div className="flex items-start justify-between gap-1">
+        <p className="text-xs font-semibold text-foreground leading-snug line-clamp-2">{item.name}</p>
+        {item.isVeg ? (
+          <span className="w-3 h-3 rounded-sm border border-emerald-500 flex items-center justify-center shrink-0 mt-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          </span>
+        ) : (
+          <span className="w-3 h-3 rounded-sm border border-red-500 flex items-center justify-center shrink-0 mt-0.5">
+            <span className="w-0 h-0 border-l-[2px] border-r-[2px] border-b-[3.5px] border-l-transparent border-r-transparent border-b-red-500" />
+          </span>
+        )}
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-1">
+        <span className="text-xs font-bold text-orange-400">{formatCurrency(item.price)}</span>
+        {inCart ? (
+          <span className="text-[10px] font-semibold text-orange-200">×{inCart.quantity}</span>
+        ) : (
+          <span className="text-[10px] text-muted">{hasModifiers ? "Customize" : "Add"}</span>
+        )}
+      </div>
+    </button>
+  );
+}
+
 function MenuItemCard({
   item,
   inCart,
@@ -179,6 +232,8 @@ export function MenuView({
   cart,
   orderButtonLabel,
   tapToSelect = false,
+  layout = "list",
+  hideCheckout = false,
 }: {
   categories: Category[];
   onOrder: () => void;
@@ -187,6 +242,8 @@ export function MenuView({
   cart?: MenuCartControls;
   orderButtonLabel?: string;
   tapToSelect?: boolean;
+  layout?: "list" | "dense";
+  hideCheckout?: boolean;
 }) {
   const [activeCategory, setActiveCategory] = useState(categories[0]?.slug || "");
   const [searchQuery, setSearchQuery] = useState("");
@@ -431,7 +488,7 @@ export function MenuView({
       </div>
 
       {/* All categories — vertical scroll */}
-      <div className="mt-5 space-y-8">
+      <div className={cn("mt-5", layout === "dense" ? "space-y-4" : "space-y-8")}>
         {isSearching && searchResults.length === 0 && (
           <div className="text-center py-12 text-zinc-500">
             <Search className="w-10 h-10 mx-auto mb-3 opacity-40" />
@@ -474,33 +531,43 @@ export function MenuView({
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  <div className="space-y-3 pb-2">
+                  <div className={cn(
+                    "pb-2",
+                    layout === "dense"
+                      ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
+                      : "space-y-3",
+                  )}>
                     {cat.items.map((item) => {
                       const inCartLines = items.filter((i) => i.menuItemId === item.id);
                       const inCartQty = inCartLines.reduce((s, i) => s + i.quantity, 0);
                       const hasModifiers = Boolean(item.modifierGroups?.length);
                       const firstLine = inCartLines[0];
-                      return (
+                      const shared = {
+                        item,
+                        inCart: inCartQty > 0 ? { quantity: inCartQty } : undefined,
+                        hasModifiers,
+                        onAdd: () => {
+                          if (!canOrder) return;
+                          addItem({
+                            menuItemId: item.id,
+                            name: item.name,
+                            price: item.price,
+                            basePrice: item.price,
+                            prepTimeMinutes: item.prepTimeMinutes,
+                          });
+                        },
+                        onAddWithModifiers: () => {
+                          if (!canOrder) return;
+                          setPickerItem(item);
+                        },
+                      };
+                      return layout === "dense" ? (
+                        <DenseMenuItemCard key={item.id} {...shared} />
+                      ) : (
                         <MenuItemCard
                           key={item.id}
-                          item={item}
-                          inCart={inCartQty > 0 ? { quantity: inCartQty } : undefined}
-                          hasModifiers={hasModifiers}
+                          {...shared}
                           tapToSelect={tapToSelect}
-                          onAdd={() => {
-                            if (!canOrder) return;
-                            addItem({
-                              menuItemId: item.id,
-                              name: item.name,
-                              price: item.price,
-                              basePrice: item.price,
-                              prepTimeMinutes: item.prepTimeMinutes,
-                            });
-                          }}
-                          onAddWithModifiers={() => {
-                            if (!canOrder) return;
-                            setPickerItem(item);
-                          }}
                           onUpdateQty={(qty) => {
                             if (!canOrder || !firstLine) return;
                             updateQuantity(firstLine.lineId, qty);
@@ -519,7 +586,7 @@ export function MenuView({
 
       {/* Floating cart */}
       <AnimatePresence>
-        {cartCount > 0 && (
+        {!hideCheckout && cartCount > 0 && (
           <motion.div
             initial={{ y: 100 }}
             animate={{ y: 0 }}

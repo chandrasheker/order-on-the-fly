@@ -13,6 +13,7 @@ import {
 import { Button, Badge, Spinner, Input, Select } from "@/components/ui";
 import { cn, formatCurrency } from "@/lib/utils";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
+import { FLOOR_STATE_STYLES } from "@/lib/floor-state-styles";
 
 type FloorTable = {
   id: string;
@@ -42,16 +43,7 @@ type Server = { id: string; name: string };
 
 type StateLegend = Record<string, { label: string; description: string }>;
 
-const STATE_STYLES: Record<string, string> = {
-  available: "border-zinc-600/40 bg-zinc-800/40 text-zinc-400",
-  seated: "border-blue-500/40 bg-blue-500/10 text-blue-300",
-  ordering: "border-violet-500/40 bg-violet-500/10 text-violet-300",
-  kitchen: "border-orange-500/40 bg-orange-500/10 text-orange-300",
-  ready: "border-cyan-500/40 bg-cyan-500/10 text-cyan-300",
-  eating: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
-  payment: "border-yellow-500/40 bg-yellow-500/10 text-yellow-300",
-  overdue: "border-red-500/50 bg-red-500/15 text-red-300 animate-pulse",
-};
+const STATE_STYLES = FLOOR_STATE_STYLES;
 
 export default function FloorPlanPage() {
   const [tables, setTables] = useState<FloorTable[]>([]);
