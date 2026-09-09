@@ -98,8 +98,8 @@ export function TableOrderingPanel({ compact = false }: { compact?: boolean }) {
         <>
           {!compact && (
           <p className="text-xs text-muted mb-3">
-            Open a table when guests are seated so they can scan the QR and order. Close it when
-            they leave to block remote misuse of saved links.
+            Tables stay open for QR orders when empty. Disable a table only if you need to block
+            it; it stays closed until you enable it again.
           </p>
           )}
           <div className={cn(compact ? "grid grid-cols-2 gap-2" : "flex flex-wrap gap-2")}>

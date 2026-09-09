@@ -146,6 +146,7 @@ async function seedRestaurant(
       tenantId,
       branchId: defaultBranch?.id ?? null,
       floorId: defaultFloor?.id ?? null,
+      orderingEnabled: true,
     });
   }
   if (tableRows.length) {

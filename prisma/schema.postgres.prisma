@@ -289,7 +289,7 @@ model Table {
   kind         TableKind      @default(DINE_IN)
   serviceLabel String?
   isActive     Boolean        @default(true)
-  orderingEnabled Boolean     @default(false)
+  orderingEnabled Boolean     @default(true)
   orderingOpenedAt DateTime?
   maxSessions  Int            @default(2)
   positionX    Float?

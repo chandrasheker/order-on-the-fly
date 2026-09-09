@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { todayDateString, isOrderItemOpen } from "@/lib/utils";
-import { openTableOrdering, closeTableOrdering, hasOpenTableWork } from "@/lib/table-ordering-service";
+import { openTableOrdering, releaseTableVisit, hasOpenTableWork } from "@/lib/table-ordering-service";
 import { getTableDraftItemCounts } from "@/lib/table-cart-draft-service";
 import { getTableTabPaymentSummary } from "@/lib/table-tab-service";
 
@@ -229,7 +229,7 @@ export async function updateTableFloor(
     if (await hasOpenTableWork(tableId)) {
       return { error: "Table has open orders or an unpaid bill" as const };
     }
-    await closeTableOrdering(tableId);
+    await releaseTableVisit(tableId);
     const updated = await prisma.table.update({
       where: { id: tableId },
       data: {

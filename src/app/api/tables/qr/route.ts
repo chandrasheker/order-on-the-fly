@@ -68,6 +68,7 @@ async function handlePOST(req: Request) {
         qrToken: `${restaurant?.slug ?? "table"}-table-${tableNum}`,
         maxSessions: restaurant?.defaultMaxSessions ?? 2,
         restaurantId: session.restaurantId,
+        orderingEnabled: true,
       },
     });
     tables.push(table);
