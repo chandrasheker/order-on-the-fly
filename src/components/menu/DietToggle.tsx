@@ -1,5 +1,33 @@
 import { cn } from "@/lib/utils";
 
+export function DietBadge({ isVeg, className }: { isVeg: boolean; className?: string }) {
+  return isVeg ? (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 text-xs font-medium text-emerald-800 dark:text-emerald-400 border border-emerald-600/40 px-1.5 py-0.5 rounded",
+        className,
+      )}
+    >
+      <span className="w-3 h-3 rounded-sm border-2 border-emerald-600 flex items-center justify-center shrink-0">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+      </span>
+      Veg
+    </span>
+  ) : (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 text-xs font-medium text-red-800 dark:text-red-400 border border-red-600/40 px-1.5 py-0.5 rounded",
+        className,
+      )}
+    >
+      <span className="w-3 h-3 rounded-sm border-2 border-red-600 flex items-center justify-center shrink-0">
+        <span className="w-0 h-0 border-l-[2.5px] border-r-[2.5px] border-b-[4px] border-l-transparent border-r-transparent border-b-red-600" />
+      </span>
+      Non-veg
+    </span>
+  );
+}
+
 export function DietToggle({
   isVeg,
   onChange,
