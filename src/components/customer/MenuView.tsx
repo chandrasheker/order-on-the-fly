@@ -588,6 +588,43 @@ export function MenuView({
                 )}
               />
             </button>
+            {dense ? (
+              isExpanded ? (
+                <div className="pb-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                  {cat.items.map((item) => {
+                    const inCartLines = items.filter((i) => i.menuItemId === item.id);
+                    const inCartQty = inCartLines.reduce((s, i) => s + i.quantity, 0);
+                    const hasModifiers = Boolean(item.modifierGroups?.length);
+                    const firstLine = inCartLines[0];
+                    const shared = {
+                      item,
+                      inCart: inCartQty > 0 ? { quantity: inCartQty } : undefined,
+                      hasModifiers,
+                      onAdd: () => {
+                        if (!canOrder || isOutOfStock(item) || item.isAvailable === false) return;
+                        addItem({
+                          menuItemId: item.id,
+                          name: item.name,
+                          price: item.price,
+                          basePrice: item.price,
+                          prepTimeMinutes: item.prepTimeMinutes,
+                        });
+                      },
+                      onAddWithModifiers: () => {
+                        if (!canOrder || isOutOfStock(item) || item.isAvailable === false) return;
+                        setPickerItem(item);
+                      },
+                    };
+                    const onUpdateQty = (qty: number) => {
+                      if (!canOrder || !firstLine) return;
+                      const next = qty > inCartQty ? firstLine.quantity + 1 : firstLine.quantity - 1;
+                      updateQuantity(firstLine.lineId, next);
+                    };
+                    return <DenseMenuItemCard key={item.id} {...shared} onUpdateQty={onUpdateQty} />;
+                  })}
+                </div>
+              ) : null
+            ) : (
             <AnimatePresence initial={false}>
               {isExpanded && (
                 <motion.div
@@ -597,12 +634,7 @@ export function MenuView({
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  <div className={cn(
-                    "pb-2",
-                    layout === "dense"
-                      ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2"
-                      : "space-y-3",
-                  )}>
+                  <div className="pb-2 space-y-3">
                     {cat.items.map((item) => {
                       const inCartLines = items.filter((i) => i.menuItemId === item.id);
                       const inCartQty = inCartLines.reduce((s, i) => s + i.quantity, 0);
@@ -632,9 +664,7 @@ export function MenuView({
                         const next = qty > inCartQty ? firstLine.quantity + 1 : firstLine.quantity - 1;
                         updateQuantity(firstLine.lineId, next);
                       };
-                      return layout === "dense" ? (
-                        <DenseMenuItemCard key={item.id} {...shared} onUpdateQty={onUpdateQty} />
-                      ) : (
+                      return (
                         <MenuItemCard
                           key={item.id}
                           {...shared}
@@ -647,6 +677,7 @@ export function MenuView({
                 </motion.div>
               )}
             </AnimatePresence>
+            )}
           </section>
         );
         })}

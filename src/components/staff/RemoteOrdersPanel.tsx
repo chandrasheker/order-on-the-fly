@@ -531,23 +531,18 @@ export function RemoteOrdersPanel({
 
   if (splitCart) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row gap-3 lg:gap-6">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {offlineBanner ? <div className="shrink-0 mb-2">{offlineBanner}</div> : null}
-          <div className="shrink-0 pb-2 mb-2 border-b border-[color:var(--surface-border)]">
+      <div className="flex flex-1 flex-col lg:min-h-0 lg:flex-row gap-3 lg:gap-6">
+        <div className="flex min-w-0 flex-1 flex-col lg:min-h-0">
+          {offlineBanner ? <div className="mb-2">{offlineBanner}</div> : null}
+          <div className="pb-2 mb-2 border-b border-[color:var(--surface-border)] lg:shrink-0">
             {orderControls}
           </div>
-          <div
-            data-take-order-scroll
-            className="take-order-scroll min-h-0 flex-1 overflow-y-auto"
-          >
-            {menuBlock}
-          </div>
+          <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">{menuBlock}</div>
         </div>
         <aside className="hidden lg:block w-[22rem] shrink-0 h-full overflow-y-auto">
           <StaffCartPanel {...cartProps} allowEmpty />
         </aside>
-        <div className="lg:hidden shrink-0 border-t border-[color:var(--surface-border)] bg-app-shell px-1 pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[color:var(--surface-border)] bg-app-shell px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           {cartCount === 0 ? (
             <p className="text-sm text-muted text-center py-2">Tap dishes to add them to the cart</p>
           ) : (
