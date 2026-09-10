@@ -196,7 +196,7 @@ async function handlePOST(req: NextRequest) {
       staffSessionId: staffSession.id,
     };
 
-    const token = await createToken(session);
+    const token = await createToken(session, user.authVersion ?? 0);
     const homePath = await getStaffHomePath(user.restaurantId, user.role);
 
     const response = NextResponse.json({ user: session, homePath });

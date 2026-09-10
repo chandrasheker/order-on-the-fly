@@ -99,6 +99,8 @@ export function PlatformTenantOverview({
     name: "",
     ownerEmail: "",
     ownerName: "Owner",
+    ownerPassword: "",
+    confirmOwnerPassword: "",
     tableCount: "6",
   });
   const [message, setMessage] = useState("");
@@ -169,6 +171,14 @@ export function PlatformTenantOverview({
 
   const submitRestaurant = async () => {
     setMessage("");
+    if (addRestaurant.ownerPassword !== addRestaurant.confirmOwnerPassword) {
+      setMessage("Owner passwords do not match");
+      return;
+    }
+    if (addRestaurant.ownerPassword.length < 6) {
+      setMessage("Password must be at least 6 characters");
+      return;
+    }
     try {
       const res = await fetch("/api/platform/tenants", {
         method: "POST",
@@ -176,7 +186,11 @@ export function PlatformTenantOverview({
         body: JSON.stringify({
           action: "add_restaurant",
           tenantId,
-          ...addRestaurant,
+          name: addRestaurant.name,
+          ownerEmail: addRestaurant.ownerEmail,
+          ownerName: addRestaurant.ownerName,
+          ownerPassword: addRestaurant.ownerPassword,
+          tableCount: addRestaurant.tableCount,
         }),
       });
       const json = await res.json();
@@ -187,7 +201,14 @@ export function PlatformTenantOverview({
       const notices = Array.isArray(json.notices) ? json.notices.filter((n: unknown) => typeof n === "string") : [];
       setMessage([`Added ${json.restaurant.name}`, ...notices].join(" "));
       setCreatedRestaurantUrl(String(json.restaurant?.url ?? ""));
-      setAddRestaurant({ name: "", ownerEmail: "", ownerName: "Owner", tableCount: "6" });
+      setAddRestaurant({
+        name: "",
+        ownerEmail: "",
+        ownerName: "Owner",
+        ownerPassword: "",
+        confirmOwnerPassword: "",
+        tableCount: "6",
+      });
       onRestaurantsChange();
       void loadOverview();
     } catch (error) {
@@ -662,6 +683,18 @@ export function PlatformTenantOverview({
             value={addRestaurant.tableCount}
             onChange={(e) => setAddRestaurant({ ...addRestaurant, tableCount: e.target.value })}
           />
+          <Input
+            type="password"
+            placeholder="Owner password"
+            value={addRestaurant.ownerPassword}
+            onChange={(e) => setAddRestaurant({ ...addRestaurant, ownerPassword: e.target.value })}
+          />
+          <Input
+            type="password"
+            placeholder="Confirm owner password"
+            value={addRestaurant.confirmOwnerPassword}
+            onChange={(e) => setAddRestaurant({ ...addRestaurant, confirmOwnerPassword: e.target.value })}
+          />
         </div>
         {addRestaurant.name.trim() && (
           <p className="text-xs text-zinc-400">
@@ -696,6 +729,9 @@ export function PlatformTenantOverview({
           onClick={() => void submitRestaurant()}
           disabled={
             !addRestaurant.name.trim() ||
+            !addRestaurant.ownerPassword ||
+            addRestaurant.ownerPassword !== addRestaurant.confirmOwnerPassword ||
+            addRestaurant.ownerPassword.length < 6 ||
             (() => {
               try {
                 previewHostnames({

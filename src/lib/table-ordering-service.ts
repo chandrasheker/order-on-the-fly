@@ -60,9 +60,9 @@ export async function closeTableOrdering(tableId: string) {
   await endTableVisit(tableId, false);
 }
 
-/** End a visit after payment or floor clear, but keep the table QR-available. */
+/** End a visit after payment or floor clear and close QR admission. */
 export async function releaseTableVisit(tableId: string) {
-  await endTableVisit(tableId, true);
+  await endTableVisit(tableId, false);
 }
 
 export async function openTableOrdering(tableId: string) {
