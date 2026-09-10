@@ -127,7 +127,6 @@ async function seedRestaurant(
           name: member.name,
           role: member.role,
           passwordHash,
-          plainPassword: member.password,
           restaurantId: restaurant.id,
           tenantId,
           branchId: defaultBranch?.id ?? null,
@@ -146,7 +145,7 @@ async function seedRestaurant(
       tenantId,
       branchId: defaultBranch?.id ?? null,
       floorId: defaultFloor?.id ?? null,
-      orderingEnabled: true,
+      orderingEnabled: false,
     });
   }
   if (tableRows.length) {

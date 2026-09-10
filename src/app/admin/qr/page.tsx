@@ -209,7 +209,7 @@ export default function QRPage() {
         >
           {qrCodes.map((qr, i) => {
             const setting = tables.find((table) => table.id === qr.id);
-            const open = setting?.orderingEnabled ?? true;
+            const open = setting?.orderingEnabled ?? false;
             return (
               <motion.div
                 key={qr.id}

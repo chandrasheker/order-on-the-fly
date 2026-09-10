@@ -1,13 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
+import { assertPlatformPasswordPolicy } from "@/lib/password-policy";
 import { AUDIT_ACTION, AUDIT_ACTOR_TYPE, AUDIT_CATEGORY } from "@/platform/forensics/constants";
 import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
 
-export function assertPlatformPasswordPolicy(password: string) {
-  if (String(password ?? "").length < 6) {
-    throw new Error("Password must be at least 6 characters");
-  }
-}
+export { assertPlatformPasswordPolicy } from "@/lib/password-policy";
 
 export async function resetTenantAdminPassword(input: {
   tenantId: string;

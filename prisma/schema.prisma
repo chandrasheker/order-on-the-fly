@@ -274,7 +274,7 @@ model User {
   name         String
   role         Role
   slotKey      String?
-  plainPassword String?
+  authVersion  Int        @default(0)
   restaurantId String
   tenantId     String?
   tenant       Tenant?    @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -344,7 +344,7 @@ model Table {
   kind         TableKind      @default(DINE_IN)
   serviceLabel String?
   isActive     Boolean        @default(true)
-  orderingEnabled Boolean     @default(true)
+  orderingEnabled Boolean     @default(false)
   orderingOpenedAt DateTime?
   maxSessions  Int            @default(2)
   positionX    Float?

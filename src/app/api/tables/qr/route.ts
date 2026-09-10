@@ -86,7 +86,7 @@ async function handlePOST(req: Request) {
             tenantId: restaurant?.tenantId ?? null,
             branchId: branch.id,
             floorId: floor.id,
-            orderingEnabled: true,
+            orderingEnabled: false,
           },
         }),
       );
@@ -105,7 +105,7 @@ async function handlePOST(req: Request) {
             tenantId: restaurant?.tenantId ?? null,
             branchId: branch.id,
             floorId: floor.id,
-            orderingEnabled: true,
+            orderingEnabled: false,
           },
         }),
       );

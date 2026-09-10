@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, requirePlatformAdmin } from "@/lib/auth";
+import { assertPlatformPasswordPolicy } from "@/lib/password-policy";
 import type { Role } from "@/generated/prisma/client";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
@@ -86,8 +87,13 @@ async function handlePATCH(req: NextRequest) {
     }
 
     if (password !== undefined && String(password).length > 0) {
-      if (String(password).length < 6) {
-        return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+      try {
+        assertPlatformPasswordPolicy(String(password));
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Invalid password" },
+          { status: 400 },
+        );
       }
       data.passwordHash = await hashPassword(String(password));
     }
