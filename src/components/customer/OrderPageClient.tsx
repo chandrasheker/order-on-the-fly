@@ -38,6 +38,7 @@ interface RestaurantData {
   rewardTeaLabel: string;
   rewardBeverageLabel: string;
   backgroundImageUrl?: string | null;
+  logoUrl?: string | null;
   paymentQrUrl?: string | null;
   upiVpa?: string | null;
   upiMerchantName?: string | null;
@@ -88,7 +89,6 @@ export function OrderPageClient({ slug, token }: Props) {
   const [loading, setLoading] = useState(true);
   const [ordering, setOrdering] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
-  const [showNameInput, setShowNameInput] = useState(true);
   const [orderError, setOrderError] = useState("");
   const [fulfillmentChoice, setFulfillmentChoice] = useState<OrderFulfillmentMode | "">("");
   const [tabPaymentPending, setTabPaymentPending] = useState(false);
@@ -322,7 +322,7 @@ export function OrderPageClient({ slug, token }: Props) {
       <div className="min-h-screen flex items-center justify-center bg-customer-shell text-foreground p-6 relative">
         <div className="text-center max-w-sm space-y-3 relative z-10">
           <p className="font-medium">Could not load this table&apos;s menu.</p>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted">
             Try scanning the QR code again, or open{" "}
             <a href={`/order/${slug}/demo`} className="text-orange-400 underline">
               Table 1 demo
@@ -347,7 +347,7 @@ export function OrderPageClient({ slug, token }: Props) {
     !hasVisibleOrders;
 
   return (
-    <div className="min-h-screen text-white relative">
+    <div className="min-h-screen text-foreground relative">
       <CustomerPageBackground imageUrl={data.restaurant.backgroundImageUrl} />
 
       <AnimatePresence>
@@ -367,9 +367,9 @@ export function OrderPageClient({ slug, token }: Props) {
               <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
                 <Heart className="w-8 h-8 text-emerald-400" />
               </div>
-              <h2 className="text-2xl font-bold text-white mb-2">Thank you!</h2>
-              <p className="text-emerald-300 font-medium mb-1">Payment confirmed</p>
-              <p className="text-zinc-400 text-sm">
+              <h2 className="text-2xl font-bold text-foreground mb-2">Thank you!</h2>
+              <p className="text-emerald-800 dark:text-emerald-300 font-medium mb-1">Payment confirmed</p>
+              <p className="text-muted text-sm">
                 We hope you enjoyed dining at {data.restaurant.name}. Please visit again!
               </p>
             </motion.div>
@@ -379,24 +379,71 @@ export function OrderPageClient({ slug, token }: Props) {
 
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-orange-600/15 via-transparent to-purple-600/10" />
-        <div className="relative px-4 pt-8 pb-6 max-w-lg mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-sm text-orange-300 mb-3">
-            <UtensilsCrossed className="w-4 h-4" />
-            Table {data.table.number}
+        <div className="relative px-4 pt-6 pb-6 max-w-lg mx-auto">
+          <div className="flex items-center gap-3">
+            {data.restaurant.logoUrl ? (
+              <img
+                src={data.restaurant.logoUrl}
+                alt=""
+                className="h-12 w-12 rounded-xl object-contain bg-white/90 p-1 shrink-0"
+              />
+            ) : null}
+            <div className="min-w-0 text-left flex-1">
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="text-2xl font-bold drop-shadow-lg truncate">{data.restaurant.name}</h1>
+                {data.restaurant.serviceMode === "HYBRID" && !showThankYou ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFulfillmentChoice(
+                        (fulfillmentChoice || data.restaurant.hybridDefaultFulfillment) === "SELF_PICKUP"
+                          ? "TABLE_SERVICE"
+                          : "SELF_PICKUP",
+                      )
+                    }
+                    className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold border-2 border-orange-500 bg-orange-500 text-white shadow-sm"
+                  >
+                    {(fulfillmentChoice || data.restaurant.hybridDefaultFulfillment) === "SELF_PICKUP"
+                      ? "I'll collect"
+                      : "Serve at table"}
+                  </button>
+                ) : null}
+              </div>
+              <p className="text-sm text-muted mt-0.5 flex items-center gap-1 drop-shadow">
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                Scan · Order · Enjoy
+              </p>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold drop-shadow-lg">{data.restaurant.name}</h1>
-          <p className="text-sm text-zinc-300 mt-1 flex items-center justify-center gap-1 drop-shadow">
-            <Sparkles className="w-3.5 h-3.5" />
-            Scan · Order · Enjoy
-          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-sm text-orange-800 dark:text-orange-300">
+              <UtensilsCrossed className="w-4 h-4" />
+              Table {data.table.number}
+            </div>
+            {data.features?.callWaiter && tableSession.diningVerified ? (
+              <CallWaiterBar
+                tableToken={token}
+                sessionKey={tableSession.sessionKey}
+                enabled={Boolean(data.features.callWaiter)}
+                serviceMode={data.restaurant.serviceMode}
+                placement="inline"
+              />
+            ) : null}
+            <FeedbackButton
+              tableToken={token}
+              customerName={customerName}
+              orderId={latestOrderId}
+              placement="inline"
+            />
+          </div>
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 space-y-6 pb-8">
+      <div className="max-w-lg mx-auto px-4 space-y-6 pb-36">
         {tabPaymentPending && (
           <div className="p-4 rounded-2xl bg-yellow-500/15 border border-yellow-500/30 text-center space-y-2">
             <p className="font-semibold text-yellow-300">Payment pending</p>
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-muted">
               Staff is confirming your bill. You can still order more — new items will be added to
               the same table bill until payment is complete.
             </p>
@@ -407,10 +454,10 @@ export function OrderPageClient({ slug, token }: Props) {
           <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-center space-y-3">
             {!tableSession.orderingEnabled ? (
               <>
-                <ShieldAlert className="w-8 h-8 text-amber-400 mx-auto" />
+                <ShieldAlert className="w-8 h-8 text-amber-800 dark:text-amber-400 mx-auto" />
                 <div>
-                  <p className="font-semibold text-amber-300">Ordering not open yet</p>
-                  <p className="text-sm text-zinc-400 mt-1">
+                  <p className="font-semibold text-amber-800 dark:text-amber-300">Ordering not open yet</p>
+                  <p className="text-sm text-muted mt-1">
                     {tableSession.gateMessage ||
                       "Please ask your server to enable ordering when you are seated at this table."}
                   </p>
@@ -418,34 +465,34 @@ export function OrderPageClient({ slug, token }: Props) {
               </>
             ) : !tableSession.diningVerified ? (
               <>
-                <QrCode className="w-8 h-8 text-red-400 mx-auto" />
+                <QrCode className="w-8 h-8 text-red-800 dark:text-red-400 mx-auto" />
                 <div>
-                  <p className="font-semibold text-red-300">Scan the QR at your table</p>
-                  <p className="text-sm text-zinc-400 mt-1">
+                  <p className="font-semibold text-red-800 dark:text-red-300">Scan the QR at your table</p>
+                  <p className="text-sm text-muted mt-1">
                     {tableSession.gateMessage ||
                       "Saved links cannot be used to order remotely. Scan the QR code on your table to verify you are dining here."}
                   </p>
                 </div>
                 <Link
                   href={tableSession.checkInPath}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-white"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-foreground"
                 >
                   Scan / check in again
                 </Link>
               </>
             ) : (
               <>
-                <Users className="w-8 h-8 text-red-400 mx-auto" />
+                <Users className="w-8 h-8 text-red-800 dark:text-red-400 mx-auto" />
                 <div>
-                  <p className="font-semibold text-red-300">Session unavailable</p>
-                  <p className="text-sm text-zinc-400 mt-1">
+                  <p className="font-semibold text-red-800 dark:text-red-300">Session unavailable</p>
+                  <p className="text-sm text-muted mt-1">
                     {tableSession.gateMessage ||
                       "Your table session expired or this table is full. Scan the QR code again."}
                   </p>
                 </div>
                 <Link
                   href={tableSession.checkInPath}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-white"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-sm text-foreground"
                 >
                   Scan QR again
                 </Link>
@@ -462,31 +509,6 @@ export function OrderPageClient({ slug, token }: Props) {
             paused={Boolean(data.kitchenPaused)}
             message={data.kitchenPauseMessage}
           />
-        )}
-
-        {data.features?.callWaiter && tableSession.diningVerified && (
-          <CallWaiterBar
-            tableToken={token}
-            sessionKey={tableSession.sessionKey}
-            enabled={Boolean(data.features.callWaiter)}
-            serviceMode={data.restaurant.serviceMode}
-          />
-        )}
-
-        {showNameInput && canOrder && (
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
-            <label className="text-sm text-zinc-400 mb-2 block">Your name (optional)</label>
-            <div className="flex gap-2">
-              <Input
-                placeholder="e.g. Rahul"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-              />
-              <Button variant="secondary" onClick={() => setShowNameInput(false)}>
-                OK
-              </Button>
-            </div>
-          </div>
         )}
 
         {orderPlaced && (
@@ -511,6 +533,20 @@ export function OrderPageClient({ slug, token }: Props) {
           />
         )}
 
+        {data.features?.promotions && (data.combos?.length ?? 0) > 0 && !showThankYou && (
+          <ComboMealsSection
+            combos={data.combos ?? []}
+            canOrder={canOrder}
+            onAddCombo={addCombo}
+          />
+        )}
+
+        {comboCart.length > 0 && (
+          <p className="text-sm text-center text-orange-300">
+            {comboCart.length} combo{comboCart.length > 1 ? "s" : ""} ready to order
+          </p>
+        )}
+
         {hasVisibleOrders && !showThankYou && (
           <OrderTracker
             orders={orders}
@@ -525,6 +561,36 @@ export function OrderPageClient({ slug, token }: Props) {
             serviceMode={data.restaurant.serviceMode}
             pickupLocationLabel={data.restaurant.pickupLocationLabel}
           />
+        )}
+
+        <div id="customer-menu">
+          <MenuView
+            categories={data.categories}
+            onOrder={placeOrder}
+            ordering={ordering}
+            canOrder={canOrder && !showThankYou}
+            checkoutExtra={
+              canOrder && !showThankYou ? (
+                <div className="rounded-2xl border border-white/15 bg-app-shell/95 p-2.5 space-y-2 shadow-xl">
+                  <Input
+                    placeholder="Your name (optional)"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                  {data.features?.promotions ? (
+                    <PromoCodeInput enabled compact />
+                  ) : null}
+                </div>
+              ) : null
+            }
+          />
+        </div>
+
+        {data.restaurant.serviceMode === "SELF_SERVICE" && canOrder && (
+          <p className="text-sm text-center text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+            Payment must be completed before collection from {data.restaurant.pickupLocationLabel || "the pickup counter"}.
+          </p>
         )}
 
         {hasVisibleOrders && !showThankYou && (
@@ -550,78 +616,9 @@ export function OrderPageClient({ slug, token }: Props) {
             }}
           />
         )}
-
-        {data.features?.promotions && canOrder && !showThankYou && (
-          <PromoCodeInput enabled={Boolean(data.features.promotions)} />
-        )}
-
-        {data.features?.promotions && (data.combos?.length ?? 0) > 0 && !showThankYou && (
-          <ComboMealsSection
-            combos={data.combos ?? []}
-            canOrder={canOrder}
-            onAddCombo={addCombo}
-          />
-        )}
-
-        {comboCart.length > 0 && (
-          <p className="text-sm text-center text-orange-300">
-            {comboCart.length} combo{comboCart.length > 1 ? "s" : ""} ready to order
-          </p>
-        )}
-
-        {data.restaurant.serviceMode === "SELF_SERVICE" && canOrder && (
-          <p className="text-sm text-center text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
-            Payment must be completed before collection from {data.restaurant.pickupLocationLabel || "the pickup counter"}.
-          </p>
-        )}
-
-        {data.restaurant.serviceMode === "HYBRID" && canOrder && (
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-            <p className="font-medium">How would you like your order?</p>
-            <label className="flex items-start gap-3">
-              <input
-                type="radio"
-                checked={(fulfillmentChoice || data.restaurant.hybridDefaultFulfillment) === "TABLE_SERVICE"}
-                onChange={() => setFulfillmentChoice("TABLE_SERVICE")}
-                className="mt-1"
-              />
-              <span>
-                <span className="block font-medium">Serve at my table</span>
-                <span className="text-sm text-zinc-400">Staff will bring your order when it is ready.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3">
-              <input
-                type="radio"
-                checked={(fulfillmentChoice || data.restaurant.hybridDefaultFulfillment) === "SELF_PICKUP"}
-                onChange={() => setFulfillmentChoice("SELF_PICKUP")}
-                className="mt-1"
-              />
-              <span>
-                <span className="block font-medium">I&apos;ll collect from the counter</span>
-                <span className="text-sm text-zinc-400">
-                  We&apos;ll notify you when the order is ready. Payment must be completed before collection.
-                </span>
-              </span>
-            </label>
-          </div>
-        )}
-
-        <div id="customer-menu">
-          <MenuView
-            categories={data.categories}
-            onOrder={placeOrder}
-            ordering={ordering}
-            canOrder={canOrder && !showThankYou}
-          />
-        </div>
       </div>
 
-      <FeedbackButton
-        tableToken={token}
-        customerName={customerName}
-        orderId={latestOrderId}
-      />
     </div>
   );
 }
+

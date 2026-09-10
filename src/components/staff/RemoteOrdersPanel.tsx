@@ -1,16 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Phone, UserRound, ShoppingBag, Truck } from "lucide-react";
+import { Phone, UserRound, ShoppingBag, Truck, Printer } from "lucide-react";
 import { MenuView } from "@/components/customer/MenuView";
-import { StaffCartPanel } from "@/components/staff/StaffCartPanel";
-import { Input, Spinner } from "@/components/ui";
-import { cn } from "@/lib/utils";
+import { StaffCartDrawer, StaffCartPanel } from "@/components/staff/StaffCartPanel";
+import { Button, Input, Spinner } from "@/components/ui";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useStaffCartStore } from "@/store/staff-cart";
 import { useOfflineOrderSync } from "@/hooks/useOfflineOrderSync";
 import { useCartDraftSync, clearRemoteCartDraft } from "@/hooks/useCartDraftSync";
+import { useFloorTableStates } from "@/hooks/useFloorTableStates";
+import { useThermalPrinter } from "@/hooks/useThermalPrinter";
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
+import { FLOOR_STATE_STYLES, TABLE_CLOSED_STYLE, notifyFloorChanged } from "@/lib/floor-state-styles";
+import { printStaffTicketHtml } from "@/lib/print-staff-ticket";
 
 type OrderMode = "walkin" | "takeaway" | "delivery";
 
@@ -41,6 +45,9 @@ type MenuCategory = {
 
 interface RemoteOrdersPanelProps {
   onOrderPlaced?: (result?: { kitchenChit?: KitchenChitPayload | null }) => void;
+  initialMode?: OrderMode;
+  stickyClassName?: string;
+  splitCart?: boolean;
 }
 
 const MODE_META: Record<
@@ -69,8 +76,13 @@ const MODE_META: Record<
   },
 };
 
-export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
-  const [mode, setMode] = useState<OrderMode>("walkin");
+export function RemoteOrdersPanel({
+  onOrderPlaced,
+  initialMode = "walkin",
+  stickyClassName = "top-[4.5rem]",
+  splitCart = false,
+}: RemoteOrdersPanelProps) {
+  const [mode, setMode] = useState<OrderMode>(initialMode);
   const [tables, setTables] = useState<TableRow[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
@@ -80,8 +92,12 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
   const [success, setSuccess] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
-  const [serviceMode, setServiceMode] = useState<string>("FULL_SERVICE");
   const [staffFulfillment, setStaffFulfillment] = useState<"TABLE_SERVICE" | "SELF_PICKUP">("TABLE_SERVICE");
+  const [cartOpen, setCartOpen] = useState(false);
+  const [tablesOpen, setTablesOpen] = useState(true);
+  const [lastChit, setLastChit] = useState<KitchenChitPayload | null>(null);
+  const { states } = useFloorTableStates();
+  const { printKitchenChit, printing } = useThermalPrinter();
 
   const {
     tableId,
@@ -103,18 +119,8 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
     () => dineInTables.find((table) => table.id === tableId) ?? null,
     [dineInTables, tableId],
   );
-
-  const readyForMenu = meta.needsTable ? Boolean(tableId) : true;
-
-  useEffect(() => {
-    void fetch("/api/restaurant/service-mode")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (!json?.settings) return;
-        setServiceMode(json.settings.serviceMode);
-        setStaffFulfillment(json.settings.hybridDefaultFulfillment ?? "TABLE_SERVICE");
-      });
-  }, []);
+  const cartCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const isSelf = !meta.channel && staffFulfillment === "SELF_PICKUP";
 
   const loadTables = useCallback(async () => {
     try {
@@ -166,8 +172,8 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
   }, [loadTables]);
 
   useEffect(() => {
-    if (readyForMenu) void loadMenu();
-  }, [readyForMenu, loadMenu]);
+    void loadMenu();
+  }, [loadMenu]);
 
   const resetMode = (next: OrderMode) => {
     setMode(next);
@@ -177,7 +183,17 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
     setOrderNotes("");
     setError("");
     setSuccess("");
+    setCartOpen(false);
+    setTablesOpen(true);
   };
+
+  useEffect(() => {
+    if (initialMode !== mode) {
+      resetMode(initialMode);
+    }
+    // Sync only when the dashboard button changes the starting mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- parent intent, not every mode flip
+  }, [initialMode]);
 
   const handleClearCart = () => {
     clearCart();
@@ -193,9 +209,21 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
     [items, addItem, updateQuantity, total, maxPrepTime],
   );
 
-  const placeOrder = async () => {
+  const printTicket = async (chit: KitchenChitPayload) => {
+    try {
+      await printKitchenChit(chit);
+    } catch {
+      printStaffTicketHtml(chit);
+    }
+  };
+
+  const placeOrder = async (alsoPrint: boolean) => {
     if (items.length === 0) return;
-    if (meta.needsTable && !tableId) return;
+    if (meta.needsTable && !tableId) {
+      setError("Pick a table before sending this order to the kitchen.");
+      setCartOpen(false);
+      return;
+    }
 
     setPlacing(true);
     setError("");
@@ -229,7 +257,7 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
               ...payload,
               tableId,
               openTable: true,
-              fulfillmentMode: serviceMode === "HYBRID" ? staffFulfillment : undefined,
+              fulfillmentMode: staffFulfillment,
             }),
           });
         }
@@ -245,11 +273,15 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
         });
         setSuccess("Offline — order queued and will sync when connection returns.");
         clearCart();
+        setCartOpen(false);
         return;
       }
 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Could not place order");
+
+      const chit = (json.kitchenChit ?? null) as KitchenChitPayload | null;
+      if (chit) setLastChit(chit);
 
       const label =
         mode === "walkin" && selectedTable
@@ -259,13 +291,27 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
       clearCart();
       setCustomerPhone("");
       setOrderNotes("");
+      setCartOpen(false);
       await loadTables();
-      onOrderPlaced?.({ kitchenChit: json.kitchenChit ?? null });
+      notifyFloorChanged();
+      onOrderPlaced?.({ kitchenChit: chit });
+
+      if ((alsoPrint || isSelf) && chit) {
+        await printTicket(chit);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not place order");
     } finally {
       setPlacing(false);
     }
+  };
+
+  const handlePrint = async () => {
+    if (lastChit && items.length === 0) {
+      await printTicket(lastChit);
+      return;
+    }
+    await placeOrder(true);
   };
 
   if (loadingTables) {
@@ -278,150 +324,164 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
 
   const modes = Object.keys(MODE_META) as OrderMode[];
 
-  if (meta.needsTable && !tableId) {
-    return (
-      <div className="space-y-5">
-        <ModePicker modes={modes} mode={mode} onChange={resetMode} />
+  const cartProps = {
+    items,
+    total: total(),
+    maxPrepTime: maxPrepTime(),
+    placing,
+    printing,
+    onUpdateQuantity: updateQuantity,
+    onUpdateNotes: updateNotes,
+    onPlaceOrder: () => void placeOrder(isSelf),
+    onClearCart: handleClearCart,
+    onPrint: () => void handlePrint(),
+    placeLabel: isSelf ? "Send & print" : "Send to kitchen",
+  };
 
-        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
-          <p className="text-sm text-zinc-400">{meta.description}</p>
-        </div>
+  const offlineBanner = (!online || pendingCount > 0) && (
+    <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-200 flex items-center justify-between gap-3">
+      <span>
+        {!online ? "Offline mode — orders queue locally." : `${pendingCount} order(s) waiting to sync.`}
+      </span>
+      {online && pendingCount > 0 && (
+        <button type="button" className="underline" onClick={() => void syncPending()}>
+          Sync now
+        </button>
+      )}
+    </div>
+  );
 
+  const orderControls = (
+    <div className="space-y-2">
+      <ModePicker modes={modes} mode={mode} onChange={resetMode} compact />
+
+      {meta.needsTable && (
         <div>
-          <p className="text-sm text-zinc-400 mb-3">Select table</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {dineInTables.map((table) => (
-              <button
-                key={table.id}
-                type="button"
-                onClick={() => setTable(table.id)}
-                className={cn(
-                  "rounded-2xl border p-4 text-left transition-all hover:border-violet-500/40 hover:bg-violet-500/10",
-                  table.orderingEnabled
-                    ? "border-emerald-500/30 bg-emerald-500/5"
-                    : "border-white/10 bg-white/5",
-                )}
-              >
-                <p className="text-lg font-bold text-white">Table {table.number}</p>
-                <p className="text-xs text-zinc-400 mt-1">
-                  {table.orderingEnabled ? "Open" : "Closed · staff can order"}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-5 pb-28">
-      {(!online || pendingCount > 0) && (
-        <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-200 flex items-center justify-between gap-3">
-          <span>
-            {!online ? "Offline mode — orders queue locally." : `${pendingCount} order(s) waiting to sync.`}
-          </span>
-          {online && pendingCount > 0 && (
-            <button type="button" className="underline" onClick={() => void syncPending()}>
-              Sync now
+          {selectedTable && (
+            <button
+              type="button"
+              onClick={() => setTablesOpen((open) => !open)}
+              className="lg:hidden mb-1.5 inline-flex w-full items-center justify-between rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-sm font-semibold text-orange-900 dark:text-orange-100"
+            >
+              <span>Table {selectedTable.number}</span>
+              <span className="text-xs font-medium text-muted">{tablesOpen ? "Hide tables" : "Change"}</span>
             </button>
           )}
+          {!selectedTable ? (
+            <p className="text-xs text-muted mb-1.5">Pick a table, then add items</p>
+          ) : (
+            <p className="hidden lg:block text-xs text-muted mb-1.5">Table {selectedTable.number}</p>
+          )}
+          <div
+            className={cn(
+              "flex gap-1.5 overflow-x-auto overscroll-x-contain touch-pan-x pb-0.5 lg:grid lg:grid-cols-8 lg:overflow-visible lg:touch-auto lg:gap-2",
+              selectedTable && !tablesOpen && "hidden lg:grid",
+            )}
+          >
+            {dineInTables.map((table) => {
+              const floorState = states[table.id]?.state;
+              const closed = !table.orderingEnabled && (!floorState || floorState === "available");
+              const selected = tableId === table.id;
+              return (
+                <button
+                  key={table.id}
+                  type="button"
+                  onClick={() => {
+                    setTable(table.id === tableId ? null : table.id);
+                    if (table.id !== tableId) setTablesOpen(false);
+                  }}
+                  className={cn(
+                    "h-10 w-11 shrink-0 rounded-xl border text-sm font-bold transition-colors lg:h-14 lg:w-auto",
+                    closed
+                      ? TABLE_CLOSED_STYLE
+                      : FLOOR_STATE_STYLES[floorState ?? "available"] ?? FLOOR_STATE_STYLES.available,
+                    selected && "ring-2 ring-orange-400 border-orange-400",
+                  )}
+                >
+                  T{table.number}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
-      <div className="sticky top-[4.5rem] z-20 -mx-1 px-1 py-3 bg-app-shell/95 backdrop-blur-md border-b border-[color:var(--surface-border)] space-y-3">
-        <ModePicker modes={modes} mode={mode} onChange={resetMode} compact />
 
-        <div className="flex flex-wrap items-center gap-3 justify-between">
-          <div className="flex items-center gap-3">
-            {meta.needsTable && (
-              <button
-                type="button"
-                onClick={() => setTable(null)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Tables
-              </button>
+      <div className="flex gap-2 min-w-0">
+        {mode === "walkin" ? (
+          <button
+            type="button"
+            onClick={() =>
+              setStaffFulfillment((current) =>
+                current === "SELF_PICKUP" ? "TABLE_SERVICE" : "SELF_PICKUP",
+              )
+            }
+            className={cn(
+              "inline-flex shrink-0 items-center justify-center px-2.5 py-2 rounded-xl border text-xs sm:text-sm font-semibold",
+              isSelf
+                ? "bg-sky-500/20 border-sky-500/40 text-sky-800 dark:text-sky-200"
+                : "bg-orange-500/15 border-orange-500/40 text-orange-800 dark:text-orange-200",
             )}
-            <div>
-              <p className="font-semibold text-white">{meta.label}</p>
-              {selectedTable && (
-                <p className="text-xs text-zinc-500">Table {selectedTable.number}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 flex-1 justify-end">
-            <div className="flex items-center gap-2 min-w-[180px]">
-              <UserRound className="w-4 h-4 text-zinc-500 shrink-0" />
-              <Input
-                placeholder="Guest name"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="h-10"
-              />
-            </div>
-            {mode === "delivery" && (
-              <Input
-                placeholder="Phone"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                className="h-10 min-w-[160px]"
-              />
-            )}
-          </div>
+          >
+            {isSelf ? "Self" : "Table"}
+          </button>
+        ) : null}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <UserRound className="w-4 h-4 text-muted shrink-0" />
+          <Input
+            placeholder="Guest name"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            className="h-10 min-w-0"
+          />
         </div>
-
-        {serviceMode === "HYBRID" && !meta.channel && (
-          <div className="flex gap-3 text-sm">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                checked={staffFulfillment === "TABLE_SERVICE"}
-                onChange={() => setStaffFulfillment("TABLE_SERVICE")}
-              />
-              Table Service
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                checked={staffFulfillment === "SELF_PICKUP"}
-                onChange={() => setStaffFulfillment("SELF_PICKUP")}
-              />
-              Self Pickup
-            </label>
-          </div>
-        )}
-        {mode === "delivery" && (
+      </div>
+      {mode === "delivery" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Input
+            placeholder="Phone"
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
+            className="h-10 min-w-0"
+          />
           <Input
             placeholder="Delivery address / notes"
             value={orderNotes}
             onChange={(e) => setOrderNotes(e.target.value)}
             className="h-10"
           />
-        )}
-        {mode === "takeaway" && (
-          <Input
-            placeholder="Pickup notes (optional)"
-            value={orderNotes}
-            onChange={(e) => setOrderNotes(e.target.value)}
-            className="h-10"
-          />
-        )}
-      </div>
-
-      {items.length > 0 && (
-        <StaffCartPanel
-          items={items}
-          total={total()}
-          maxPrepTime={maxPrepTime()}
-          placing={placing}
-          onUpdateQuantity={updateQuantity}
-          onUpdateNotes={updateNotes}
-          onPlaceOrder={() => void placeOrder()}
-          onClearCart={handleClearCart}
+        </div>
+      )}
+      {mode === "takeaway" && (
+        <Input
+          placeholder="Pickup notes (optional)"
+          value={orderNotes}
+          onChange={(e) => setOrderNotes(e.target.value)}
+          className="h-10"
         />
       )}
+      {isSelf ? (
+        <p className="text-xs text-muted">
+          Self tickets go to the kitchen and print a customer slip.
+        </p>
+      ) : null}
+    </div>
+  );
+
+  const menuBlock = (
+    <div className={cn("space-y-4", splitCart ? "pb-2" : "pb-28")}>
+      {!splitCart ? (
+        <>
+          {offlineBanner}
+          <div
+            className={cn(
+              "z-20 -mx-1 px-1 py-2 bg-app-shell/95 border-b border-[color:var(--surface-border)] lg:sticky lg:backdrop-blur-md",
+              stickyClassName,
+            )}
+          >
+            {orderControls}
+          </div>
+        </>
+      ) : null}
 
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -448,21 +508,84 @@ export function RemoteOrdersPanel({ onOrderPlaced }: RemoteOrdersPanelProps) {
             ...category,
             icon: category.icon ?? "🍽️",
           }))}
-          onOrder={() => void placeOrder()}
+          onOrder={() => setCartOpen(true)}
           ordering={placing}
           canOrder
           cart={cartControls}
           tapToSelect
-          orderButtonLabel={
-            placing
-              ? "Sending order..."
-              : `Send to kitchen · ${items.reduce((sum, item) => sum + item.quantity, 0)} items`
-          }
+          layout="dense"
+          hideCheckout
         />
       )}
+
+      {lastChit && cartCount === 0 && success ? (
+        <div className="flex justify-end">
+          <Button type="button" variant="secondary" size="sm" onClick={() => void printTicket(lastChit)}>
+            <Printer className="w-4 h-4" />
+            Print last ticket
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
+
+  if (splitCart) {
+    return (
+      <div className="flex flex-1 flex-col lg:min-h-0 lg:flex-row gap-3 lg:gap-6">
+        <div className="flex min-w-0 flex-1 flex-col lg:min-h-0">
+          {offlineBanner ? <div className="mb-2">{offlineBanner}</div> : null}
+          <div className="pb-2 mb-2 border-b border-[color:var(--surface-border)] lg:shrink-0">
+            {orderControls}
+          </div>
+          <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">{menuBlock}</div>
+        </div>
+        <aside className="hidden lg:block w-[22rem] shrink-0 h-full overflow-y-auto">
+          <StaffCartPanel {...cartProps} allowEmpty />
+        </aside>
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[color:var(--surface-border)] bg-app-shell px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          {cartCount === 0 ? (
+            <p className="text-sm text-muted text-center py-2">Tap dishes to add them to the cart</p>
+          ) : (
+            <Button type="button" size="lg" className="w-full" onClick={() => setCartOpen(true)}>
+              <ShoppingBag className="w-5 h-5" />
+              Cart ({cartCount}) · {formatCurrency(total())}
+            </Button>
+          )}
+        </div>
+        <StaffCartDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          {...cartProps}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {menuBlock}
+      {cartCount > 0 && !cartOpen ? (
+        <div className="fixed bottom-24 lg:bottom-5 left-1/2 z-[85] -translate-x-1/2 max-w-[calc(100vw-2rem)]">
+          <Button type="button" size="lg" onClick={() => setCartOpen(true)}>
+            <ShoppingBag className="w-5 h-5" />
+            View cart ({cartCount}) · {formatCurrency(total())}
+          </Button>
+        </div>
+      ) : null}
+      <StaffCartDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        {...cartProps}
+      />
+    </>
+  );
 }
+
+const MODE_SHORT: Record<OrderMode, string> = {
+  walkin: "Walk-in",
+  takeaway: "Takeaway",
+  delivery: "Delivery",
+};
 
 function ModePicker({
   modes,
@@ -476,7 +599,7 @@ function ModePicker({
   compact?: boolean;
 }) {
   return (
-    <div className={cn("flex flex-wrap gap-2", compact ? "" : "mb-2")}>
+    <div className={cn(compact ? "grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:gap-2" : "flex flex-wrap gap-2 mb-2")}>
       {modes.map((entry) => {
         const meta = MODE_META[entry];
         const Icon = meta.icon;
@@ -487,14 +610,15 @@ function ModePicker({
             type="button"
             onClick={() => onChange(entry)}
             className={cn(
-              "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors",
+              "inline-flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl border font-medium transition-colors",
+              compact ? "px-2 py-2 text-[11px] sm:px-3 sm:text-sm" : "px-3 py-2 text-sm",
               active
-                ? "bg-violet-500/20 border-violet-500/40 text-violet-100"
-                : "bg-white/5 border-white/10 text-zinc-400 hover:text-white",
+                ? "bg-violet-500/20 border-violet-500/40 text-violet-800 dark:text-violet-100"
+                : "bg-white/5 border-white/10 text-muted hover:text-foreground",
             )}
           >
-            <Icon className="w-4 h-4" />
-            {meta.label}
+            <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span className="truncate">{compact ? MODE_SHORT[entry] : meta.label}</span>
           </button>
         );
       })}

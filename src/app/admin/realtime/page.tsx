@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft, Plus, Trash2, Radio } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button, Card, Spinner, Input } from "@/components/ui";
+import { ManualUpiCard } from "@/components/admin/ManualUpiCard";
 
 type Tab = "promotions" | "combos" | "modifiers" | "kitchen" | "gateway" | "alerts";
 
@@ -209,7 +209,7 @@ export default function RealtimeAdminPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
@@ -225,16 +225,7 @@ export default function RealtimeAdminPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <header className="border-b border-white/10 px-4 py-4 max-w-4xl mx-auto flex items-center gap-3">
-        <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
-        <Radio className="w-5 h-5 text-sky-400" />
-        <h1 className="text-lg font-bold">Real-time ops</h1>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+    <div className="space-y-6">
         {message && (
           <p className={message.type === "ok" ? "text-emerald-400 text-sm" : "text-red-400 text-sm"}>
             {message.text}
@@ -431,6 +422,8 @@ export default function RealtimeAdminPage() {
           </Card>
         )}
 
+        {tab === "gateway" && <ManualUpiCard />}
+
         {tab === "alerts" && (
           <Card className="p-4 space-y-4">
             <h2 className="font-semibold">Push & SMS alerts</h2>
@@ -455,7 +448,6 @@ export default function RealtimeAdminPage() {
             </label>
           </Card>
         )}
-      </main>
     </div>
   );
 }

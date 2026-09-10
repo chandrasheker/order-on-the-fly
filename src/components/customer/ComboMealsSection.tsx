@@ -32,7 +32,7 @@ export function ComboMealsSection({
 
   return (
     <div className="space-y-3">
-      <h2 className="text-lg font-bold text-white">Combo deals</h2>
+      <h2 className="text-lg font-bold text-foreground">Combo deals</h2>
       {combos.map((combo) => {
         const listTotal = combo.items.reduce(
           (s, i) => s + i.menuItem.price * i.quantity,
@@ -48,9 +48,9 @@ export function ComboMealsSection({
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="font-semibold text-white">{combo.name}</h3>
+                <h3 className="font-semibold text-foreground">{combo.name}</h3>
                 {combo.description && (
-                  <p className="text-sm text-zinc-400 mt-0.5">{combo.description}</p>
+                  <p className="text-sm text-muted mt-0.5">{combo.description}</p>
                 )}
                 <ul className="text-xs text-zinc-500 mt-2 space-y-0.5">
                   {combo.items.map((i) => (

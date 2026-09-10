@@ -132,6 +132,7 @@ async function bootstrapRestaurant(
       tenantId: tenant.id,
       branchId: branch.id,
       floorId: floor.id,
+      orderingEnabled: true,
     })),
   });
 

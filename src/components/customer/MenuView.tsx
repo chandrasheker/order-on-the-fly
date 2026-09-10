@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Minus, ShoppingBag, Flame, ChevronLeft, ChevronRight, ChevronDown, Search, X } from "lucide-react";
 import { formatCurrency, getPrepTimeLabel, cn } from "@/lib/utils";
+import { isOutOfStock } from "@/lib/menu-stock";
 import { Button, Badge, Input } from "@/components/ui";
 import { useCartStore, type CartItem } from "@/store/cart";
 import { ModifierPickerModal } from "@/components/customer/ModifierPickerModal";
@@ -42,6 +43,8 @@ interface MenuItem {
   isSpicy: boolean;
   isAvailable: boolean;
   imageUrl?: string | null;
+  trackInventory?: boolean;
+  stockQuantity?: number | null;
   modifierGroups?: ModifierGroup[];
 }
 
@@ -51,6 +54,93 @@ interface Category {
   slug: string;
   icon: string | null;
   items: MenuItem[];
+}
+
+function DenseMenuItemCard({
+  item,
+  inCart,
+  onAdd,
+  onAddWithModifiers,
+  onUpdateQty,
+  hasModifiers,
+}: {
+  item: MenuItem;
+  inCart: { quantity: number } | undefined;
+  onAdd: () => void;
+  onAddWithModifiers?: () => void;
+  onUpdateQty: (qty: number) => void;
+  hasModifiers?: boolean;
+}) {
+  const outOfStock = isOutOfStock(item) || item.isAvailable === false;
+  const handleAdd = () => {
+    if (outOfStock) return;
+    if (hasModifiers && onAddWithModifiers) onAddWithModifiers();
+    else onAdd();
+  };
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border p-2 text-left min-h-[4.25rem] flex flex-col",
+        outOfStock
+          ? "border-red-500/30 bg-red-500/10 opacity-80"
+          : inCart
+          ? "border-orange-500/40 bg-orange-500/10"
+          : "border-white/10 bg-white/5",
+      )}
+    >
+      <div className="flex items-start justify-between gap-1">
+        <p className="text-xs font-semibold text-foreground leading-snug line-clamp-2">{item.name}</p>
+        {item.isVeg ? (
+          <span className="w-3 h-3 rounded-sm border border-emerald-500 flex items-center justify-center shrink-0 mt-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          </span>
+        ) : (
+          <span className="w-3 h-3 rounded-sm border border-red-500 flex items-center justify-center shrink-0 mt-0.5">
+            <span className="w-0 h-0 border-l-[2px] border-r-[2px] border-b-[3.5px] border-l-transparent border-r-transparent border-b-red-500" />
+          </span>
+        )}
+      </div>
+      <p className="text-[10px] text-muted mt-1 leading-snug">
+        {item.prepTimeMinutes} min
+        {item.trackInventory && item.stockQuantity != null ? ` · Qty ${item.stockQuantity}` : ""}
+      </p>
+      <div className="mt-auto pt-1 flex items-center justify-between gap-1">
+        <span className="text-xs font-bold text-orange-400">{formatCurrency(item.price)}</span>
+        {outOfStock ? (
+          <span className="text-[10px] font-semibold text-red-300">OUT OF STOCK</span>
+        ) : inCart ? (
+          <div className="inline-flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => onUpdateQty(inCart.quantity - 1)}
+              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-foreground"
+              aria-label={`Decrease ${item.name}`}
+            >
+              <Minus className="w-3 h-3" />
+            </button>
+            <span className="w-5 text-center text-xs font-bold text-foreground">{inCart.quantity}</span>
+            <button
+              type="button"
+              onClick={() => onUpdateQty(inCart.quantity + 1)}
+              className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center text-white"
+              aria-label={`Increase ${item.name}`}
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleAdd}
+            className="px-2 py-1 rounded-lg bg-orange-500/20 text-orange-800 dark:text-orange-200 border border-orange-500/30 text-[10px] font-semibold"
+          >
+            {hasModifiers ? "Customize" : "Add"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function MenuItemCard({
@@ -70,7 +160,9 @@ function MenuItemCard({
   onUpdateQty: (qty: number) => void;
   tapToSelect?: boolean;
 }) {
+  const outOfStock = isOutOfStock(item) || item.isAvailable === false;
   const handleTapSelect = () => {
+    if (outOfStock) return;
     if (hasModifiers && onAddWithModifiers) onAddWithModifiers();
     else onAdd();
   };
@@ -79,10 +171,11 @@ function MenuItemCard({
     <div
       className={cn(
         "flex gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 hover:border-orange-500/20 transition-all",
-        tapToSelect && !inCart && "cursor-pointer active:bg-white/10 active:border-orange-500/30",
+        outOfStock && "opacity-80 border-red-500/25",
+        tapToSelect && !inCart && !outOfStock && "cursor-pointer active:bg-white/10 active:border-orange-500/30",
         tapToSelect && inCart && "border-orange-500/40 bg-orange-500/5",
       )}
-      onClick={tapToSelect && !inCart ? handleTapSelect : undefined}
+      onClick={tapToSelect && !inCart && !outOfStock ? handleTapSelect : undefined}
       onKeyDown={
         tapToSelect && !inCart
           ? (e) => {
@@ -108,7 +201,7 @@ function MenuItemCard({
       ) : null}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <h3 className="font-semibold text-white">{item.name}</h3>
+          <h3 className="font-semibold text-foreground">{item.name}</h3>
           {item.isVeg ? (
             <span className="w-4 h-4 rounded-sm border-2 border-emerald-500 flex items-center justify-center flex-shrink-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -119,13 +212,18 @@ function MenuItemCard({
             </span>
           )}
           {item.isSpicy && <Flame className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
+          {outOfStock ? (
+            <span className="text-[10px] font-bold uppercase tracking-wide text-red-300 border border-red-500/40 px-1.5 py-0.5 rounded">
+              Out of stock
+            </span>
+          ) : null}
         </div>
         {item.description && (
-          <p className="text-sm text-zinc-400 mb-2 line-clamp-2">{item.description}</p>
+          <p className="text-sm text-muted mb-2 line-clamp-2">{item.description}</p>
         )}
         <div className="flex items-center gap-3 flex-wrap">
           <span className="font-bold text-orange-400">{formatCurrency(item.price)}</span>
-          <Badge className="bg-white/5 text-zinc-400 border-white/10">
+          <Badge className="bg-white/5 text-muted border-white/10">
             ⏱ {getPrepTimeLabel(item.prepTimeMinutes)}
           </Badge>
         </div>
@@ -134,16 +232,18 @@ function MenuItemCard({
         className="flex flex-col items-end justify-center flex-shrink-0"
         onClick={tapToSelect ? (e) => e.stopPropagation() : undefined}
       >
-        {inCart ? (
+        {outOfStock ? (
+          <span className="text-xs font-semibold text-red-300 px-2">OUT OF STOCK</span>
+        ) : inCart ? (
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => onUpdateQty(inCart.quantity - 1)}
-              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white active:bg-white/20"
+              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-foreground active:bg-white/20"
             >
               <Minus className="w-4 h-4" />
             </button>
-            <span className="w-6 text-center font-bold text-white">{inCart.quantity}</span>
+            <span className="w-6 text-center font-bold text-foreground">{inCart.quantity}</span>
             <button
               type="button"
               onClick={() => onUpdateQty(inCart.quantity + 1)}
@@ -179,6 +279,9 @@ export function MenuView({
   cart,
   orderButtonLabel,
   tapToSelect = false,
+  layout = "list",
+  hideCheckout = false,
+  checkoutExtra,
 }: {
   categories: Category[];
   onOrder: () => void;
@@ -187,6 +290,9 @@ export function MenuView({
   cart?: MenuCartControls;
   orderButtonLabel?: string;
   tapToSelect?: boolean;
+  layout?: "list" | "dense";
+  hideCheckout?: boolean;
+  checkoutExtra?: ReactNode;
 }) {
   const [activeCategory, setActiveCategory] = useState(categories[0]?.slug || "");
   const [searchQuery, setSearchQuery] = useState("");
@@ -322,10 +428,19 @@ export function MenuView({
   const expandAll = () => setExpandedSlugs(new Set(categories.map((c) => c.slug)));
   const collapseAll = () => setExpandedSlugs(new Set());
 
+  const dense = layout === "dense";
+
   return (
-    <div className="pb-32">
-      {/* Sticky category jump nav */}
-      <div className="sticky top-0 z-20 -mx-4 px-2 py-2 bg-customer-shell/95 backdrop-blur-xl border-b border-[color:var(--surface-border)] space-y-2">
+    <div className={dense ? "pb-2" : "pb-32"}>
+      {/* Sticky category jump nav — stay in flow on staff Take Order so it does not cover the table picker */}
+      <div
+        className={cn(
+          "z-10 py-2 space-y-2 border-b border-[color:var(--surface-border)]",
+          dense
+            ? "relative -mx-1 px-1 bg-app-shell/95"
+            : "sticky top-0 z-20 -mx-4 px-2 bg-customer-shell/95 backdrop-blur-xl",
+        )}
+      >
         <div className="relative px-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
           <Input
@@ -378,10 +493,11 @@ export function MenuView({
                 data-slug={cat.slug}
                 onClick={() => jumpToCategory(cat.slug)}
                 className={cn(
-                  "flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap",
+                  "flex-shrink-0 flex items-center gap-1.5 rounded-full font-medium transition-all whitespace-nowrap",
+                  dense ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-sm",
                   activeCategory === cat.slug
                     ? "bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg shadow-orange-500/25"
-                    : "bg-white/5 text-zinc-400 border border-white/10 active:bg-white/10"
+                    : "bg-white/5 text-muted border border-white/10 active:bg-white/10"
                 )}
               >
                 <span>{cat.icon}</span>
@@ -402,19 +518,21 @@ export function MenuView({
           )}
         </div>
         )}
-        <p className="text-center text-xs text-zinc-500 px-4">
+        {dense ? null : (
+        <p className="text-center text-xs text-muted px-4">
           {isSearching
             ? `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`
             : tapToSelect
               ? "Tap an item to add · use +/- to adjust quantity"
               : "Tap category tabs to jump · tap headers to expand or collapse"}
         </p>
+        )}
         {!isSearching && categories.length > 1 && (
           <div className="flex justify-center gap-2 px-4">
             <button
               type="button"
               onClick={expandAll}
-              className="text-xs text-orange-400 hover:text-orange-300"
+              className="text-xs text-orange-800 dark:text-orange-400 hover:text-orange-900 dark:hover:text-orange-300"
             >
               Expand all
             </button>
@@ -422,7 +540,7 @@ export function MenuView({
             <button
               type="button"
               onClick={collapseAll}
-              className="text-xs text-zinc-400 hover:text-zinc-300"
+              className="text-xs text-muted hover:text-foreground"
             >
               Collapse all
             </button>
@@ -431,7 +549,7 @@ export function MenuView({
       </div>
 
       {/* All categories — vertical scroll */}
-      <div className="mt-5 space-y-8">
+      <div className={cn(layout === "dense" ? "mt-3 space-y-3" : "mt-5 space-y-8")}>
         {isSearching && searchResults.length === 0 && (
           <div className="text-center py-12 text-zinc-500">
             <Search className="w-10 h-10 mx-auto mb-3 opacity-40" />
@@ -452,7 +570,12 @@ export function MenuView({
             <button
               type="button"
               onClick={() => toggleCategory(cat.slug)}
-              className="w-full text-left text-lg font-bold text-foreground mb-3 flex items-center gap-2 sticky top-[4.5rem] z-10 py-2 bg-customer-shell/90 backdrop-blur-sm -mx-1 px-1 rounded-lg hover:bg-[color:var(--surface-hover)] transition-colors"
+              className={cn(
+                "w-full text-left text-lg font-bold text-foreground mb-3 flex items-center gap-2 py-2 -mx-1 px-1 rounded-lg hover:bg-[color:var(--surface-hover)] transition-colors",
+                dense
+                  ? "relative bg-transparent"
+                  : "sticky top-[4.5rem] z-10 bg-customer-shell/90 backdrop-blur-sm",
+              )}
               aria-expanded={isExpanded}
             >
               <span className="text-xl">{cat.icon}</span>
@@ -465,6 +588,43 @@ export function MenuView({
                 )}
               />
             </button>
+            {dense ? (
+              isExpanded ? (
+                <div className="pb-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                  {cat.items.map((item) => {
+                    const inCartLines = items.filter((i) => i.menuItemId === item.id);
+                    const inCartQty = inCartLines.reduce((s, i) => s + i.quantity, 0);
+                    const hasModifiers = Boolean(item.modifierGroups?.length);
+                    const firstLine = inCartLines[0];
+                    const shared = {
+                      item,
+                      inCart: inCartQty > 0 ? { quantity: inCartQty } : undefined,
+                      hasModifiers,
+                      onAdd: () => {
+                        if (!canOrder || isOutOfStock(item) || item.isAvailable === false) return;
+                        addItem({
+                          menuItemId: item.id,
+                          name: item.name,
+                          price: item.price,
+                          basePrice: item.price,
+                          prepTimeMinutes: item.prepTimeMinutes,
+                        });
+                      },
+                      onAddWithModifiers: () => {
+                        if (!canOrder || isOutOfStock(item) || item.isAvailable === false) return;
+                        setPickerItem(item);
+                      },
+                    };
+                    const onUpdateQty = (qty: number) => {
+                      if (!canOrder || !firstLine) return;
+                      const next = qty > inCartQty ? firstLine.quantity + 1 : firstLine.quantity - 1;
+                      updateQuantity(firstLine.lineId, next);
+                    };
+                    return <DenseMenuItemCard key={item.id} {...shared} onUpdateQty={onUpdateQty} />;
+                  })}
+                </div>
+              ) : null
+            ) : (
             <AnimatePresence initial={false}>
               {isExpanded && (
                 <motion.div
@@ -474,37 +634,42 @@ export function MenuView({
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  <div className="space-y-3 pb-2">
+                  <div className="pb-2 space-y-3">
                     {cat.items.map((item) => {
                       const inCartLines = items.filter((i) => i.menuItemId === item.id);
                       const inCartQty = inCartLines.reduce((s, i) => s + i.quantity, 0);
                       const hasModifiers = Boolean(item.modifierGroups?.length);
                       const firstLine = inCartLines[0];
+                      const shared = {
+                        item,
+                        inCart: inCartQty > 0 ? { quantity: inCartQty } : undefined,
+                        hasModifiers,
+                        onAdd: () => {
+                          if (!canOrder || isOutOfStock(item) || item.isAvailable === false) return;
+                          addItem({
+                            menuItemId: item.id,
+                            name: item.name,
+                            price: item.price,
+                            basePrice: item.price,
+                            prepTimeMinutes: item.prepTimeMinutes,
+                          });
+                        },
+                        onAddWithModifiers: () => {
+                          if (!canOrder || isOutOfStock(item) || item.isAvailable === false) return;
+                          setPickerItem(item);
+                        },
+                      };
+                      const onUpdateQty = (qty: number) => {
+                        if (!canOrder || !firstLine) return;
+                        const next = qty > inCartQty ? firstLine.quantity + 1 : firstLine.quantity - 1;
+                        updateQuantity(firstLine.lineId, next);
+                      };
                       return (
                         <MenuItemCard
                           key={item.id}
-                          item={item}
-                          inCart={inCartQty > 0 ? { quantity: inCartQty } : undefined}
-                          hasModifiers={hasModifiers}
+                          {...shared}
                           tapToSelect={tapToSelect}
-                          onAdd={() => {
-                            if (!canOrder) return;
-                            addItem({
-                              menuItemId: item.id,
-                              name: item.name,
-                              price: item.price,
-                              basePrice: item.price,
-                              prepTimeMinutes: item.prepTimeMinutes,
-                            });
-                          }}
-                          onAddWithModifiers={() => {
-                            if (!canOrder) return;
-                            setPickerItem(item);
-                          }}
-                          onUpdateQty={(qty) => {
-                            if (!canOrder || !firstLine) return;
-                            updateQuantity(firstLine.lineId, qty);
-                          }}
+                          onUpdateQty={onUpdateQty}
                         />
                       );
                     })}
@@ -512,6 +677,7 @@ export function MenuView({
                 </motion.div>
               )}
             </AnimatePresence>
+            )}
           </section>
         );
         })}
@@ -519,14 +685,15 @@ export function MenuView({
 
       {/* Floating cart */}
       <AnimatePresence>
-        {cartCount > 0 && (
+        {!hideCheckout && cartCount > 0 && (
           <motion.div
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             exit={{ y: 100 }}
             className="fixed bottom-0 left-0 right-0 p-4 z-30 pointer-events-none"
           >
-            <div className="max-w-lg mx-auto pointer-events-auto">
+            <div className="max-w-lg mx-auto pointer-events-auto space-y-2">
+              {checkoutExtra}
               <Button
                 onClick={onOrder}
                 disabled={ordering || !canOrder}

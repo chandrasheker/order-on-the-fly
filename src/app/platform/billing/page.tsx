@@ -220,7 +220,7 @@ export default function PlatformBillingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+      <div className="min-h-screen flex items-center justify-center bg-app-shell">
         <Spinner className="w-8 h-8" />
       </div>
     );
@@ -389,7 +389,7 @@ export default function PlatformBillingPage() {
               ) : (
                 <ul className="space-y-2 text-sm">
                   {tenant.subscriptions.map((s) => (
-                    <li key={s.id} className="flex justify-between border-b border-white/5 pb-2">
+                    <li key={s.id} className="flex flex-wrap justify-between gap-2 border-b border-white/5 pb-2 min-w-0">
                       <span>
                         {s.plan} · {s.status}
                         {s.currentPeriodEnd

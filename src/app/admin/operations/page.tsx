@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Package,
   Clock,
   CalendarDays,
@@ -12,13 +10,23 @@ import {
   Shield,
   Bell,
   Download,
+  ImageIcon,
+  UtensilsCrossed,
 } from "lucide-react";
 import { Button, Card, Input, Spinner, Badge } from "@/components/ui";
 import { cn, formatCurrency } from "@/lib/utils";
+import { ServiceModeCard } from "@/components/admin/ServiceModeCard";
+import { RestaurantLogoCard } from "@/components/admin/RestaurantLogoCard";
+import { GuestBackgroundCard } from "@/components/admin/GuestBackgroundCard";
 
-type Tab = "inventory" | "labor" | "reservations" | "tips" | "guests" | "audit";
+type Tab = "branding" | "service" | "inventory" | "labor" | "reservations" | "tips" | "guests" | "audit";
 
-const TABS: { id: Tab; label: string; icon: typeof Package; flag: string }[] = [
+const ALWAYS_TABS: { id: Tab; label: string; icon: typeof Package }[] = [
+  { id: "branding", label: "Branding", icon: ImageIcon },
+  { id: "service", label: "Service model", icon: UtensilsCrossed },
+];
+
+const FEATURE_TABS: { id: Tab; label: string; icon: typeof Package; flag: string }[] = [
   { id: "inventory", label: "Inventory", icon: Package, flag: "inventory_86" },
   { id: "labor", label: "Labor & SPLH", icon: Clock, flag: "labor_clock" },
   { id: "reservations", label: "Reservations", icon: CalendarDays, flag: "reservations" },
@@ -29,7 +37,7 @@ const TABS: { id: Tab; label: string; icon: typeof Package; flag: string }[] = [
 
 export default function OperationsPage() {
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
-  const [tab, setTab] = useState<Tab>("inventory");
+  const [tab, setTab] = useState<Tab>("branding");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -53,32 +61,35 @@ export default function OperationsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-app-shell flex items-center justify-center">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
   }
 
-  const activeFlag = TABS.find((t) => t.id === tab)?.flag;
-  const tabEnabled = activeFlag ? enabled[activeFlag] : false;
+  const activeFlag = FEATURE_TABS.find((t) => t.id === tab)?.flag;
+  const tabEnabled = !activeFlag || Boolean(enabled[activeFlag]);
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/5 px-4 py-4">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
-          <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold">Operations</h1>
-            <p className="text-sm text-zinc-400">Inventory · labor · reservations · tips · CRM · audit</p>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+    <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          {TABS.map((t) => (
+          {ALWAYS_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-xl text-sm border transition-colors",
+                tab === t.id
+                  ? "bg-orange-500/20 border-orange-500/40 text-orange-200"
+                  : "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10",
+              )}
+            >
+              <t.icon className="w-4 h-4" />
+              {t.label}
+            </button>
+          ))}
+          {FEATURE_TABS.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -102,7 +113,15 @@ export default function OperationsPage() {
 
         {message && <p className="text-sm text-emerald-400 text-center">{message}</p>}
 
-        {!tabEnabled ? (
+        {tab === "branding" && (
+          <div className="space-y-4">
+            <RestaurantLogoCard />
+            <GuestBackgroundCard />
+          </div>
+        )}
+        {tab === "service" && <ServiceModeCard />}
+
+        {tab !== "branding" && tab !== "service" && !tabEnabled ? (
           <Card className="p-8 text-center text-zinc-400">
             Enable <strong className="text-white">{activeFlag}</strong> from super admin → Premium features
             (or run <code className="text-orange-300">enable-premium-features.ts --all</code>).
@@ -117,7 +136,6 @@ export default function OperationsPage() {
             {tab === "audit" && <AuditPanel />}
           </>
         )}
-      </main>
     </div>
   );
 }
@@ -149,11 +167,19 @@ function InventoryPanel({ onMessage }: { onMessage: (m: string) => void }) {
     void load();
   }, [load]);
 
-  const save = async (itemId: string, trackInventory: boolean, stockQuantity: number) => {
+  const save = async (
+    itemId: string,
+    trackInventory: boolean,
+    stockQuantity?: number | null,
+  ) => {
     const res = await fetch("/api/inventory", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemId, trackInventory, stockQuantity }),
+      body: JSON.stringify({
+        itemId,
+        trackInventory,
+        ...(stockQuantity !== undefined && stockQuantity !== null ? { stockQuantity } : {}),
+      }),
     });
     if (res.ok) {
       onMessage("Stock updated");
@@ -166,9 +192,15 @@ function InventoryPanel({ onMessage }: { onMessage: (m: string) => void }) {
   return (
     <Card className="p-4 space-y-3">
       <p className="text-sm text-zinc-400">
-        Track stock per item. When stock hits 0, item is auto-86&apos;d on menu and aggregators.
+        Tick Track, then enter how many portions you have. This is the same quantity as Menu
+        (price / qty / serve time). 0 marks the item out of stock on the menu, digital board, and
+        aggregators. Untick Track to stop counting and put it back on the menu.
       </p>
-      {items.map((item) => (
+      {items.map((item) => {
+        const outOfStock = Boolean(
+          item.trackInventory && item.stockQuantity != null && item.stockQuantity <= 0,
+        );
+        return (
         <div key={item.id} className="flex flex-wrap items-center gap-3 py-2 border-b border-white/5">
           <div className="flex-1 min-w-[140px]">
             <p className="font-medium">{item.name}</p>
@@ -178,30 +210,42 @@ function InventoryPanel({ onMessage }: { onMessage: (m: string) => void }) {
             <input
               type="checkbox"
               checked={item.trackInventory}
-              onChange={(e) => void save(item.id, e.target.checked, item.stockQuantity ?? 0)}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  void save(item.id, true);
+                } else {
+                  void save(item.id, false);
+                }
+              }}
             />
             Track
           </label>
           <Input
             type="number"
             className="w-24"
-            value={item.stockQuantity ?? 0}
+            min={0}
+            placeholder="Qty"
+            value={item.trackInventory ? (item.stockQuantity ?? "") : ""}
             disabled={!item.trackInventory}
             onChange={(e) => {
-              const v = parseInt(e.target.value, 10);
+              const raw = e.target.value;
+              const v = raw === "" ? null : parseInt(raw, 10);
               setItems((prev) =>
-                prev.map((i) => (i.id === item.id ? { ...i, stockQuantity: v } : i))
+                prev.map((i) => (i.id === item.id ? { ...i, stockQuantity: Number.isNaN(v as number) ? null : v } : i))
               );
             }}
-            onBlur={() =>
-              item.trackInventory && void save(item.id, true, item.stockQuantity ?? 0)
-            }
+            onBlur={() => {
+              if (!item.trackInventory) return;
+              if (item.stockQuantity == null) return;
+              void save(item.id, true, item.stockQuantity);
+            }}
           />
-          <Badge className={item.isAvailable ? "text-emerald-300" : "text-red-300"}>
-            {item.isAvailable ? "Available" : "86'd"}
+          <Badge className={outOfStock || !item.isAvailable ? "text-red-300" : "text-emerald-300"}>
+            {outOfStock ? "Out of stock" : item.isAvailable ? "Available" : "Unavailable"}
           </Badge>
         </div>
-      ))}
+        );
+      })}
     </Card>
   );
 }
@@ -417,7 +461,7 @@ function GuestsPanel({ onMessage }: { onMessage: (m: string) => void }) {
       <p className="text-sm text-zinc-400 mb-3">Profiles auto-created when orders include a phone number.</p>
       {guests.length === 0 && <p className="text-zinc-500">No guests yet.</p>}
       {guests.map((g) => (
-        <div key={g.id} className="flex justify-between py-2 border-b border-white/5 text-sm">
+        <div key={g.id} className="flex flex-col sm:flex-row sm:justify-between gap-1 py-2 border-b border-white/5 text-sm">
           <span>
             {g.name ?? "Guest"} · {g.phone}
           </span>

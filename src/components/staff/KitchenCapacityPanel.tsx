@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { flushSync } from "react-dom";
 import { Pause, Play, ChefHat, ChevronDown, ChevronUp } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -13,12 +14,37 @@ interface KitchenState {
   overdueCount?: number;
 }
 
-export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
+export function KitchenCapacityPanel({
+  enabled,
+  compact = false,
+}: {
+  enabled: boolean;
+  compact?: boolean;
+}) {
   const [state, setState] = useState<KitchenState | null>(null);
   const [message, setMessage] = useState("");
   const [threshold, setThreshold] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(!compact);
+  const desiredPaused = useRef<boolean | null>(null);
+  const saveGen = useRef(0);
+
+  const applyGetState = useCallback((remote: KitchenState) => {
+    const desired = desiredPaused.current;
+    if (desired !== null && remote.paused !== desired) {
+      setState((current) => ({
+        ...(current ?? remote),
+        ...remote,
+        paused: desired,
+      }));
+      return;
+    }
+    if (desired !== null && remote.paused === desired) {
+      desiredPaused.current = null;
+    }
+    setState(remote);
+    setMessage(remote.message ?? "");
+    setThreshold(remote.autoPauseThreshold ?? 0);
+  }, []);
 
   const load = useCallback(async () => {
     if (!enabled) return;
@@ -26,14 +52,12 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
       const res = await fetch("/api/realtime/kitchen");
       if (res.ok) {
         const json = await res.json();
-        setState(json.state);
-        setMessage(json.state.message ?? "");
-        setThreshold(json.state.autoPauseThreshold ?? 0);
+        applyGetState(json.state);
       }
     } catch {
       /* ignore transient network errors during dev reload or polling */
     }
-  }, [enabled]);
+  }, [applyGetState, enabled]);
 
   useEffect(() => {
     void load();
@@ -43,7 +67,13 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
   }, [enabled, load]);
 
   const save = async (paused: boolean) => {
-    setSaving(true);
+    if (!state) return;
+    const generation = ++saveGen.current;
+    const previous = state;
+    desiredPaused.current = paused;
+    flushSync(() => {
+      setState((current) => (current ? { ...current, paused } : current));
+    });
     try {
       const res = await fetch("/api/realtime/kitchen", {
         method: "PATCH",
@@ -54,14 +84,23 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
           autoPauseOverdueThreshold: threshold,
         }),
       });
+      if (generation !== saveGen.current) return;
       if (res.ok) {
         const json = await res.json();
-        setState(json.state);
+        if (generation !== saveGen.current) return;
+        setState({ ...json.state, paused });
+        setMessage(json.state.message ?? message);
+        setThreshold(json.state.autoPauseThreshold ?? threshold);
+      } else {
+        desiredPaused.current = null;
+        setState(previous);
       }
     } catch (error) {
+      if (generation === saveGen.current) {
+        desiredPaused.current = null;
+        setState(previous);
+      }
       swallowPollingFetchError(error);
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -72,16 +111,19 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
   return (
     <div
       className={cn(
-        "h-full p-4 rounded-2xl border",
+        "rounded-2xl border",
+        compact ? "p-3" : "h-full p-4",
         paused ? "border-amber-500/40 bg-amber-500/10" : "border-white/10 bg-white/5",
       )}
     >
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className={cn("flex items-start justify-between gap-2", compact ? "mb-2" : "mb-3")}>
         <div className="flex items-center gap-2 min-w-0">
-          <ChefHat className={cn("w-5 h-5 shrink-0", paused ? "text-amber-300" : "text-zinc-400")} />
+          <ChefHat className={cn("shrink-0", compact ? "w-4 h-4" : "w-5 h-5", paused ? "text-amber-800 dark:text-amber-300" : "text-muted")} />
           <div className="min-w-0">
-            <p className="font-semibold text-white">Kitchen load control</p>
-            <p className="text-xs text-zinc-400">
+            <p className={cn("font-semibold text-foreground", compact && "text-sm")}>
+              {compact ? "Kitchen load" : "Kitchen load control"}
+            </p>
+            <p className="text-xs text-muted">
               {paused ? "QR orders paused" : "Accepting orders"}
               {state.overdueCount != null && ` · ${state.overdueCount} overdue`}
             </p>
@@ -90,13 +132,33 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
         <button
           type="button"
           onClick={() => setExpanded((open) => !open)}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 shrink-0"
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border border-white/10 bg-white/5 text-muted hover:text-foreground hover:bg-white/10 shrink-0"
           aria-expanded={expanded}
         >
           {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          {expanded ? "Collapse" : "Expand"}
+          {compact ? null : expanded ? "Collapse" : "Expand"}
         </button>
       </div>
+      {compact && !expanded && (
+        <div className="mt-2">
+          {paused ? (
+            <Button size="sm" onClick={() => void save(false)} className="w-full gap-1.5">
+              <Play className="w-3.5 h-3.5" />
+              Resume
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void save(true)}
+              className="w-full gap-1.5 border-amber-500/30 text-amber-800 dark:text-amber-300"
+            >
+              <Pause className="w-3.5 h-3.5" />
+              Pause QR
+            </Button>
+          )}
+        </div>
+      )}
 
       {expanded && (
         <>
@@ -122,14 +184,13 @@ export function KitchenCapacityPanel({ enabled }: { enabled: boolean }) {
 
       <div className="flex gap-2">
         {paused ? (
-          <Button disabled={saving} onClick={() => void save(false)} className="gap-1.5">
+          <Button onClick={() => void save(false)} className="gap-1.5">
             <Play className="w-4 h-4" />
             Resume orders
           </Button>
         ) : (
           <Button
             variant="secondary"
-            disabled={saving}
             onClick={() => void save(true)}
             className="gap-1.5 border-amber-500/30 text-amber-300"
           >

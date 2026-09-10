@@ -63,7 +63,7 @@ export function TenantSignupForm({ baseDomain }: { baseDomain: string }) {
     const restaurantUrl =
       (typeof result.restaurantUrl === "string" && result.restaurantUrl) || restaurant.url || "";
     return (
-      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-4">
+      <div className="min-h-screen bg-app-shell text-foreground flex items-center justify-center p-4">
         <Card className="max-w-lg w-full p-8 space-y-4">
           <h1 className="text-2xl font-bold text-emerald-400">Welcome to TableTap</h1>
           <p className="text-zinc-400">Your restaurant OS is ready.</p>
@@ -111,7 +111,7 @@ export function TenantSignupForm({ baseDomain }: { baseDomain: string }) {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white py-12 px-4">
+    <div className="min-h-screen bg-app-shell text-foreground py-12 px-4">
       <div className="max-w-xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Start your Restaurant OS</h1>

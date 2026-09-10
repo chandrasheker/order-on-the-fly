@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/utils";
+import { isOutOfStock } from "@/lib/menu-stock";
 import { Printer, RefreshCw } from "lucide-react";
+import { DietBadge } from "@/components/menu/DietToggle";
 
 type DisplayItem = {
   id: string;
@@ -12,6 +14,9 @@ type DisplayItem = {
   isVeg: boolean;
   isSpicy: boolean;
   imageUrl?: string | null;
+  trackInventory?: boolean;
+  stockQuantity?: number | null;
+  isAvailable?: boolean;
 };
 
 type DisplayCategory = {
@@ -77,31 +82,31 @@ export function MenuDisplayBoard({
 
   if (loading && !menu) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0c0c12] text-white">
-        <p className="text-zinc-400 animate-pulse">Loading menu…</p>
+      <div className="min-h-screen flex items-center justify-center bg-app-shell text-foreground">
+        <p className="text-muted animate-pulse">Loading menu…</p>
       </div>
     );
   }
 
   if (error || !menu) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0c0c12] text-white p-6">
-        <p className="text-red-300">{error || "Menu not found"}</p>
+      <div className="min-h-screen flex items-center justify-center bg-app-shell text-foreground p-6">
+        <p className="text-red-700 dark:text-red-300">{error || "Menu not found"}</p>
       </div>
     );
   }
 
   return (
     <div
-      className={`min-h-screen text-white ${printMode ? "bg-white text-black print-menu" : "bg-[#0c0c12]"}`}
+      className={`min-h-screen ${printMode ? "bg-white text-black print-menu" : "bg-app-shell text-foreground"}`}
     >
       {!printMode && (
-        <div className="fixed top-4 right-4 z-20 flex gap-2 print:hidden">
+        <div className="fixed top-4 right-4 z-20 flex gap-2 print:hidden header-trailing-actions">
           <button
             type="button"
             onClick={() => void loadMenu(true)}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-sm"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[color:var(--surface)] hover:bg-[color:var(--surface-hover)] border border-[color:var(--surface-border)] text-sm text-foreground"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
             Refresh
@@ -109,7 +114,7 @@ export function MenuDisplayBoard({
           <button
             type="button"
             onClick={() => window.open(`/display/menu/${slug}/print`, "_blank")}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-sm text-orange-200"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-sm text-orange-800 dark:text-orange-200"
           >
             <Printer className="w-4 h-4" />
             Print
@@ -118,7 +123,7 @@ export function MenuDisplayBoard({
       )}
 
       <header
-        className={`text-center px-6 pt-10 pb-8 ${printMode ? "border-b border-zinc-300" : "border-b border-white/10"}`}
+        className={`text-center px-6 pt-10 pb-8 ${printMode ? "border-b border-zinc-300" : "border-b border-[color:var(--surface-border)]"}`}
       >
         {menu.restaurant.logoUrl && (
           <img
@@ -127,17 +132,17 @@ export function MenuDisplayBoard({
             className="h-16 w-16 object-contain mx-auto mb-4 rounded-xl"
           />
         )}
-        <h1 className={`text-4xl md:text-5xl font-bold tracking-tight ${printMode ? "text-black" : ""}`}>
+        <h1 className={`text-4xl md:text-5xl font-bold tracking-tight ${printMode ? "text-black" : "text-foreground"}`}>
           {menu.restaurant.name}
         </h1>
-        <p className={`mt-2 text-sm ${printMode ? "text-zinc-600" : "text-zinc-400"}`}>
+        <p className={`mt-2 text-sm ${printMode ? "text-zinc-600" : "text-muted"}`}>
           {printMode ? "Menu" : "Digital menu · updates automatically"}
         </p>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 md:px-8 py-8 space-y-10">
         {menu.categories.length === 0 ? (
-          <p className={`text-center py-20 ${printMode ? "text-zinc-500" : "text-zinc-400"}`}>
+          <p className={`text-center py-20 ${printMode ? "text-zinc-500" : "text-muted"}`}>
             No live menu items right now
           </p>
         ) : (
@@ -145,7 +150,9 @@ export function MenuDisplayBoard({
             <section key={category.id}>
               <h2
                 className={`flex items-center gap-3 text-2xl md:text-3xl font-bold mb-5 ${
-                  printMode ? "text-black border-b border-zinc-300 pb-2" : "text-orange-300"
+                  printMode
+                    ? "text-black border-b border-zinc-300 pb-2"
+                    : "text-orange-800 dark:text-orange-300"
                 }`}
               >
                 <span>{category.icon ?? "🍽️"}</span>
@@ -158,12 +165,12 @@ export function MenuDisplayBoard({
                     className={`rounded-2xl p-4 ${
                       printMode
                         ? "border border-zinc-200"
-                        : "bg-white/[0.04] border border-white/10 backdrop-blur-sm"
+                        : "bg-[color:var(--surface)] border border-[color:var(--surface-border)]"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       {!printMode && item.imageUrl ? (
-                        <div className="relative w-16 h-16 shrink-0 overflow-hidden rounded-xl bg-white/5">
+                        <div className="relative w-16 h-16 shrink-0 overflow-hidden rounded-xl bg-[color:var(--surface-hover)]">
                           <img
                             src={item.imageUrl}
                             alt={item.name}
@@ -173,28 +180,33 @@ export function MenuDisplayBoard({
                         </div>
                       ) : null}
                       <div className="min-w-0">
-                        <h3 className={`font-semibold text-lg ${printMode ? "text-black" : ""}`}>
+                        <h3 className={`font-semibold text-lg ${printMode ? "text-black" : "text-foreground"}`}>
                           {item.name}
                         </h3>
                         {item.description && (
-                          <p className={`text-sm mt-1 ${printMode ? "text-zinc-600" : "text-zinc-400"}`}>
+                          <p className={`text-sm mt-1 ${printMode ? "text-zinc-600" : "text-muted"}`}>
                             {item.description}
                           </p>
                         )}
-                        <div className="flex gap-2 mt-2 text-xs">
-                          {item.isVeg && (
-                            <span className="text-emerald-500 border border-emerald-500/40 px-1.5 py-0.5 rounded">
-                              Veg
-                            </span>
-                          )}
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <DietBadge isVeg={item.isVeg} />
                           {item.isSpicy && (
-                            <span className="text-red-400 border border-red-400/40 px-1.5 py-0.5 rounded">
+                            <span className="text-xs font-medium text-red-800 dark:text-red-400 border border-red-500/40 px-1.5 py-0.5 rounded">
                               Spicy
                             </span>
                           )}
+                          {isOutOfStock(item) || item.isAvailable === false ? (
+                            <span className="text-xs font-bold uppercase tracking-wide text-red-800 dark:text-red-300 border border-red-500/40 px-1.5 py-0.5 rounded">
+                              Out of stock
+                            </span>
+                          ) : null}
                         </div>
                       </div>
-                      <p className={`text-lg font-bold shrink-0 ${printMode ? "text-black" : "text-orange-300"}`}>
+                      <p
+                        className={`text-lg font-bold shrink-0 ${
+                          printMode ? "text-black" : "text-orange-800 dark:text-orange-300"
+                        }`}
+                      >
                         {formatCurrency(item.price)}
                       </p>
                     </div>

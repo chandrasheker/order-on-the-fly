@@ -199,17 +199,144 @@ export function OrderTracker({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-zinc-300">Your orders</p>
+        <p className="text-sm font-medium text-foreground">Your orders</p>
         <button
           type="button"
           onClick={handleRefresh}
           disabled={refreshing}
-          className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs text-muted hover:text-foreground transition-colors disabled:opacity-50"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
           Refresh
         </button>
       </div>
+
+      {paymentOrders.length > 0 && (() => {
+        const canonicalDue = resolveCanonicalCustomerDue(tabRemaining);
+        const amountReady = canStartCustomerPayment(canonicalDue);
+        const paymentPending = paymentOrders.some((o) => Boolean(o.paymentRequestedAt));
+        const anchorOrder = paymentOrders[0]!;
+
+        return (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`rounded-2xl border backdrop-blur-xl p-5 ${
+              paymentPending
+                ? "border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 to-white/5"
+                : "border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-white/5"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm text-zinc-400">
+                  {paymentOrders.length === 1
+                    ? `Order #${anchorOrder.orderNumber}`
+                    : `Table bill · ${paymentOrders.length} orders`}
+                </p>
+                <Badge
+                  className={
+                    paymentPending
+                      ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30"
+                      : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  }
+                >
+                  {paymentPending
+                    ? "Awaiting payment confirmation"
+                    : "All served — ready to pay"}
+                </Badge>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-zinc-500">Bill total</p>
+                <p className="text-xl font-bold text-emerald-400">
+                  {canonicalDue == null ? "…" : formatCurrency(canonicalDue)}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-4">
+              {paymentOrders.map((order) => (
+                <div key={order.id} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                  <p className="text-xs text-zinc-500 mb-2">Order #{order.orderNumber}</p>
+                  <div className="space-y-1">
+                    {order.items.map((item) => {
+                      const isUnavailable = item.status === "UNAVAILABLE";
+                      const lineTotal = (item.unitPrice ?? 0) * item.quantity;
+                      return (
+                        <div key={item.id} className="flex items-center justify-between text-sm">
+                          <span className={isUnavailable ? "text-amber-300" : "text-zinc-400"}>
+                            {item.quantity}x {item.itemName}
+                          </span>
+                          <span className={isUnavailable ? "text-amber-300" : "text-zinc-500"}>
+                            {isUnavailable ? "Not served" : formatCurrency(lineTotal)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {paymentPending ? (
+              <div className="space-y-3">
+                <div className="p-3 rounded-xl bg-yellow-500/15 border border-yellow-500/30 text-yellow-100 text-sm text-center">
+                  <p className="font-medium">Payment pending</p>
+                  <p className="text-yellow-200/80 text-xs mt-1">
+                    Staff has been notified. Complete payment
+                    {paymentQrUrl ? " via PhonePe or with staff" : " with staff"}. You can still
+                    order more — new items will be added to this bill.
+                  </p>
+                </div>
+                {paymentQrUrl && (
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => openPayModal(anchorOrder)}
+                  >
+                    View PhonePe QR again
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <>
+                <Button
+                  variant="success"
+                  className="w-full bg-emerald-600 hover:bg-emerald-500"
+                  disabled={Boolean(payingId) || !amountReady}
+                  onClick={() => {
+                    if (!amountReady) {
+                      void onRefresh();
+                      return;
+                    }
+                    if (paymentQrUrl || upiVpa || automaticUpiEnabled) {
+                      openPayModal(anchorOrder);
+                      return;
+                    }
+                    requestPaymentOffline(anchorOrder);
+                  }}
+                >
+                  <CircleDollarSign className="w-4 h-4" />
+                  {payingId
+                    ? "Processing..."
+                    : amountReady
+                      ? `Pay ${formatCurrency(canonicalDue!)}`
+                      : "Refreshing bill…"}
+                </Button>
+                <p className="text-xs text-zinc-500 text-center mt-2">
+                  {paymentOrders.length > 1
+                    ? "Please ask staff to settle the combined table bill."
+                    : automaticUpiEnabled
+                      ? "Pay securely. This screen never marks you paid by itself."
+                    : paymentQrUrl || upiVpa
+                      ? "Staff must verify the payment."
+                      : "Alert staff to collect payment at the table"}
+                </p>
+              </>
+            )}
+          </motion.div>
+        );
+      })()}
 
       {activeOrders.map((order) => {
         const pendingItems = order.items.filter((i) => isOrderItemOpen(i.status));
@@ -343,7 +470,7 @@ export function OrderTracker({
               </div>
               {pendingItems.length > 0 && (
                 <div className="text-right">
-                  <div className="flex items-center gap-1.5 text-2xl font-mono font-bold text-white">
+                  <div className="flex items-center gap-1.5 text-2xl font-mono font-bold text-foreground">
                     <Clock className="w-5 h-5 text-orange-400" />
                     {remaining > 0 ? formatCountdown(remaining) : "0:00"}
                   </div>
@@ -385,7 +512,7 @@ export function OrderTracker({
                             ? "text-zinc-500 line-through"
                             : isUnavailable
                               ? "text-amber-100 font-medium"
-                              : "text-white font-medium"
+                              : "text-foreground font-medium"
                         }`}
                       >
                         {item.quantity}x {item.itemName}
@@ -437,133 +564,6 @@ export function OrderTracker({
           </motion.div>
         );
       })}
-
-      {paymentOrders.length > 0 && (() => {
-        const canonicalDue = resolveCanonicalCustomerDue(tabRemaining);
-        const amountReady = canStartCustomerPayment(canonicalDue);
-        const paymentPending = paymentOrders.some((o) => Boolean(o.paymentRequestedAt));
-        const anchorOrder = paymentOrders[0]!;
-
-        return (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`rounded-2xl border backdrop-blur-xl p-5 ${
-              paymentPending
-                ? "border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 to-white/5"
-                : "border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-white/5"
-            }`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm text-zinc-400">
-                  {paymentOrders.length === 1
-                    ? `Order #${anchorOrder.orderNumber}`
-                    : `Table bill · ${paymentOrders.length} orders`}
-                </p>
-                <Badge
-                  className={
-                    paymentPending
-                      ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30"
-                      : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                  }
-                >
-                  {paymentPending
-                    ? "Awaiting payment confirmation"
-                    : "All served — ready to pay"}
-                </Badge>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-zinc-500">Bill total</p>
-                <p className="text-xl font-bold text-emerald-400">
-                  {canonicalDue == null ? "…" : formatCurrency(canonicalDue)}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3 mb-4">
-              {paymentOrders.map((order) => (
-                <div key={order.id} className="rounded-xl border border-white/10 bg-black/30 p-3">
-                  <p className="text-xs text-zinc-500 mb-2">Order #{order.orderNumber}</p>
-                  <div className="space-y-1">
-                    {order.items.map((item) => {
-                      const isUnavailable = item.status === "UNAVAILABLE";
-                      const lineTotal = (item.unitPrice ?? 0) * item.quantity;
-                      return (
-                        <div key={item.id} className="flex items-center justify-between text-sm">
-                          <span className={isUnavailable ? "text-amber-300" : "text-zinc-400"}>
-                            {item.quantity}x {item.itemName}
-                          </span>
-                          <span className={isUnavailable ? "text-amber-300" : "text-zinc-500"}>
-                            {isUnavailable ? "Not served" : formatCurrency(lineTotal)}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {paymentPending ? (
-              <div className="space-y-3">
-                <div className="p-3 rounded-xl bg-yellow-500/15 border border-yellow-500/30 text-yellow-100 text-sm text-center">
-                  <p className="font-medium">Payment pending</p>
-                  <p className="text-yellow-200/80 text-xs mt-1">
-                    Staff has been notified. Complete payment
-                    {paymentQrUrl ? " via PhonePe or with staff" : " with staff"}. You can still
-                    order more — new items will be added to this bill.
-                  </p>
-                </div>
-                {paymentQrUrl && (
-                  <Button
-                    variant="secondary"
-                    className="w-full"
-                    onClick={() => openPayModal(anchorOrder)}
-                  >
-                    View PhonePe QR again
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <>
-                <Button
-                  variant="success"
-                  className="w-full bg-emerald-600 hover:bg-emerald-500"
-                  disabled={Boolean(payingId) || !amountReady}
-                  onClick={() => {
-                    if (!amountReady) {
-                      void onRefresh();
-                      return;
-                    }
-                    if (paymentQrUrl || upiVpa || automaticUpiEnabled) {
-                      openPayModal(anchorOrder);
-                      return;
-                    }
-                    requestPaymentOffline(anchorOrder);
-                  }}
-                >
-                  <CircleDollarSign className="w-4 h-4" />
-                  {payingId
-                    ? "Processing..."
-                    : amountReady
-                      ? `Pay ${formatCurrency(canonicalDue!)}`
-                      : "Refreshing bill…"}
-                </Button>
-                <p className="text-xs text-zinc-500 text-center mt-2">
-                  {paymentOrders.length > 1
-                    ? "Please ask staff to settle the combined table bill."
-                    : automaticUpiEnabled
-                      ? "Pay securely. This screen never marks you paid by itself."
-                    : paymentQrUrl || upiVpa
-                      ? "Staff must verify the payment."
-                      : "Alert staff to collect payment at the table"}
-                </p>
-              </>
-            )}
-          </motion.div>
-        );
-      })()}
 
       {payModalOrder && (
         <PaymentModal

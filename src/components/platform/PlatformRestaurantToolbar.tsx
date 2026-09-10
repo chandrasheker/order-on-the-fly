@@ -150,7 +150,7 @@ export function PlatformPagedListFrame({
         disabled={!canPrev}
         onClick={onPrev}
         aria-label={`Previous ${noun} page`}
-        className="self-center shrink-0 px-2"
+        className="self-center shrink-0 px-2 hidden sm:inline-flex"
       >
         <ChevronLeft className="w-5 h-5" />
       </Button>
@@ -162,7 +162,7 @@ export function PlatformPagedListFrame({
         disabled={!canNext}
         onClick={onNext}
         aria-label={`Next ${noun} page`}
-        className="self-center shrink-0 px-2"
+        className="self-center shrink-0 px-2 hidden sm:inline-flex"
       >
         <ChevronRight className="w-5 h-5" />
       </Button>

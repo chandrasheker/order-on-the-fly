@@ -223,14 +223,14 @@ export function PaymentModal({
       <motion.div
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="w-full max-w-sm rounded-2xl bg-[#14141f] border border-emerald-500/30 p-6 shadow-2xl"
+        className="w-full max-w-sm rounded-2xl bg-app-shell border border-emerald-500/30 p-6 shadow-2xl"
       >
         <div className="flex items-start justify-between mb-4">
           <div>
             <p className="text-xs text-zinc-500 uppercase tracking-wide">
               {consolidated ? "Combined table bill" : `Order #${orderNumber}`}
             </p>
-            <h3 className="text-xl font-bold text-white mt-1">
+            <h3 className="text-xl font-bold text-foreground mt-1">
               {amountReady
                 ? useRazorpay
                   ? `Pay securely ${formatCurrency(billTotal!)}`
@@ -241,7 +241,7 @@ export function PaymentModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5"
+            className="p-2 rounded-lg text-muted hover:text-foreground hover:bg-white/5"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
@@ -273,16 +273,16 @@ export function PaymentModal({
           <div className="space-y-3 mb-4">
             <p className="text-sm text-zinc-300">Pay with a UPI app on this phone</p>
             <div className="grid grid-cols-2 gap-2">
-              <a href={intents.gpay} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-white">
+              <a href={intents.gpay} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-foreground">
                 Google Pay
               </a>
-              <a href={intents.phonepe} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-white">
+              <a href={intents.phonepe} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-foreground">
                 PhonePe
               </a>
-              <a href={intents.paytm} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-white">
+              <a href={intents.paytm} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-foreground">
                 Paytm
               </a>
-              <a href={intents.generic} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-white">
+              <a href={intents.generic} className="rounded-xl bg-white/10 px-3 py-3 text-center text-sm text-foreground">
                 Other UPI app
               </a>
             </div>

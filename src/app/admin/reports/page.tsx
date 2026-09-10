@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button, Card, Spinner } from "@/components/ui";
-import { ArrowLeft, Download, Calendar } from "lucide-react";
-import Link from "next/link";
+import { Download, Calendar } from "lucide-react";
 import { formatCurrency, todayDateString } from "@/lib/utils";
 
 interface ReportData {
@@ -93,7 +92,7 @@ export default function ReportsPage() {
 
   if (loading && !report) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-app-shell">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
@@ -106,38 +105,26 @@ export default function ReportsPage() {
     : [];
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/5 px-4 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold">Daily Reports</h1>
-              <p className="text-sm text-zinc-400">{report?.restaurant}</p>
-            </div>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-zinc-400">{report?.restaurant}</p>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-white/5 rounded-xl px-3 py-2 border border-white/10">
+            <Calendar className="w-4 h-4 text-zinc-400" />
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="bg-transparent text-sm text-foreground outline-none"
+            />
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 bg-white/5 rounded-xl px-3 py-2 border border-white/10">
-              <Calendar className="w-4 h-4 text-zinc-400" />
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="bg-transparent text-sm text-foreground outline-none"
-              />
-            </div>
-            {canDownload && (
-              <Button onClick={downloadCSV} variant="secondary">
-                <Download className="w-4 h-4" /> CSV
-              </Button>
-            )}
-          </div>
+          {canDownload && (
+            <Button onClick={downloadCSV} variant="secondary">
+              <Download className="w-4 h-4" /> CSV
+            </Button>
+          )}
         </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      </div>
         {report && (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -279,7 +266,6 @@ export default function ReportsPage() {
             </Card>
           </>
         )}
-      </main>
     </div>
   );
 }

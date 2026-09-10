@@ -35,10 +35,12 @@ async function handlePATCH(req: NextRequest) {
   }
 
   try {
+    const stockProvided =
+      body.stockQuantity !== undefined && body.stockQuantity !== null && body.stockQuantity !== "";
     const item = await adjustMenuItemStock({
       restaurantId: session.restaurantId,
       itemId,
-      stockQuantity: Number(body.stockQuantity ?? 0),
+      ...(stockProvided ? { stockQuantity: Number(body.stockQuantity) } : {}),
       trackInventory: body.trackInventory !== undefined ? Boolean(body.trackInventory) : undefined,
       actorUserId: session.id,
       actorName: session.name,

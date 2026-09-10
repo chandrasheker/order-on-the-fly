@@ -156,14 +156,16 @@ function PlatformHomePageInner() {
       subtitle="Operational view across all tenants and restaurants"
       activeItem={directory === "fleet" ? "restaurants" : viewParam === "tenants" ? "tenants" : "overview"}
       actions={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <TimeRangeBar
-            range={range}
-            from={from}
-            to={to}
-            onRange={(value) => setRangeParams({ range: value, from, to })}
-            onCustom={(nextFrom, nextTo) => setRangeParams({ range: "custom", from: nextFrom, to: nextTo })}
-          />
+        <div className="flex flex-wrap items-center justify-end gap-2 w-full">
+          <div className="hidden md:block min-w-0">
+            <TimeRangeBar
+              range={range}
+              from={from}
+              to={to}
+              onRange={(value) => setRangeParams({ range: value, from, to })}
+              onCustom={(nextFrom, nextTo) => setRangeParams({ range: "custom", from: nextFrom, to: nextTo })}
+            />
+          </div>
           <Link
             href="/platform/tenants/new"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/25"
@@ -174,6 +176,15 @@ function PlatformHomePageInner() {
       }
     >
       <div className="space-y-6">
+        <div className="md:hidden">
+          <TimeRangeBar
+            range={range}
+            from={from}
+            to={to}
+            onRange={(value) => setRangeParams({ range: value, from, to })}
+            onCustom={(nextFrom, nextTo) => setRangeParams({ range: "custom", from: nextFrom, to: nextTo })}
+          />
+        </div>
         <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
           <Kpi label="Tenants" value={String(summary?.tenantCount ?? tenants.length)} />
           <Kpi
@@ -225,7 +236,7 @@ function PlatformHomePageInner() {
               </div>
               <button
                 type="button"
-                className="text-sm text-amber-200 hover:text-white"
+                className="text-sm text-amber-800 dark:text-amber-200 hover:text-foreground"
                 onClick={() => {
                   setFilter("attention");
                   selectDirectory("fleet");
@@ -295,7 +306,7 @@ function PlatformHomePageInner() {
               onNext={tenantList.goNext}
               noun="tenant"
             >
-              <div className="hidden md:block overflow-hidden rounded-xl border border-white/10">
+              <div className="hidden md:block overflow-x-auto rounded-xl border border-white/10">
                 <table className="min-w-full text-sm">
                   <thead className="bg-white/5 text-zinc-500">
                     <tr>

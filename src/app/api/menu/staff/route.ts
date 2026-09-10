@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 import { omitMenuItemStorageKey } from "@/lib/menu-media/keys";
+import { sellableOrOutOfStockWhere } from "@/lib/menu-stock";
 
 async function handleGET() {
   const session = await requireSession(["OWNER", "MANAGER", "SERVER"]);
@@ -19,7 +20,7 @@ async function handleGET() {
     where: { restaurantId: session.restaurantId, isEnabled: true },
     include: {
       items: {
-        where: { isAvailable: true },
+        where: sellableOrOutOfStockWhere,
         orderBy: { sortOrder: "asc" },
       },
     },

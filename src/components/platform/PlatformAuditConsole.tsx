@@ -65,9 +65,9 @@ const EMPTY_FILTERS = {
 };
 
 function tone(event: AuditEvent) {
-  if (event.severity === "CRITICAL" || event.outcome === "FAILED") return "bg-red-500/15 text-red-300";
-  if (event.outcome === "DENIED" || event.severity === "WARN") return "bg-amber-500/15 text-amber-300";
-  return "bg-emerald-500/10 text-emerald-300";
+  if (event.severity === "CRITICAL" || event.outcome === "FAILED") return "bg-red-500/15 text-red-800 dark:text-red-300";
+  if (event.outcome === "DENIED" || event.severity === "WARN") return "bg-amber-500/15 text-amber-800 dark:text-amber-300";
+  return "bg-emerald-500/10 text-emerald-800 dark:text-emerald-300";
 }
 
 export function PlatformAuditConsole({ admin }: { admin: { name: string; email: string } }) {

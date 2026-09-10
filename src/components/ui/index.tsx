@@ -17,9 +17,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         "bg-[color:var(--btn-secondary-bg)] text-[color:var(--btn-secondary-text)] border border-[color:var(--btn-secondary-border)] hover:bg-[color:var(--surface-hover)] backdrop-blur-sm",
       ghost: "text-[color:var(--muted)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-hover)]",
       danger:
-        "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30",
+        "bg-red-500/20 text-red-800 dark:text-red-400 border border-red-500/30 hover:bg-red-500/30",
       success:
-        "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30",
+        "bg-emerald-500/20 text-emerald-800 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30",
     };
 
     const sizes = {

@@ -27,8 +27,8 @@ html.dark {
 html.light {
   color-scheme: light;
   --background: #f4f4f8;
-  --foreground: #171717;
-  --muted: #71717a;
+  --foreground: #09090b;
+  --muted: #27272a;
   --app-shell: #eef0f6;
   --customer-shell: #e8ebf3;
   --footer-bg: rgba(244, 244, 248, 0.95);
@@ -59,6 +59,8 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+  overflow-x: clip;
+  max-width: 100%;
 }
 
 .scrollbar-hide {
@@ -71,8 +73,10 @@ body {
 }
 
 html {
+  overflow-x: clip;
   overflow-y: scroll;
   -webkit-overflow-scrolling: touch;
+  max-width: 100%;
 }
 
 @keyframes pulse-glow {
@@ -84,13 +88,75 @@ html {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
+.light .text-zinc-200,
+.light .text-zinc-300,
 .light .text-zinc-400,
-.light .text-zinc-500 {
+.light .text-zinc-500,
+.light .text-zinc-600 {
   color: var(--muted);
 }
 
-.light .text-white {
+.light .text-white,
+.light .hover\:text-white:hover {
   color: var(--foreground);
+}
+
+.light .placeholder\:text-zinc-500::placeholder,
+.light .placeholder\:text-zinc-400::placeholder {
+  color: var(--muted);
+}
+
+.light .text-orange-100,
+.light .text-orange-200,
+.light .text-orange-300,
+.light .text-orange-400 {
+  color: #7c2d12;
+}
+
+.light .text-violet-100,
+.light .text-violet-200,
+.light .text-violet-300 {
+  color: #4c1d95;
+}
+
+.light .text-amber-200,
+.light .text-amber-300 {
+  color: #78350f;
+}
+
+.light .text-emerald-200,
+.light .text-emerald-300,
+.light .text-emerald-400 {
+  color: #064e3b;
+}
+
+.light .text-red-50,
+.light .text-red-100,
+.light .text-red-200,
+.light .text-red-300,
+.light .text-red-400 {
+  color: #7f1d1d;
+}
+
+.light .text-sky-200,
+.light .text-sky-300,
+.light .text-sky-400 {
+  color: #0c4a6e;
+}
+
+.light .text-blue-200,
+.light .text-blue-300 {
+  color: #1e3a8a;
+}
+
+.light .text-cyan-200,
+.light .text-cyan-300 {
+  color: #155e75;
+}
+
+.light .text-yellow-200,
+.light .text-yellow-300 {
+  color: #713f12;
 }
 
 .light .border-white\/5,
@@ -117,7 +183,14 @@ html {
 }
 
 .header-trailing-actions {
-  margin-right: var(--theme-toggle-rail);
+  padding-right: var(--theme-toggle-rail);
+}
+
+@media (min-width: 640px) {
+  .header-trailing-actions {
+    padding-right: 0;
+    margin-right: var(--theme-toggle-rail);
+  }
 }
 
 select option {
@@ -134,4 +207,36 @@ body.cook-kiosk > .site-footer-global,
 body.cook-kiosk footer.site-footer-global,
 body.cook-kiosk .fixed-theme-toggle {
   display: none !important;
+}
+
+body.take-order-open > .site-footer-global,
+body.take-order-open footer.site-footer-global,
+body.take-order-open .fixed-theme-toggle {
+  display: none !important;
+}
+
+/* iOS/Android: overflow-x clip on html/body blocks vertical page scroll. */
+@media (max-width: 1023px) {
+  html:has(body.take-order-open),
+  body.take-order-open {
+    overflow-x: visible !important;
+    overflow-y: auto !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  html:has(body.take-order-open),
+  body.take-order-open {
+    overflow: hidden !important;
+    height: 100% !important;
+    max-height: 100dvh !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .take-order-header-btn {
+    display: none !important;
+  }
 }

@@ -476,7 +476,7 @@ export function PlatformTenantOverview({
                     key={r.id}
                     className={`rounded-xl border overflow-hidden ${enabled ? "border-white/10" : "border-red-500/30 opacity-80"}`}
                   >
-                    <div className="flex items-center gap-2 p-4">
+                    <div className="flex flex-wrap items-center gap-2 p-4">
                       <button
                         type="button"
                         onClick={() => toggleExpanded(r.id)}
@@ -497,7 +497,7 @@ export function PlatformTenantOverview({
                               </Badge>
                             )}
                           </div>
-                          <p className="text-xs text-zinc-500">
+                          <p className="text-xs text-zinc-500 break-all">
                             Restaurant URL:{" "}
                             {r.url || restaurantHostPreview(r.slug, tenantBaseDomain) || `/${r.slug}`}
                           </p>
@@ -517,6 +517,7 @@ export function PlatformTenantOverview({
                         type="button"
                         size="sm"
                         variant={enabled ? "secondary" : "success"}
+                        className="w-full sm:w-auto"
                         disabled={togglingRestaurantId === r.id || deletingRestaurantId === r.id}
                         onClick={() => void toggleRestaurant(r)}
                       >

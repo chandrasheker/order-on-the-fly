@@ -57,12 +57,12 @@ export function PlatformLoginForm() {
               <Shield className="w-7 h-7 text-foreground" />
             </div>
             <h1 className="text-2xl font-bold text-foreground">Super Admin</h1>
-            <p className="text-sm text-zinc-400 mt-1">Platform operator — not visible to restaurant owners</p>
+            <p className="text-sm text-muted mt-1">Platform operator — not visible to restaurant owners</p>
           </div>
 
           <form onSubmit={login} className="space-y-4">
             <div>
-              <label className="text-sm text-zinc-400 mb-1.5 block">Email</label>
+              <label className="text-sm text-muted mb-1.5 block">Email</label>
               <Input
                 type="email"
                 placeholder="Email address"
@@ -73,7 +73,7 @@ export function PlatformLoginForm() {
               />
             </div>
             <div>
-              <label className="text-sm text-zinc-400 mb-1.5 block">Password</label>
+              <label className="text-sm text-muted mb-1.5 block">Password</label>
               <Input
                 type="password"
                 placeholder="Enter password"

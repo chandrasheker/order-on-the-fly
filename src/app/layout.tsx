@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteFooter } from "@/components/SiteFooter";
 import { FixedThemeToggle } from "@/components/FixedThemeToggle";
@@ -20,6 +20,12 @@ export const metadata: Metadata = {
   title: "TableTap — Smart Restaurant Ordering",
   description:
     "QR-powered table ordering SaaS with smart prep timers, staff alerts, wait-time games, and daily reports.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 const themeInitScript = `(function(){try{var t=localStorage.getItem('tabletap-theme');document.documentElement.classList.add(t==='light'?'light':'dark');}catch(e){document.documentElement.classList.add('dark');}})();`;

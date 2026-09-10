@@ -57,6 +57,7 @@ prisma/dev.db
 # runtime uploads
 /data/payments/
 /data/backgrounds/
+/data/logos/
 /.data/
 *.traineddata
 .printer-agent-state/

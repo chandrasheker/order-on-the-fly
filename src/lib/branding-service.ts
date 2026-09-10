@@ -2,6 +2,7 @@ import {
   backgroundImageExists,
   resolveBackgroundImagePublicUrl,
 } from "@/lib/background-image-storage";
+import { resolveLogoImagePublicUrl } from "@/lib/logo-image-storage";
 
 export async function getCustomerBackgroundImageUrl(restaurant: {
   id: string;
@@ -22,4 +23,12 @@ export async function getCustomerBackgroundImageUrl(restaurant: {
   }
 
   return resolveBackgroundImagePublicUrl(restaurant);
+}
+
+export async function getCustomerLogoUrl(restaurant: {
+  id: string;
+  slug: string;
+  logoUrl: string | null;
+}): Promise<string | null> {
+  return resolveLogoImagePublicUrl(restaurant);
 }

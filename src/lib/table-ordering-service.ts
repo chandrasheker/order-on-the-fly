@@ -25,7 +25,7 @@ export async function hasOpenTableWork(tableId: string) {
   return draftCount > 0;
 }
 
-export async function closeTableOrdering(tableId: string) {
+async function endTableVisit(tableId: string, orderingEnabled: boolean) {
   await purgeStaleTableSessions(tableId);
   await prisma.tableSession.deleteMany({ where: { tableId } });
 
@@ -36,7 +36,7 @@ export async function closeTableOrdering(tableId: string) {
     await prisma.table.update({
       where: { id: tableId },
       data: {
-        orderingEnabled: false,
+        orderingEnabled,
         orderingOpenedAt: null,
         seatedAt: null,
         guestCount: null,
@@ -49,10 +49,20 @@ export async function closeTableOrdering(tableId: string) {
   await prisma.table.update({
     where: { id: tableId },
     data: {
-      orderingEnabled: false,
-      orderingOpenedAt: null,
+      orderingEnabled,
+      ...(orderingEnabled ? {} : { orderingOpenedAt: null }),
     },
   });
+}
+
+/** Owner/staff explicitly disable QR ordering. Stays closed until they enable it again. */
+export async function closeTableOrdering(tableId: string) {
+  await endTableVisit(tableId, false);
+}
+
+/** End a visit after payment or floor clear, but keep the table QR-available. */
+export async function releaseTableVisit(tableId: string) {
+  await endTableVisit(tableId, true);
 }
 
 export async function openTableOrdering(tableId: string) {
@@ -87,5 +97,5 @@ export async function maybeAutoCloseTableAfterPayment(tableId: string) {
 
   if (!(await isTabFullySettled(tableId))) return;
 
-  await closeTableOrdering(tableId);
+  await releaseTableVisit(tableId);
 }

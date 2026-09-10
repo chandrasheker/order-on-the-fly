@@ -21,6 +21,7 @@ export interface SessionUser {
   restaurantId: string;
   restaurantName: string;
   restaurantSlug: string;
+  restaurantLogoUrl?: string | null;
   staffSessionId?: string;
 }
 
@@ -136,7 +137,7 @@ export async function getSession(): Promise<SessionUser | null> {
       role: true,
       tenantId: true,
       restaurantId: true,
-      restaurant: { select: { id: true, name: true, slug: true, tenantId: true } },
+      restaurant: { select: { id: true, name: true, slug: true, tenantId: true, logoUrl: true } },
     },
   });
 
@@ -163,6 +164,7 @@ export async function getSession(): Promise<SessionUser | null> {
     restaurantId: user.restaurant.id,
     restaurantName: user.restaurant.name,
     restaurantSlug: user.restaurant.slug,
+    restaurantLogoUrl: user.restaurant.logoUrl,
     staffSessionId,
   };
 

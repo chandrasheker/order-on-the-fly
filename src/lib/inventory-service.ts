@@ -36,7 +36,7 @@ export async function decrementInventoryForOrder(
 export async function adjustMenuItemStock(params: {
   restaurantId: string;
   itemId: string;
-  stockQuantity: number;
+  stockQuantity?: number | null;
   trackInventory?: boolean;
   actorUserId?: string;
   actorName?: string;
@@ -47,32 +47,54 @@ export async function adjustMenuItemStock(params: {
   if (!item) throw new Error("Item not found");
 
   const track = params.trackInventory ?? item.trackInventory;
-  const qty = Math.max(0, Math.floor(params.stockQuantity));
+
+  if (!track) {
+    const updated = await prisma.menuItem.update({
+      where: { id: params.itemId },
+      data: {
+        trackInventory: false,
+        stockQuantity: null,
+        isAvailable: true,
+      },
+    });
+    if (!item.isAvailable) {
+      void syncMenuItemAvailability(params.restaurantId, params.itemId, true);
+    }
+    return updated;
+  }
+
+  const qtyProvided = params.stockQuantity !== undefined && params.stockQuantity !== null;
+  if (!qtyProvided) {
+    return prisma.menuItem.update({
+      where: { id: params.itemId },
+      data: { trackInventory: true },
+    });
+  }
+
+  const qty = Math.max(0, Math.floor(Number(params.stockQuantity)));
   const isAvailable = qty > 0;
 
   const updated = await prisma.menuItem.update({
     where: { id: params.itemId },
     data: {
-      trackInventory: track,
-      stockQuantity: track ? qty : null,
-      isAvailable: track ? isAvailable : item.isAvailable,
+      trackInventory: true,
+      stockQuantity: qty,
+      isAvailable,
     },
   });
 
-  if (track) {
-    void syncMenuItemAvailability(params.restaurantId, params.itemId, isAvailable);
-    await recordAuditLog({
-      restaurantId: params.restaurantId,
-      actionType: "STOCK_ADJUST",
-      entityId: params.itemId,
-      reason: `Stock set to ${qty}`,
-      oldValue: { stockQuantity: item.stockQuantity, isAvailable: item.isAvailable },
-      newValue: { stockQuantity: qty, isAvailable: updated.isAvailable },
-      payload: { itemName: item.name, stockQuantity: qty },
-      actorUserId: params.actorUserId,
-      actorName: params.actorName,
-    });
-  }
+  void syncMenuItemAvailability(params.restaurantId, params.itemId, isAvailable);
+  await recordAuditLog({
+    restaurantId: params.restaurantId,
+    actionType: "STOCK_ADJUST",
+    entityId: params.itemId,
+    reason: qty === 0 ? "Marked out of stock" : `Stock set to ${qty}`,
+    oldValue: { stockQuantity: item.stockQuantity, isAvailable: item.isAvailable },
+    newValue: { stockQuantity: qty, isAvailable: updated.isAvailable },
+    payload: { itemName: item.name, stockQuantity: qty },
+    actorUserId: params.actorUserId,
+    actorName: params.actorName,
+  });
 
   return updated;
 }

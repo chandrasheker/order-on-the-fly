@@ -9,10 +9,12 @@ export function FeedbackButton({
   tableToken,
   customerName,
   orderId,
+  placement = "fixed",
 }: {
   tableToken: string;
   customerName?: string;
   orderId?: string;
+  placement?: "fixed" | "inline";
 }) {
   const [open, setOpen] = useState(false);
   const [stars, setStars] = useState(0);
@@ -58,10 +60,15 @@ export function FeedbackButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-24 right-4 z-40 w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center text-white active:scale-95 transition-transform"
+        className={
+          placement === "inline"
+            ? "inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/30 px-3 py-1 text-xs font-semibold text-foreground"
+            : "fixed bottom-24 right-4 z-40 w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/30 flex items-center justify-center text-white active:scale-95 transition-transform"
+        }
         aria-label="Leave feedback"
       >
-        <MessageSquare className="w-5 h-5" />
+        <MessageSquare className={placement === "inline" ? "w-3.5 h-3.5" : "w-5 h-5"} />
+        {placement === "inline" ? "Feedback" : null}
       </button>
 
       <AnimatePresence>
@@ -77,7 +84,7 @@ export function FeedbackButton({
               initial={{ y: 40, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 40, opacity: 0 }}
-              className="w-full max-w-sm rounded-2xl bg-[#1a1a2e] border border-white/10 p-6"
+              className="w-full max-w-sm rounded-2xl bg-app-shell border border-white/10 p-6"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-4">
@@ -88,7 +95,7 @@ export function FeedbackButton({
               </div>
 
               {done ? (
-                <p className="text-center text-emerald-400 py-8">Thank you for your feedback! 🙏</p>
+                <p className="text-center text-emerald-800 dark:text-emerald-400 py-8">Thank you for your feedback! 🙏</p>
               ) : (
                 <>
                   <div className="flex justify-center gap-2 mb-4">
@@ -126,7 +133,7 @@ export function FeedbackButton({
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 mb-4 resize-none"
+                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-foreground placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 mb-4 resize-none"
                   />
 
                   <Button

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { CartItem } from "@/store/cart";
+import { clearRemoteCartDraft } from "@/hooks/useCartDraftSync";
 
 function newLineId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -20,6 +21,7 @@ interface StaffCartStore {
   updateQuantity: (lineId: string, quantity: number) => void;
   updateNotes: (lineId: string, notes: string) => void;
   clearCart: () => void;
+  resetSession: () => void;
   total: () => number;
   maxPrepTime: () => number;
 }
@@ -31,6 +33,10 @@ export const useStaffCartStore = create<StaffCartStore>((set, get) => ({
   setTable: (tableId) =>
     set((state) => {
       if (state.tableId === tableId) return state;
+      // Keep the ticket when first attaching a table so staff can pick items, then a table.
+      if (!state.tableId || !tableId) {
+        return { ...state, tableId };
+      }
       return { tableId, items: [], customerName: "" };
     }),
   setCustomerName: (name) => set({ customerName: name }),
@@ -79,6 +85,16 @@ export const useStaffCartStore = create<StaffCartStore>((set, get) => ({
       ),
     }),
   clearCart: () => set({ items: [], customerName: "" }),
+  resetSession: () => set({ tableId: null, customerName: "", items: [] }),
   total: () => get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),
   maxPrepTime: () => get().items.reduce((max, i) => Math.max(max, i.prepTimeMinutes), 0),
 }));
+
+/** Forget the ticket only when staff close Take Order, refresh, or leave the page. */
+export function forgetTakeOrderSession() {
+  const tableId = useStaffCartStore.getState().tableId;
+  useStaffCartStore.getState().resetSession();
+  if (tableId) {
+    void clearRemoteCartDraft({ source: "STAFF", tableId });
+  }
+}

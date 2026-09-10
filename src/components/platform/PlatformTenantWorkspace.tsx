@@ -213,7 +213,7 @@ export function PlatformTenantWorkspace() {
       activeItem="tenants"
     >
       <div className="space-y-6">
-        <div className="flex flex-wrap gap-2 border-b border-white/5 pb-4">
+        <div className="flex gap-2 overflow-x-auto pb-4 border-b border-white/5 -mx-4 px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -223,7 +223,7 @@ export function PlatformTenantWorkspace() {
                 replaceParams({ tab: id });
               }}
               className={cn(
-                "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors",
+                "inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors shrink-0",
                 tab === id
                   ? id === "features"
                     ? "bg-amber-500/20 border-amber-500/40 text-amber-200"

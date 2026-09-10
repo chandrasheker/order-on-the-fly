@@ -9,12 +9,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   RefreshCw,
-  LogOut,
   LayoutDashboard,
-  QrCode,
-  BarChart3,
   Utensils,
-  Gift,
   TimerOff,
   X,
   Ban,
@@ -23,16 +19,14 @@ import {
   CircleDollarSign,
   IndianRupee,
   ArrowRightLeft,
-  LayoutGrid,
-  Phone,
-  Plug,
   ClipboardList,
-  Radio,
-  Printer,
+  ShoppingBag,
+  Truck,
+  Plug,
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
-import { canAccessTab, canPerformOrderAction, canAccessAdminMenu, canAccessReports, type StaffTab } from "@/lib/staff-permissions";
+import { canAccessTab, canPerformOrderAction, type StaffTab } from "@/lib/staff-permissions";
 import type { Role } from "@/generated/prisma/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -46,19 +40,17 @@ import { TableOrdersTodayPanel } from "@/components/staff/TableOrdersTodayPanel"
 import type { KitchenChitPayload } from "@/lib/kitchen-chit-service";
 import { ThermalPrinterButton } from "@/components/staff/ThermalPrinterButton";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
-import {
-  canManageTableOrdering,
-  canAccessKitchen,
-  canAccessFloorPlan,
-  canPlaceOfflineOrder,
-} from "@/lib/staff-permissions";
+import { canAccessAdminMenu, canManageTableOrdering, canPlaceOfflineOrder } from "@/lib/staff-permissions";
 import { GuestRequestsPanel } from "@/components/staff/GuestRequestsPanel";
 import { KitchenCapacityPanel } from "@/components/staff/KitchenCapacityPanel";
+import { ServiceModeToggle } from "@/components/staff/ServiceModeToggle";
 import { useStaffPush } from "@/hooks/useStaffPush";
 import type { ReceiptPayload } from "@/lib/receipt-service";
 import { isClientOffline, isNetworkFetchError, swallowPollingFetchError } from "@/lib/client-fetch";
 import { CookKitchenDashboard } from "@/components/staff/CookKitchenDashboard";
 import { PickupQueuePanel } from "@/components/staff/PickupQueuePanel";
+import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
+import { takeOrderPath } from "@/lib/take-order-return";
 
 interface OrderItem {
   id: string;
@@ -172,6 +164,7 @@ interface TableSwitchRequest {
 }
 
 type ViewMode = StaffTab;
+type OfflineIntent = "walkin" | "takeaway" | "delivery" | "aggregators";
 type ItemFilter = "all" | "overdue" | "alarm";
 
 type RestaurantFeatures = {
@@ -199,7 +192,14 @@ type RestaurantFeatures = {
 
 export function StaffDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<{ id: string; name: string; role: Role; restaurantName: string } | null>(null);
+  const [user, setUser] = useState<{
+    id: string;
+    name: string;
+    role: Role;
+    restaurantName: string;
+    email?: string;
+    restaurantLogoUrl?: string | null;
+  } | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
   const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
@@ -213,6 +213,7 @@ export function StaffDashboard() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [viewMode, setViewMode] = useState<ViewMode>("active");
+  const [offlineIntent, setOfflineIntent] = useState<OfflineIntent>("walkin");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
   const [features, setFeatures] = useState<RestaurantFeatures>({});
   const [restaurantLogoUrl, setRestaurantLogoUrl] = useState<string | null>(null);
@@ -440,15 +441,6 @@ export function StaffDashboard() {
     }
   };
 
-  const logout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } catch (error) {
-      swallowPollingFetchError(error);
-    }
-    router.push("/");
-  };
-
   const pendingByTable = useMemo(() => {
     const groups = new Map<number, Order[]>();
     for (const order of pendingOrders) {
@@ -498,12 +490,57 @@ export function StaffDashboard() {
     setItemFilter("overdue");
   };
 
-  const isManager = user ? canAccessAdminMenu(user.role) : false;
   const role = user?.role;
   const showTab = (tab: StaffTab) => role && canAccessTab(role, tab) && allowedTabs.includes(tab);
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
+    <RestaurantShell
+      wide
+      title={user?.restaurantName ?? "Restaurant"}
+      subtitle={user ? `${user.name} · ${user.role.toLowerCase()}` : undefined}
+      user={
+        user
+          ? { ...user, restaurantLogoUrl: restaurantLogoUrl ?? user.restaurantLogoUrl }
+          : user
+      }
+      features={features}
+      activeItem="dashboard"
+      actions={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+            {!alertsEnabled && (
+              <button
+                type="button"
+                onClick={async () => {
+                  await enableAlerts();
+                  if (features.push_alerts) await registerPush();
+                }}
+                disabled={enabling}
+                className="p-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 disabled:opacity-50"
+                title="Enable sound alerts"
+              >
+                <Volume2 className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={fetchData} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            {user && canPerformOrderAction(user.role, "mark-paid") && features.thermal_receipts && (
+              <ThermalPrinterButton
+                status={status}
+                deviceName={deviceName}
+                autoPrint={autoPrint}
+                kitchenChitPrint={kitchenChitPrint}
+                lastError={lastError}
+                printing={printing}
+                supported={printerSupported}
+                onConnect={connect}
+                onToggleAutoPrint={toggleAutoPrint}
+                onToggleKitchenChitPrint={toggleKitchenChitPrint}
+              />
+            )}
+        </div>
+      }
+    >
       <AnimatePresence>
         {showEnableBanner && (
           <motion.div
@@ -577,165 +614,15 @@ export function StaffDashboard() {
         )}
       </AnimatePresence>
 
-      <header className="border-b border-white/5 bg-app-shell/80 backdrop-blur-xl sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">{user?.restaurantName}</h1>
-            <p className="text-sm text-zinc-400">
-              {user?.name} · <span className="text-orange-400 capitalize">{user?.role?.toLowerCase()}</span>
-            </p>
-          </div>
-          <div className="header-trailing-actions flex items-center gap-2">
-            {!alertsEnabled && (
-              <button
-                type="button"
-                onClick={async () => {
-                  await enableAlerts();
-                  if (features.push_alerts) await registerPush();
-                }}
-                disabled={enabling}
-                className="p-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 disabled:opacity-50"
-                title="Enable sound alerts"
-              >
-                <Volume2 className="w-4 h-4" />
-              </button>
-            )}
-            <button onClick={fetchData} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
-              <RefreshCw className="w-4 h-4" />
-            </button>
-            {user && canAccessKitchen(user.role) && features.kds && (
-              <Link href="/kitchen" className="p-2 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-300" title="Kitchen display">
-                <ChefHat className="w-4 h-4" />
-              </Link>
-            )}
-            {user && canAccessFloorPlan(user.role) && features.floor_plan && (
-              <Link href="/staff/floor" className="p-2 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 text-violet-300" title="Floor plan">
-                <LayoutGrid className="w-4 h-4" />
-              </Link>
-            )}
-            {user && canPlaceOfflineOrder(user.role) && features.phone_orders && (
-              <button
-                type="button"
-                onClick={() => setViewMode("offline")}
-                className={cn(
-                  "inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors",
-                  viewMode === "offline"
-                    ? "bg-violet-500/20 border-violet-500/40 text-violet-200"
-                    : "bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20",
-                )}
-                title="Takeaway, delivery, phone & aggregator orders"
-              >
-                <Phone className="w-4 h-4" />
-                <span className="hidden sm:inline">Remote orders</span>
-              </button>
-            )}
-            {isManager && (
-              <>
-                <Link href="/admin/qr" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
-                  <QrCode className="w-4 h-4" />
-                </Link>
-                <Link
-                  href="/admin/menu"
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-300 text-sm font-medium"
-                  title="Manage menu categories and items"
-                >
-                  <Utensils className="w-4 h-4" />
-                  <span className="hidden sm:inline">Menu</span>
-                </Link>
-                <Link href="/admin/rewards" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 relative">
-                  <Gift className="w-4 h-4" />
-                </Link>
-                {features.aggregator_inbox && (
-                  <Link
-                    href="/admin/integrations"
-                    className="p-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-300"
-                    title="Swiggy & Zomato automatic sync"
-                  >
-                    <Plug className="w-4 h-4" />
-                  </Link>
-                )}
-                {(features.inventory_86 ||
-                  features.labor_clock ||
-                  features.reservations ||
-                  features.tip_pooling ||
-                  features.guest_crm ||
-                  features.audit_log) && (
-                  <Link
-                    href="/admin/operations"
-                    className="p-2 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-300"
-                    title="Inventory, labor, reservations, tips, CRM, audit"
-                  >
-                    <ClipboardList className="w-4 h-4" />
-                  </Link>
-                )}
-                {(features.promotions_engine ||
-                  features.menu_modifiers ||
-                  features.call_waiter ||
-                  features.kitchen_capacity ||
-                  features.payment_webhooks ||
-                  features.push_alerts) && (
-                <Link
-                  href="/admin/realtime"
-                  className="p-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300"
-                  title="Promotions, modifiers, kitchen, payments, push alerts"
-                >
-                  <Radio className="w-4 h-4" />
-                </Link>
-                )}
-                <Link
-                  href="/admin/printing"
-                  className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300"
-                  title="Printer agents and print queue"
-                >
-                  <Printer className="w-4 h-4" />
-                </Link>
-                <Link
-                  href="/admin/platform"
-                  className="p-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300"
-                  title="Analytics, forecasts, API keys, recipes, branches"
-                >
-                  <BarChart3 className="w-4 h-4" />
-                </Link>
-              </>
-            )}
-            {user && canAccessReports(user.role) && (
-              <Link href="/admin/reports" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
-                <BarChart3 className="w-4 h-4" />
-              </Link>
-            )}
-            {user && canPerformOrderAction(user.role, "mark-paid") && features.thermal_receipts && (
-              <ThermalPrinterButton
-                status={status}
-                deviceName={deviceName}
-                autoPrint={autoPrint}
-                kitchenChitPrint={kitchenChitPrint}
-                lastError={lastError}
-                printing={printing}
-                supported={printerSupported}
-                onConnect={connect}
-                onToggleAutoPrint={toggleAutoPrint}
-                onToggleKitchenChitPrint={toggleKitchenChitPrint}
-              />
-            )}
-            <button onClick={logout} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400">
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <div>
         {printMessage && (
           <div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-200">
             {printMessage}
           </div>
         )}
-        {(user && canManageTableOrdering(user.role)) || features.kitchen_capacity ? (
-          <div className="grid lg:grid-cols-2 gap-4 mb-6 items-start">
-            {user && canManageTableOrdering(user.role) && <TableOrderingPanel />}
-            <KitchenCapacityPanel enabled={Boolean(features.kitchen_capacity)} />
-          </div>
-        ) : null}
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4 mb-6">
+          <div className="min-w-0 flex-1 space-y-6">
+        {user && canAccessAdminMenu(user.role) && <ServiceModeToggle />}
         <GuestRequestsPanel enabled={Boolean(features.call_waiter)} />
 
         {tableSwitchRequests.length > 0 && (
@@ -753,7 +640,7 @@ export function StaffDashboard() {
               {tableSwitchRequests.map((request) => (
                 <div
                   key={request.id}
-                  className="p-3 rounded-xl bg-black/20 border border-white/10 flex items-center justify-between gap-3"
+                  className="p-3 rounded-xl bg-black/20 border border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
                 >
                   <div>
                     <p className="font-medium text-foreground">
@@ -928,26 +815,71 @@ export function StaffDashboard() {
               </button>
             )}
 
-            {showTab("offline") && (
-              <button
-                type="button"
-                onClick={() => setViewMode("offline")}
-                className={cn(
-                  "text-left rounded-2xl border p-4 transition-all col-span-2 md:col-span-1",
-                  viewMode === "offline"
-                    ? "border-violet-500/50 bg-violet-500/10"
-                    : "border-violet-500/20 bg-violet-500/5 hover:border-violet-500/40"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <Phone className="w-5 h-5 text-violet-400" />
-                  <div>
-                    <p className="text-xs text-zinc-500">Offline Order</p>
-                    <p className="text-sm font-semibold text-violet-200">Phone / walk-in</p>
-                  </div>
+          </div>
+        )}
+
+        {showTab("offline") && user && canPlaceOfflineOrder(user.role) && (
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+            <button
+              type="button"
+              onClick={() => router.push(takeOrderPath("/staff/dashboard", "walkin"))}
+              className="text-left rounded-2xl border p-3 transition-all border-white/10 bg-white/5 hover:border-white/20"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Utensils className="w-4 h-4 text-violet-800 dark:text-violet-300 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-muted">Walk-in / table</p>
+                  <p className="text-sm font-semibold text-foreground">Dine-in order</p>
                 </div>
-              </button>
-            )}
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push(takeOrderPath("/staff/dashboard", "takeaway"))}
+              className="text-left rounded-2xl border p-3 transition-all border-white/10 bg-white/5 hover:border-white/20"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <ShoppingBag className="w-4 h-4 text-orange-800 dark:text-orange-300 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-muted">Takeaway</p>
+                  <p className="text-sm font-semibold text-foreground">Pack & collect</p>
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push(takeOrderPath("/staff/dashboard", "delivery"))}
+              className="text-left rounded-2xl border p-3 transition-all border-white/10 bg-white/5 hover:border-white/20"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Truck className="w-4 h-4 text-sky-800 dark:text-sky-300 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-muted">Delivery</p>
+                  <p className="text-sm font-semibold text-foreground">Send out</p>
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOfflineIntent("aggregators");
+                setViewMode("offline");
+              }}
+              className={cn(
+                "text-left rounded-2xl border p-3 transition-all",
+                viewMode === "offline" && offlineIntent === "aggregators"
+                  ? "border-orange-500/50 bg-orange-500/10"
+                  : "border-white/10 bg-white/5 hover:border-white/20",
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Plug className="w-4 h-4 text-orange-800 dark:text-orange-300 shrink-0" />
+                <div>
+                  <p className="text-xs text-muted">Swiggy / Zomato</p>
+                  <p className="text-sm font-semibold text-foreground">Aggregator</p>
+                </div>
+              </div>
+            </button>
           </div>
         )}
 
@@ -959,7 +891,7 @@ export function StaffDashboard() {
                 onCollected={() => void fetchDashboard()}
               />
             </div>
-            <div className="flex gap-2 mb-4">
+            <div className="flex flex-wrap gap-2 mb-4">
               {(["all", "overdue", "alarm"] as const).map((f) => (
                 <button
                   key={f}
@@ -982,10 +914,10 @@ export function StaffDashboard() {
                 <p className="text-zinc-400 mb-2">No active orders right now.</p>
                 {showTab("offline") && (
                   <button
-                    onClick={() => setViewMode("offline")}
-                    className="text-sm text-violet-400 hover:text-violet-300 mr-4"
+                    onClick={() => router.push(takeOrderPath("/staff/dashboard", "walkin"))}
+                    className="text-sm text-violet-800 dark:text-violet-400 hover:text-violet-900 dark:hover:text-violet-300 mr-4"
                   >
-                    Take an offline order →
+                    Take a walk-in order →
                   </button>
                 )}
                 {showTab("pending") && (
@@ -1199,8 +1131,30 @@ export function StaffDashboard() {
 
         {viewMode === "offline" && (
           <div className="space-y-5">
-            {features.aggregator_inbox && <AggregatorInboxBanner />}
-            <RemoteOrdersPanel onOrderPlaced={handleRemoteOrderPlaced} />
+            {offlineIntent === "aggregators" ? (
+              features.aggregator_inbox ? (
+                <AggregatorInboxBanner />
+              ) : (
+                <div className="rounded-2xl border border-orange-500/25 bg-orange-500/5 p-4">
+                  <p className="font-medium text-orange-800 dark:text-orange-100">Swiggy & Zomato</p>
+                  <p className="text-sm text-muted mt-1">
+                    Connect outlets from Admin → Integrations. Incoming orders then appear on the kitchen board automatically.
+                  </p>
+                  <Link
+                    href="/admin/integrations"
+                    className="inline-flex items-center gap-2 mt-3 text-sm text-orange-800 dark:text-orange-300"
+                  >
+                    <Plug className="w-4 h-4" /> Open integrations
+                  </Link>
+                </div>
+              )
+            ) : (
+              <RemoteOrdersPanel
+                key={offlineIntent}
+                initialMode={offlineIntent}
+                onOrderPlaced={handleRemoteOrderPlaced}
+              />
+            )}
           </div>
         )}
 
@@ -1295,9 +1249,17 @@ export function StaffDashboard() {
             )}
           </>
         )}
+          </div>
 
-      </main>
-    </div>
+          {(user && canManageTableOrdering(user.role)) || features.kitchen_capacity ? (
+            <aside className="lg:w-72 xl:w-80 shrink-0 space-y-3 lg:sticky lg:top-4">
+              <KitchenCapacityPanel compact enabled={Boolean(features.kitchen_capacity)} />
+              {user && canManageTableOrdering(user.role) && <TableOrderingPanel compact />}
+            </aside>
+          ) : null}
+        </div>
+      </div>
+    </RestaurantShell>
   );
 }
 
@@ -1703,7 +1665,7 @@ function CompletedOrderRow({
     <Card className="p-4">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-1">
+          <div className="flex items-center gap-3 mb-1 flex-wrap">
             <span className="text-lg font-bold">Table {order.table.number}</span>
             <span className="text-zinc-500">#{order.orderNumber}</span>
             <Badge className={getStatusColor(order.status)}>{order.status}</Badge>

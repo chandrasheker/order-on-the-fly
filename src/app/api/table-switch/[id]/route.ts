@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { todayDateString } from "@/lib/utils";
-import { closeTableOrdering, openTableOrdering } from "@/lib/table-ordering-service";
+import { openTableOrdering, releaseTableVisit } from "@/lib/table-ordering-service";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
 import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
@@ -137,7 +137,7 @@ async function handlePATCH(
   });
 
   await openTableOrdering(switchRequest.targetTableId);
-  await closeTableOrdering(switchRequest.sourceTableId);
+  await releaseTableVisit(switchRequest.sourceTableId);
 
   return NextResponse.json({
     success: true,

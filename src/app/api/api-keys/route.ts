@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, canManageMenu } from "@/lib/auth";
-import { createApiKey, listApiKeys, revokeApiKey } from "@/lib/api-key-service";
+import { createApiKey, listApiKeys, parseApiKeyExpiry, revokeApiKey } from "@/lib/api-key-service";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 async function handleGET() {
@@ -20,10 +20,17 @@ async function handlePOST(req: NextRequest) {
   }
 
   const body = await req.json();
+  let expiresAt: Date | null = null;
+  try {
+    expiresAt = parseApiKeyExpiry(body.expiresAt);
+  } catch {
+    return NextResponse.json({ error: "Invalid expiry date" }, { status: 400 });
+  }
   const result = await createApiKey({
     restaurantId: session.restaurantId,
     name: String(body.name ?? "Integration key"),
     scopes: body.scopes,
+    expiresAt,
   });
 
   return NextResponse.json(

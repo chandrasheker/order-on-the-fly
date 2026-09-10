@@ -99,6 +99,8 @@ export async function updateMenuCategory(
 
   const name = input.name?.trim() || category.name;
   return prisma.$transaction(async (tx) => {
+    // Only the category visibility flag changes. Item isAvailable / stock stay as they are
+    // so re-enabling a category restores the same live/disabled mix as before.
     const updated = await tx.menuCategory.update({
       where: { id: categoryId },
       data: {
@@ -198,17 +200,19 @@ export async function updateManagedMenuItemForRestaurant(params: {
   item: { id: string; name: string; price: number; isAvailable: boolean; categoryId: string; prepTimeMinutes: number };
   nextPrice?: number;
   isAvailable?: boolean;
+  isVeg?: boolean;
   prepTimeMinutes?: number;
   name?: string;
   swiggyItemId?: unknown;
   zomatoItemId?: unknown;
 }) {
-  const { restaurantId, item, nextPrice, isAvailable, prepTimeMinutes, name, swiggyItemId, zomatoItemId } = params;
+  const { restaurantId, item, nextPrice, isAvailable, isVeg, prepTimeMinutes, name, swiggyItemId, zomatoItemId } = params;
   return prisma.$transaction(async (tx) => {
     const next = await tx.menuItem.update({
       where: { id: item.id },
       data: {
         ...(isAvailable !== undefined && { isAvailable }),
+        ...(isVeg !== undefined && { isVeg }),
         ...(prepTimeMinutes !== undefined && { prepTimeMinutes }),
         ...(nextPrice !== undefined && { price: nextPrice }),
         ...(name !== undefined && { name: name.trim() }),

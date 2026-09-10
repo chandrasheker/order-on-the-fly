@@ -76,7 +76,7 @@ export function ThermalPrinterButton({
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-white/10 bg-[#12121c] shadow-2xl p-4 z-50">
+        <div className="fixed inset-x-4 top-16 sm:absolute sm:inset-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80 rounded-2xl border border-white/10 bg-app-shell shadow-2xl p-4 z-50">
           <div className="flex items-center gap-2 mb-3">
             <Bluetooth className="w-4 h-4 text-sky-400" />
             <p className="font-semibold text-white text-sm">Thermal printer</p>

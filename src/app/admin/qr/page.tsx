@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button, Card, Spinner, Input } from "@/components/ui";
-import { ArrowLeft, Download, Printer, QrCode, Users, CircleDollarSign, ImageIcon } from "lucide-react";
-import Link from "next/link";
+import { Download, Plus, Printer, QrCode } from "lucide-react";
 import { isDineInTable } from "@/lib/order-channel";
-import { ServiceModeCard } from "@/components/admin/ServiceModeCard";
 
 interface QRData {
   id: string;
@@ -27,19 +25,6 @@ interface TableSetting {
   orderingEnabled: boolean;
 }
 
-async function readApiErrorMessage(res: Response, fallback: string) {
-  const text = await res.text();
-  try {
-    const json = JSON.parse(text) as { error?: string };
-    return json.error || fallback;
-  } catch {
-    if (res.status === 413) {
-      return "Image is too large for the server. Try a smaller file (under 8 MB).";
-    }
-    return text.trim().slice(0, 200) || fallback;
-  }
-}
-
 export default function QRPage() {
   const router = useRouter();
   const [qrCodes, setQrCodes] = useState<QRData[]>([]);
@@ -48,37 +33,16 @@ export default function QRPage() {
   const [defaultMaxSessions, setDefaultMaxSessions] = useState(2);
   const [loading, setLoading] = useState(true);
   const [savingDefault, setSavingDefault] = useState(false);
-  const [paymentQrUrl, setPaymentQrUrl] = useState("");
-  const [upiVpa, setUpiVpa] = useState("");
-  const [upiMerchantName, setUpiMerchantName] = useState("");
-  const [savingUpi, setSavingUpi] = useState(false);
-  const [uploadingPaymentQr, setUploadingPaymentQr] = useState(false);
-  const [removingPaymentQr, setRemovingPaymentQr] = useState(false);
-  const [paymentQrMessage, setPaymentQrMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-  const [receiptLogoUrl, setReceiptLogoUrl] = useState("");
-  const [receiptAddress, setReceiptAddress] = useState("");
-  const [receiptPhone, setReceiptPhone] = useState("");
-  const [receiptGstin, setReceiptGstin] = useState("");
-  const [receiptGstEnabled, setReceiptGstEnabled] = useState(false);
-  const [receiptGstRate, setReceiptGstRate] = useState(5);
-  const [receiptFooter, setReceiptFooter] = useState("");
-  const [savingReceipt, setSavingReceipt] = useState(false);
-  const [receiptMessage, setReceiptMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-  const [backgroundImageUrl, setBackgroundImageUrl] = useState("");
-  const [backgroundEnabled, setBackgroundEnabled] = useState(false);
-  const [uploadingBackground, setUploadingBackground] = useState(false);
-  const [removingBackground, setRemovingBackground] = useState(false);
-  const [backgroundMessage, setBackgroundMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [addingTable, setAddingTable] = useState(false);
+  const [busyTableId, setBusyTableId] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   const loadAll = () => {
     Promise.all([
       fetch("/api/tables/qr").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/tables/manage").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/payment/settings").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/receipt/settings").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/branding/background").then((r) => (r.ok ? r.json() : null)),
     ])
-      .then(([qrData, manageData, paymentData, receiptData, brandingData]) => {
+      .then(([qrData, manageData]) => {
         if (!qrData) {
           router.push("/");
           return;
@@ -91,24 +55,6 @@ export default function QRPage() {
           );
           setDefaultMaxSessions(manageData.defaultMaxSessions);
         }
-        if (paymentData?.settings) {
-          setPaymentQrUrl(paymentData.settings.paymentQrUrl ?? "");
-          setUpiVpa(paymentData.settings.upiVpa ?? "");
-          setUpiMerchantName(paymentData.settings.upiMerchantName ?? "");
-        }
-        if (receiptData?.settings) {
-          setReceiptLogoUrl(receiptData.settings.logoUrl ?? "");
-          setReceiptAddress(receiptData.settings.address ?? "");
-          setReceiptPhone(receiptData.settings.phone ?? "");
-          setReceiptGstin(receiptData.settings.gstin ?? "");
-          setReceiptGstEnabled(Boolean(receiptData.settings.gstEnabled));
-          setReceiptGstRate(Number(receiptData.settings.gstRate) || 5);
-          setReceiptFooter(receiptData.settings.footer ?? "");
-        }
-        if (brandingData?.settings) {
-          setBackgroundImageUrl(brandingData.settings.backgroundImageUrl ?? "");
-          setBackgroundEnabled(Boolean(brandingData.settings.enabled));
-        }
       })
       .catch((err) => console.error("Failed to load:", err))
       .finally(() => setLoading(false));
@@ -118,36 +64,9 @@ export default function QRPage() {
     loadAll();
   }, [router]);
 
-  const saveReceiptSettings = async () => {
-    setSavingReceipt(true);
-    setReceiptMessage(null);
-    try {
-      const res = await fetch("/api/receipt/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          logoUrl: receiptLogoUrl,
-          address: receiptAddress,
-          phone: receiptPhone,
-          gstin: receiptGstin,
-          gstEnabled: receiptGstEnabled,
-          gstRate: receiptGstRate,
-          footer: receiptFooter,
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json.error || "Could not save receipt settings");
-      }
-      setReceiptMessage({ type: "ok", text: "Receipt settings saved." });
-    } catch (error) {
-      setReceiptMessage({
-        type: "err",
-        text: error instanceof Error ? error.message : "Could not save receipt settings",
-      });
-    } finally {
-      setSavingReceipt(false);
-    }
+  const flashError = (text: string) => {
+    setError(text);
+    window.setTimeout(() => setError(""), 4000);
   };
 
   const saveDefault = async () => {
@@ -162,133 +81,42 @@ export default function QRPage() {
   };
 
   const saveTableOrdering = async (tableId: string, orderingEnabled: boolean) => {
+    setBusyTableId(tableId);
     await fetch("/api/tables/manage", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tableId, orderingEnabled }),
     });
+    setBusyTableId(null);
     loadAll();
   };
 
   const saveTableSessions = async (tableId: string, maxSessions: number) => {
+    setBusyTableId(tableId);
     await fetch("/api/tables/manage", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tableId, maxSessions }),
     });
+    setBusyTableId(null);
     loadAll();
   };
 
-  const uploadPaymentQr = async (file: File) => {
-    setUploadingPaymentQr(true);
-    setPaymentQrMessage(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/payment/settings/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const json = res.ok ? await res.json() : null;
-      if (!res.ok) {
-        setPaymentQrMessage({
-          type: "err",
-          text: await readApiErrorMessage(res, "Upload failed."),
-        });
-        return;
-      }
-      setPaymentQrUrl(json.settings.paymentQrUrl ?? "");
-      setPaymentQrMessage({ type: "ok", text: json.message || "PhonePe QR uploaded." });
-    } catch {
-      setPaymentQrMessage({ type: "err", text: "Upload failed. Please try again." });
-    } finally {
-      setUploadingPaymentQr(false);
+  const addTable = async () => {
+    if (addingTable) return;
+    setAddingTable(true);
+    const res = await fetch("/api/tables/qr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ count: 1 }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setAddingTable(false);
+    if (!res.ok) {
+      flashError(json.error || "Could not add table");
+      return;
     }
-  };
-
-  const removePaymentQr = async () => {
-    setRemovingPaymentQr(true);
-    setPaymentQrMessage(null);
-    try {
-      const res = await fetch("/api/payment/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentQrUrl: null }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setPaymentQrMessage({ type: "err", text: json.error || "Could not remove QR." });
-        return;
-      }
-      setPaymentQrUrl("");
-      setPaymentQrMessage({ type: "ok", text: "PhonePe QR removed." });
-    } catch {
-      setPaymentQrMessage({ type: "err", text: "Could not remove QR. Please try again." });
-    } finally {
-      setRemovingPaymentQr(false);
-    }
-  };
-
-  const handlePaymentQrFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (file) void uploadPaymentQr(file);
-  };
-
-  const uploadBackground = async (file: File) => {
-    setUploadingBackground(true);
-    setBackgroundMessage(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/branding/background/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const json = res.ok ? await res.json() : null;
-      if (!res.ok) {
-        setBackgroundMessage({
-          type: "err",
-          text: await readApiErrorMessage(res, "Upload failed."),
-        });
-        return;
-      }
-      setBackgroundImageUrl(json.settings.backgroundImageUrl ?? "");
-      setBackgroundMessage({ type: "ok", text: json.message || "Background uploaded." });
-    } catch {
-      setBackgroundMessage({ type: "err", text: "Upload failed. Please try again." });
-    } finally {
-      setUploadingBackground(false);
-    }
-  };
-
-  const removeBackground = async () => {
-    setRemovingBackground(true);
-    setBackgroundMessage(null);
-    try {
-      const res = await fetch("/api/branding/background", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ backgroundImageUrl: null }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setBackgroundMessage({ type: "err", text: json.error || "Could not remove background." });
-        return;
-      }
-      setBackgroundImageUrl("");
-      setBackgroundMessage({ type: "ok", text: "Guest background removed." });
-    } catch {
-      setBackgroundMessage({ type: "err", text: "Could not remove background. Please try again." });
-    } finally {
-      setRemovingBackground(false);
-    }
-  };
-
-  const handleBackgroundFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (file) void uploadBackground(file);
+    loadAll();
   };
 
   const printAll = () => {
@@ -325,413 +153,148 @@ export default function QRPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-app-shell">
+      <div className="flex justify-center py-16">
         <Spinner className="w-8 h-8" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-app-shell text-foreground">
-      <header className="border-b border-white/5 px-4 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/staff/dashboard" className="p-2 rounded-xl bg-white/5 hover:bg-white/10">
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold">Table QR Codes</h1>
-              <p className="text-sm text-zinc-400">{restaurantName} · {qrCodes.length} tables</p>
-            </div>
+    <div className="space-y-6">
+      {error ? (
+        <div className="rounded-xl px-4 py-3 text-sm bg-red-500/10 text-red-300 border border-red-500/30">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" size="sm" onClick={() => void addTable()} disabled={addingTable}>
+          <Plus className="w-4 h-4" />
+          {addingTable ? "Adding…" : "Add table"}
+        </Button>
+        <p className="text-sm text-muted">
+          {restaurantName} · {qrCodes.length} table{qrCodes.length === 1 ? "" : "s"}
+        </p>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-1.5">
+            <span className="text-xs text-muted whitespace-nowrap">Default phones</span>
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={defaultMaxSessions}
+              onChange={(e) => setDefaultMaxSessions(parseInt(e.target.value, 10) || 2)}
+              className="w-14 h-8 text-center text-sm"
+              title="Used when a new table is added"
+            />
+            <Button size="sm" onClick={() => void saveDefault()} disabled={savingDefault}>
+              {savingDefault ? "…" : "Save"}
+            </Button>
           </div>
           <Button onClick={printAll}>
             <Printer className="w-4 h-4" /> Print All
           </Button>
         </div>
-      </header>
+      </div>
 
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-        <ServiceModeCard />
-        <Card className="p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Printer className="w-5 h-5 text-violet-400" />
-            <h2 className="text-lg font-bold">Thermal bill / receipt</h2>
-          </div>
-          <p className="text-sm text-zinc-400 mb-4">
-            These details print on ESC/POS Bluetooth receipts when staff marks a bill paid.
-            Add your logo URL, address, and optional GST.
-          </p>
-
-          <div className="grid md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="text-xs text-zinc-500 block mb-1">Logo URL</label>
-              <Input
-                value={receiptLogoUrl}
-                onChange={(e) => setReceiptLogoUrl(e.target.value)}
-                placeholder="https://your-restaurant.com/logo.png"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-500 block mb-1">Phone</label>
-              <Input
-                value={receiptPhone}
-                onChange={(e) => setReceiptPhone(e.target.value)}
-                placeholder="+91 98765 43210"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="text-xs text-zinc-500 block mb-1">Address</label>
-              <Input
-                value={receiptAddress}
-                onChange={(e) => setReceiptAddress(e.target.value)}
-                placeholder="Street, city, state, PIN"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-500 block mb-1">GSTIN (optional)</label>
-              <Input
-                value={receiptGstin}
-                onChange={(e) => setReceiptGstin(e.target.value)}
-                placeholder="22AAAAA0000A1Z5"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-500 block mb-1">Footer message</label>
-              <Input
-                value={receiptFooter}
-                onChange={(e) => setReceiptFooter(e.target.value)}
-                placeholder="Thank you! Visit again."
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-4 mb-4 p-4 rounded-xl bg-white/5 border border-white/10">
-            <label className="flex items-center gap-2 text-sm text-zinc-300">
-              <input
-                type="checkbox"
-                checked={receiptGstEnabled}
-                onChange={(e) => setReceiptGstEnabled(e.target.checked)}
-                className="rounded border-white/20"
-              />
-              Add GST on printed bills
-            </label>
-            {receiptGstEnabled && (
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-zinc-500">GST rate %</label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  value={receiptGstRate}
-                  onChange={(e) => setReceiptGstRate(parseFloat(e.target.value) || 0)}
-                  className="w-24"
-                />
-              </div>
-            )}
-          </div>
-
-          {receiptLogoUrl.trim() && (
-            <div className="mb-4 inline-block p-3 rounded-xl bg-white">
-              <img
-                src={receiptLogoUrl}
-                alt="Receipt logo preview"
-                className="max-h-24 max-w-[220px] object-contain"
-              />
-            </div>
-          )}
-
-          <Button size="sm" onClick={() => void saveReceiptSettings()} disabled={savingReceipt}>
-            {savingReceipt ? "Saving..." : "Save receipt settings"}
-          </Button>
-          {receiptMessage && (
-            <p
-              className={`text-sm mt-3 ${receiptMessage.type === "ok" ? "text-emerald-400" : "text-red-400"}`}
-            >
-              {receiptMessage.text}
-            </p>
-          )}
+      {qrCodes.length === 0 ? (
+        <Card className="p-8 text-center text-sm text-muted">
+          No dine-in tables yet. Add a table to create its QR code.
         </Card>
-
-        <Card className="p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <CircleDollarSign className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-lg font-bold">Manual UPI</h2>
-          </div>
-          <p className="text-sm text-zinc-400 mb-4">
-            Staff verifies payment. Add your UPI ID and optional static QR. Automatic Razorpay
-            checkout is configured separately under Realtime → Payments.
-          </p>
-          <div className="space-y-3 mb-4">
-            <div>
-              <label className="text-xs text-zinc-500 block mb-1">UPI ID</label>
-              <Input
-                placeholder="abcrestaurant@upi"
-                value={upiVpa}
-                onChange={(e) => setUpiVpa(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-500 block mb-1">Merchant name</label>
-              <Input
-                placeholder="Restaurant display name"
-                value={upiMerchantName}
-                onChange={(e) => setUpiMerchantName(e.target.value)}
-              />
-            </div>
-            <Button
-              size="sm"
-              disabled={savingUpi}
-              onClick={() => {
-                setSavingUpi(true);
-                void fetch("/api/payment/settings", {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ upiVpa, upiMerchantName }),
-                })
-                  .then(async (res) => {
-                    const json = await res.json().catch(() => ({}));
-                    if (!res.ok) {
-                      setPaymentQrMessage({ type: "err", text: json.error || "Could not save UPI" });
-                      return;
-                    }
-                    setUpiVpa(json.settings?.upiVpa ?? upiVpa);
-                    setUpiMerchantName(json.settings?.upiMerchantName ?? upiMerchantName);
-                    setPaymentQrMessage({ type: "ok", text: "UPI settings saved." });
-                  })
-                  .finally(() => setSavingUpi(false));
-              }}
-            >
-              {savingUpi ? "Saving..." : "Save UPI ID"}
-            </Button>
-          </div>
-
-          {paymentQrMessage && (
-            <p
-              className={`text-sm mb-4 ${
-                paymentQrMessage.type === "ok" ? "text-emerald-400" : "text-red-400"
-              }`}
-            >
-              {paymentQrMessage.text}
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-3 mb-4">
-            <label className="inline-flex">
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                disabled={uploadingPaymentQr || removingPaymentQr}
-                onChange={handlePaymentQrFileChange}
-              />
-              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium cursor-pointer disabled:opacity-50">
-                {uploadingPaymentQr ? "Uploading..." : "Choose QR image"}
-              </span>
-            </label>
-            {paymentQrUrl.trim() && (
-              <Button
-                variant="secondary"
-                onClick={removePaymentQr}
-                disabled={uploadingPaymentQr || removingPaymentQr}
-              >
-                {removingPaymentQr ? "Removing..." : "Remove QR"}
-              </Button>
-            )}
-          </div>
-
-          {paymentQrUrl.trim() ? (
-            <div className="inline-block p-3 rounded-xl bg-white">
-              <img
-                src={paymentQrUrl}
-                alt="Payment QR preview"
-                className="w-40 h-40 object-contain"
-              />
-            </div>
-          ) : (
-            <p className="text-sm text-zinc-500">No payment QR uploaded yet.</p>
-          )}
-        </Card>
-
-        <Card className="p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <ImageIcon className="w-5 h-5 text-sky-400" />
-            <h2 className="text-lg font-bold">Guest page background</h2>
-            <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
-              Premium
-            </span>
-          </div>
-          <p className="text-sm text-[color:var(--muted)] mb-4">
-            Upload a photo from your device to show behind the customer ordering screen. Guests see
-            it on the table QR menu page. Ask TableTap support to enable this premium feature for
-            your restaurant.
-          </p>
-
-          {!backgroundEnabled ? (
-            <p className="text-sm text-amber-400/90 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
-              Custom background is not enabled for this restaurant yet. Contact your platform admin
-              or run{" "}
-              <code className="text-orange-300">enable-premium-features.ts --features custom_background</code>.
-            </p>
-          ) : (
-            <>
-              {backgroundMessage && (
-                <p
-                  className={`text-sm mb-4 ${
-                    backgroundMessage.type === "ok" ? "text-emerald-400" : "text-red-400"
-                  }`}
-                >
-                  {backgroundMessage.text}
-                </p>
-              )}
-
-              <div className="flex flex-wrap items-center gap-3 mb-4">
-                <label className="inline-flex">
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
-                    className="hidden"
-                    disabled={uploadingBackground || removingBackground}
-                    onChange={handleBackgroundFileChange}
-                  />
-                  <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-sm font-medium cursor-pointer disabled:opacity-50">
-                    {uploadingBackground ? "Uploading..." : "Choose background image"}
-                  </span>
-                </label>
-                {backgroundImageUrl.trim() && (
-                  <Button
-                    variant="secondary"
-                    onClick={removeBackground}
-                    disabled={uploadingBackground || removingBackground}
-                  >
-                    {removingBackground ? "Removing..." : "Remove background"}
-                  </Button>
-                )}
-              </div>
-
-              {backgroundImageUrl.trim() ? (
-                <div className="relative overflow-hidden rounded-xl border border-[color:var(--surface-border)] max-w-md">
-                  <img
-                    key={backgroundImageUrl}
-                    src={backgroundImageUrl}
-                    alt="Guest page background preview"
-                    className="w-full h-40 object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                  <p className="absolute bottom-2 left-3 text-xs text-white/90">Customer preview</p>
-                </div>
-              ) : (
-                <p className="text-sm text-[color:var(--muted)]">No guest background uploaded yet.</p>
-              )}
-            </>
-          )}
-        </Card>
-
-        <Card className="p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Users className="w-5 h-5 text-orange-400" />
-            <h2 className="text-lg font-bold">Table ordering sessions</h2>
-          </div>
-          <p className="text-sm text-zinc-400 mb-4">
-            Limit how many phones can order at each table at the same time. Default is 2 — increase
-            for large tables (e.g. Table 8 with 10 seats → set 4–6 sessions).
-          </p>
-          <div className="flex flex-wrap items-end gap-3 mb-6 pb-6 border-b border-white/10">
-            <div>
-              <label className="text-xs text-zinc-500 block mb-1">Default for new tables</label>
-              <Input
-                type="number"
-                min={1}
-                max={20}
-                value={defaultMaxSessions}
-                onChange={(e) => setDefaultMaxSessions(parseInt(e.target.value, 10) || 2)}
-                className="w-24"
-              />
-            </div>
-            <Button size="sm" onClick={saveDefault} disabled={savingDefault}>
-              {savingDefault ? "Saving..." : "Save default"}
-            </Button>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {tables.map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/5 border border-white/10"
-              >
-                <div>
-                  <p className="font-medium">Table {t.number}</p>
-                  <p className="text-xs text-zinc-500">
-                    {t.activeSessions} active now · max {t.maxSessions}
-                    {t.orderingEnabled ? " · ordering open" : " · ordering closed"}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <Button
-                    size="sm"
-                    variant={t.orderingEnabled ? "secondary" : "primary"}
-                    onClick={() => saveTableOrdering(t.id, !t.orderingEnabled)}
-                  >
-                    {t.orderingEnabled ? "Close ordering" : "Open ordering"}
-                  </Button>
-                  <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={t.maxSessions}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10) || 2;
-                      setTables((prev) =>
-                        prev.map((row) =>
-                          row.id === t.id ? { ...row, maxSessions: val } : row
-                        )
-                      );
-                    }}
-                    className="w-16 text-center"
-                  />
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => saveTableSessions(t.id, t.maxSessions)}
-                  >
-                    Save
-                  </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-
+      ) : (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
         >
-          {qrCodes.map((qr, i) => (
-            <motion.div
-              key={qr.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-            >
-              <Card className="p-6 text-center" glow>
-                <QrCode className="w-5 h-5 text-orange-400 mx-auto mb-2" />
-                <img src={qr.dataUrl} alt={`Table ${qr.number}`} className="w-40 h-40 mx-auto rounded-xl" />
-                <p className="text-3xl font-bold mt-3">Table {qr.number}</p>
-                <p className="text-xs text-zinc-500 mt-2 truncate">{qr.url}</p>
-                <a
-                  href={qr.dataUrl}
-                  download={`table-${qr.number}-qr.png`}
-                  className="inline-flex items-center gap-1 text-xs text-orange-400 mt-3 hover:text-orange-300"
-                >
-                  <Download className="w-3 h-3" /> Download
-                </a>
-              </Card>
-            </motion.div>
-          ))}
+          {qrCodes.map((qr, i) => {
+            const setting = tables.find((table) => table.id === qr.id);
+            const open = setting?.orderingEnabled ?? true;
+            return (
+              <motion.div
+                key={qr.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
+              >
+                <Card className={`p-4 text-center ${open ? "" : "opacity-70"}`} glow>
+                  <QrCode className="w-4 h-4 text-orange-400 mx-auto mb-2" />
+                  <img
+                    src={qr.dataUrl}
+                    alt={`Table ${qr.number}`}
+                    className="w-36 h-36 mx-auto rounded-xl"
+                  />
+                  <a
+                    href={qr.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block text-[10px] leading-snug text-muted break-all px-1 hover:text-orange-700 dark:hover:text-orange-300"
+                    title={qr.url}
+                  >
+                    {qr.url}
+                  </a>
+                  <p className="text-2xl font-bold mt-2">Table {qr.number}</p>
+                  {setting ? (
+                    <p className="text-[11px] text-muted">
+                      {setting.activeSessions} seated · {open ? "Open" : "Closed"}
+                    </p>
+                  ) : null}
+                  {setting ? (
+                    <div className="mt-2 flex items-center justify-center gap-1.5">
+                      <label className="text-[11px] text-muted">Phones</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={setting.maxSessions}
+                        title="Max phones at this table"
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10) || 2;
+                          setTables((prev) =>
+                            prev.map((row) =>
+                              row.id === setting.id ? { ...row, maxSessions: val } : row,
+                            ),
+                          );
+                        }}
+                        className="w-14 h-8 text-center text-sm"
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={busyTableId === setting.id}
+                        onClick={() => void saveTableSessions(setting.id, setting.maxSessions)}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                    {setting ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={open ? "secondary" : "success"}
+                        disabled={busyTableId === setting.id}
+                        onClick={() => void saveTableOrdering(setting.id, !open)}
+                        title="Same open/closed switch as dashboard table ordering"
+                      >
+                        {busyTableId === setting.id ? "…" : open ? "Disable" : "Enable"}
+                      </Button>
+                    ) : null}
+                    <a
+                      href={qr.dataUrl}
+                      download={`table-${qr.number}-qr.png`}
+                      className="inline-flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300"
+                    >
+                      <Download className="w-3 h-3" /> Download
+                    </a>
+                  </div>
+                </Card>
+              </motion.div>
+            );
+          })}
         </motion.div>
-      </main>
+      )}
     </div>
   );
 }

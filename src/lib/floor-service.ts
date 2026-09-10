@@ -1,32 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { todayDateString, isOrderItemOpen } from "@/lib/utils";
-import { openTableOrdering, closeTableOrdering, hasOpenTableWork } from "@/lib/table-ordering-service";
+import { openTableOrdering, releaseTableVisit, hasOpenTableWork } from "@/lib/table-ordering-service";
 import { getTableDraftItemCounts } from "@/lib/table-cart-draft-service";
 import { getTableTabPaymentSummary } from "@/lib/table-tab-service";
+import { FLOOR_STATE_LABELS, type TableFloorState } from "@/lib/floor-state-styles";
 
-export type TableFloorState =
-  | "available"
-  | "seated"
-  | "ordering"
-  | "kitchen"
-  | "ready"
-  | "eating"
-  | "payment"
-  | "overdue";
-
-export const FLOOR_STATE_LABELS: Record<
-  TableFloorState,
-  { label: string; description: string }
-> = {
-  available: { label: "Available", description: "Empty — ready for guests" },
-  seated: { label: "Seated", description: "Guests seated, no order yet" },
-  ordering: { label: "Ordering", description: "Cart has items or guests are placing an order" },
-  kitchen: { label: "Kitchen", description: "Items cooking on the line" },
-  ready: { label: "Ready", description: "Food ready — waiting to be served" },
-  eating: { label: "Eating", description: "Food served, guests dining" },
-  payment: { label: "Payment", description: "Consolidated bill — awaiting payment" },
-  overdue: { label: "Overdue", description: "Kitchen item past prep deadline" },
-};
+export { FLOOR_STATE_LABELS, type TableFloorState };
 
 const ATTEND_ALERT_TYPE = "FLOOR_ATTEND";
 
@@ -229,7 +208,7 @@ export async function updateTableFloor(
     if (await hasOpenTableWork(tableId)) {
       return { error: "Table has open orders or an unpaid bill" as const };
     }
-    await closeTableOrdering(tableId);
+    await releaseTableVisit(tableId);
     const updated = await prisma.table.update({
       where: { id: tableId },
       data: {
