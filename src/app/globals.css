@@ -209,10 +209,23 @@ body.cook-kiosk .fixed-theme-toggle {
   display: none !important;
 }
 
+html:has(body.take-order-open),
+body.take-order-open {
+  overflow: hidden !important;
+  height: 100% !important;
+  max-height: 100dvh !important;
+}
+
 body.take-order-open > .site-footer-global,
 body.take-order-open footer.site-footer-global,
 body.take-order-open .fixed-theme-toggle {
   display: none !important;
+}
+
+.take-order-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
 }
 
 @media (max-width: 1023px) {

@@ -374,7 +374,7 @@ export function RemoteOrdersPanel({
           )}
           <div
             className={cn(
-              "flex gap-1.5 overflow-x-auto pb-0.5 lg:grid lg:grid-cols-8 lg:overflow-visible lg:gap-2",
+              "flex gap-1.5 overflow-x-auto overscroll-x-contain touch-pan-x pb-0.5 lg:grid lg:grid-cols-8 lg:overflow-visible lg:touch-auto lg:gap-2",
               selectedTable && !tablesOpen && "hidden lg:grid",
             )}
           >
@@ -531,13 +531,18 @@ export function RemoteOrdersPanel({
 
   if (splitCart) {
     return (
-      <div className="flex flex-col lg:flex-row gap-3 lg:gap-6 h-full min-h-0">
-        <div className="min-w-0 flex-1 min-h-0 flex flex-col">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row gap-3 lg:gap-6">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {offlineBanner ? <div className="shrink-0 mb-2">{offlineBanner}</div> : null}
           <div className="shrink-0 pb-2 mb-2 border-b border-[color:var(--surface-border)]">
             {orderControls}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">{menuBlock}</div>
+          <div
+            data-take-order-scroll
+            className="take-order-scroll min-h-0 flex-1 overflow-y-auto"
+          >
+            {menuBlock}
+          </div>
         </div>
         <aside className="hidden lg:block w-[22rem] shrink-0 h-full overflow-y-auto">
           <StaffCartPanel {...cartProps} allowEmpty />

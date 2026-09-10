@@ -319,11 +319,7 @@ export function RestaurantShell({
   }
 
   if (onTakeOrderPage) {
-    return (
-      <div className="relative h-dvh max-w-full overflow-hidden bg-app-shell text-foreground">
-        {children}
-      </div>
-    );
+    return children;
   }
 
   return (

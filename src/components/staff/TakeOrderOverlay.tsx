@@ -38,7 +38,7 @@ export function TakeOrderOverlay({
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col bg-app-shell text-foreground"
+      className="fixed inset-0 z-[80] flex flex-col bg-app-shell text-foreground"
       role="dialog"
       aria-modal="true"
       aria-labelledby="take-order-title"
@@ -57,7 +57,7 @@ export function TakeOrderOverlay({
           <span className="hidden sm:inline">Close</span>
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden px-3 py-2 sm:px-4 sm:py-3 lg:px-6">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2 sm:px-4 sm:py-3 lg:px-6">
         <RemoteOrdersPanel splitCart initialMode={initialMode} />
       </div>
     </div>
