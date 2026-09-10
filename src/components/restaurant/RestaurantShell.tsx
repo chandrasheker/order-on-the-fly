@@ -82,6 +82,9 @@ function flagOn(features: FeatureFlags | undefined, key: string) {
   return Boolean(features?.[key]);
 }
 
+/** Floor is the same table map as Dashboard → Table ordering. Keep the route; hide the duplicate nav. */
+const SHOW_FLOOR_NAV = false;
+
 function navFromPath(pathname: string): RestaurantNavId {
   if (pathname.startsWith("/admin/menu")) return "menu";
   if (pathname.startsWith("/admin/qr")) return "qr";
@@ -104,7 +107,7 @@ function buildNav(role: Role | undefined, features: FeatureFlags | undefined): N
   if (role && canAccessKitchen(role) && flagOn(features, "kds")) {
     items.push({ id: "kitchen", href: "/kitchen", label: "Kitchen", icon: ChefHat });
   }
-  if (role && canAccessFloorPlan(role) && flagOn(features, "floor_plan")) {
+  if (SHOW_FLOOR_NAV && role && canAccessFloorPlan(role) && flagOn(features, "floor_plan")) {
     items.push({ id: "floor", href: "/staff/floor", label: "Floor", icon: LayoutGrid });
   }
   if (!role || !canAccessAdminMenu(role)) {
