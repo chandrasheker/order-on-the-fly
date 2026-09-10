@@ -58,7 +58,7 @@ async function handlePOST(req: Request) {
     where: dineInTablesWhere(session.restaurantId),
     select: { number: true },
   });
-  let nextNumber = dineIn.reduce((max, table) => Math.max(max, table.number), 0) + 1;
+  const nextNumber = dineIn.reduce((max, table) => Math.max(max, table.number), 0) + 1;
   if (nextNumber + newCount - 1 >= SERVICE_TABLE_NUMBER_FLOOR) {
     return NextResponse.json({ error: "Table limit reached" }, { status: 400 });
   }
