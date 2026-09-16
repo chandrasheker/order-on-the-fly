@@ -1,5 +1,5 @@
 import type { ReceiptPayload } from "@/lib/receipt-service";
-import { EscPosEncoder, formatReceiptMoney, padLine, wrapText } from "@/lib/escpos/encoder";
+import { EscPosEncoder, centerPad, formatReceiptMoney, padLine, wrapText } from "@/lib/escpos/encoder";
 import { logoToEscPosRaster } from "@/lib/escpos/raster-image";
 
 const LINE_WIDTH = 32;
@@ -14,48 +14,38 @@ export async function buildEscPosReceipt(receipt: ReceiptPayload) {
     encoder.align("center").rasterImage(logo.data, logo.widthBytes, logo.height).feed(1);
   }
 
-  encoder
-    .align("center")
-    .bold(true)
-    .size(2, 2)
-    .line(receipt.restaurant.name)
-    .bold(false)
-    .size(1, 1);
+  // Double-width name uses 16 columns. Then force left + space-pad: many 58mm
+  // printers ignore ESC a, and GS ! (size) often resets justification to left.
+  encoder.align("left").bold(true).size(2, 2);
+  writeCentered(encoder, receipt.restaurant.name, 16);
+  encoder.bold(false).size(1, 1);
 
   if (receipt.restaurant.address) {
-    for (const line of wrapText(receipt.restaurant.address, LINE_WIDTH)) {
-      encoder.line(line);
-    }
+    writeCentered(encoder, receipt.restaurant.address);
   }
 
   if (receipt.restaurant.phone) {
-    for (const line of wrapText(`Tel: ${receipt.restaurant.phone}`, LINE_WIDTH)) {
-      encoder.line(line);
-    }
+    writeCentered(encoder, `Tel: ${receipt.restaurant.phone}`);
   }
 
   if (receipt.restaurant.gstin) {
-    for (const line of wrapText(`GSTIN: ${receipt.restaurant.gstin}`, LINE_WIDTH)) {
-      encoder.line(line);
-    }
+    writeCentered(encoder, `GSTIN: ${receipt.restaurant.gstin}`);
   }
 
   encoder.line("--------------------------------");
-  encoder.line(
+  writeCentered(
+    encoder,
     receipt.order.billNumber ? `Bill ${receipt.order.billNumber}` : `Order #${receipt.order.orderNumber}`,
   );
-  encoder.line(`Order #${receipt.order.orderNumber}`);
-  encoder.line(`Table ${receipt.order.tableNumber}`);
-  encoder.line(formatReceiptDate(receipt.order.paidAt));
+  writeCentered(encoder, `Order #${receipt.order.orderNumber}`);
+  writeCentered(encoder, `Table ${receipt.order.tableNumber}`);
+  writeCentered(encoder, formatReceiptDate(receipt.order.paidAt));
   if (receipt.order.customerName) {
-    for (const line of wrapText(`Guest: ${receipt.order.customerName}`, LINE_WIDTH)) {
-      encoder.line(line);
-    }
+    writeCentered(encoder, `Guest: ${receipt.order.customerName}`);
   }
 
   encoder
     .line("--------------------------------")
-    .align("left")
     .line("ITEM            QTY    AMT")
     .line("--------------------------------");
 
@@ -96,21 +86,24 @@ export async function buildEscPosReceipt(receipt: ReceiptPayload) {
     .bold(true)
     .line(padLine("TOTAL", formatReceiptMoney(receipt.total), LINE_WIDTH))
     .bold(false)
-    .line("--------------------------------")
-    .align("center")
-    .line("PAID")
-    .feed(1);
+    .line("--------------------------------");
+  writeCentered(encoder, "PAID");
+  encoder.feed(1);
 
   if (receipt.restaurant.footer) {
-    for (const line of wrapText(receipt.restaurant.footer, LINE_WIDTH)) {
-      encoder.line(line);
-    }
+    writeCentered(encoder, receipt.restaurant.footer);
   } else {
-    encoder.line("Thank you! Visit again.");
+    writeCentered(encoder, "Thank you! Visit again.");
   }
 
   encoder.feed(RECEIPT_CUT_FEED_LINES).cut(true);
   return encoder.build();
+}
+
+function writeCentered(encoder: EscPosEncoder, text: string, width = LINE_WIDTH) {
+  for (const part of wrapText(text, width)) {
+    encoder.line(centerPad(part, width));
+  }
 }
 
 function formatReceiptDate(iso: string) {

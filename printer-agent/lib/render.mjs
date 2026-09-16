@@ -97,10 +97,12 @@ export function renderCustomerBill(payload = {}) {
     out += line(`GST  ${formatMoney(financials.gstAmount)}`);
   }
   out += line(`TOTAL  ${formatMoney(financials.grandTotal)}`);
+  out += line("");
+  out += line(centerLine("PAID"));
   if (restaurant.footer) {
     out += line("");
     for (const footerLine of wrapText(restaurant.footer, 32)) {
-      out += line(footerLine);
+      out += line(centerLine(footerLine));
     }
     out += line("");
     out += line("");

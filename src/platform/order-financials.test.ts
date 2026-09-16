@@ -7,7 +7,7 @@ import {
   refundedPaymentsTotal,
 } from "@/lib/order-financials";
 import { buildReceiptPayload } from "@/lib/receipt-service";
-import { formatReceiptMoney, wrapText } from "@/lib/escpos/encoder";
+import { centerPad, formatReceiptMoney, wrapText } from "@/lib/escpos/encoder";
 import { buildEscPosReceipt, RECEIPT_CUT_FEED_LINES } from "@/lib/escpos/build-receipt";
 import { formatCurrency } from "@/lib/utils";
 
@@ -314,7 +314,10 @@ describe("POS receipt footer", () => {
     assert.ok(Buffer.from(bytes).includes(feed), "expected extra line feed before cut");
   });
 
-  it("centers GSTIN, bill, order, and table with the shop header", async () => {
+  it("space-pads GSTIN, bill, order, and table so cheap printers still center them", async () => {
+    assert.equal(centerPad("Table 4", 32), `${" ".repeat(12)}Table 4`);
+    assert.equal(centerPad("GSTIN: dskjhfkjshfjsdf", 32), `${" ".repeat(5)}GSTIN: dskjhfkjshfjsdf`);
+
     const bytes = await buildEscPosReceipt({
       restaurant: {
         name: "Cafe",
@@ -341,16 +344,16 @@ describe("POS receipt footer", () => {
       sgstAmount: 0,
       total: 60,
     });
+    const text = Buffer.from(bytes).toString("latin1");
+    assert.match(text, / {5}GSTIN: dskjhfkjshfjsdf\n/);
+    assert.match(text, /\n {7}Bill 20260916-0001\n/);
+    assert.match(text, /\n {11}Order #12\n/);
+    assert.match(text, /\n {12}Table 4\n/);
+    assert.match(text, /\n {14}PAID\n/);
+    assert.match(text, /\nITEM            QTY    AMT\n/);
     const gstinAt = indexOfAscii(bytes, "GSTIN: dskjhfkjshfjsdf");
-    const billAt = indexOfAscii(bytes, "Bill 20260916-0001");
-    const orderAt = indexOfAscii(bytes, "Order #12");
-    const tableAt = indexOfAscii(bytes, "Table 4");
     const itemsAt = indexOfAscii(bytes, "ITEM            QTY    AMT");
-    assert.ok(gstinAt >= 0 && billAt >= 0 && orderAt >= 0 && tableAt >= 0 && itemsAt >= 0);
-    assert.equal(lastAlignBefore(bytes, gstinAt), "center");
-    assert.equal(lastAlignBefore(bytes, billAt), "center");
-    assert.equal(lastAlignBefore(bytes, orderAt), "center");
-    assert.equal(lastAlignBefore(bytes, tableAt), "center");
+    assert.equal(lastAlignBefore(bytes, gstinAt), "left");
     assert.equal(lastAlignBefore(bytes, itemsAt), "left");
   });
 });

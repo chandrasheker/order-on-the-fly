@@ -81,6 +81,13 @@ export function padLine(left: string, right: string, width = 32) {
   return `${trimmedLeft}${" ".repeat(gap)}${right}`.slice(0, width);
 }
 
+/** Cheap ESC/POS printers often ignore ESC a; center by padding spaces instead. */
+export function centerPad(text: string, width = 32) {
+  const s = String(text ?? "").slice(0, Math.max(1, width));
+  const pad = Math.max(0, Math.floor((width - s.length) / 2));
+  return `${" ".repeat(pad)}${s}`;
+}
+
 /** Thermal printers use ASCII; always show paise so CGST 1.50 is not rounded to 1. */
 export function formatReceiptMoney(amount: number) {
   const paise = Math.round((Number(amount) || 0) * 100);

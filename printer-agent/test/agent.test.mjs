@@ -217,7 +217,9 @@ describe("printer-agent processing", () => {
         financials: { taxableSubtotal: 60, gstAmount: 3, cgstAmount: 1.5, sgstAmount: 1.5, grandTotal: 63 },
       },
     });
-    assert.match(bill, /Bill 20260904-001/);
+    assert.match(bill, / {7}Bill 20260904-001/);
+    assert.match(bill, / {12}Order #7/);
+    assert.match(bill, / {12}Table 3/);
     assert.match(bill, /CGST  1.50/);
     assert.match(bill, /SGST  1.50/);
     assert.match(bill, /GST  3.00/);
