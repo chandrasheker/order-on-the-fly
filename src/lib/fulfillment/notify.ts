@@ -76,6 +76,7 @@ export async function evaluateSelfPickupNotifications(orderId: string): Promise<
           name: true,
           receiptGstEnabled: true,
           receiptGstRate: true,
+          receiptGstInclusive: true,
         },
       },
       bills: {
@@ -112,6 +113,7 @@ export async function evaluateSelfPickupNotifications(orderId: string): Promise<
               name: true,
               receiptGstEnabled: true,
               receiptGstRate: true,
+              receiptGstInclusive: true,
             },
           },
           bills: {

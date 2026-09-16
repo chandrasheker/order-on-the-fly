@@ -6,6 +6,7 @@ import {
   capturedPaymentsTotal,
   refundedPaymentsTotal,
 } from "@/lib/order-financials";
+import { buildReceiptPayload } from "@/lib/receipt-service";
 
 describe("canonical order financials", () => {
   it("uses served items only for the subtotal", () => {
@@ -43,12 +44,26 @@ describe("canonical order financials", () => {
     assert.equal(result.fullyPaid, true);
   });
 
-  it("adds GST to amount due when receipt tax is enabled", () => {
+  it("keeps GST inside MRP by default so menu prices are the billed total", () => {
+    const result = computeOrderFinancials({
+      items: [{ unitPrice: 30, quantity: 1, status: "SERVED" }],
+      gstEnabled: true,
+      gstRate: 5,
+    });
+    assert.equal(result.grandTotal, 30);
+    assert.equal(result.amountDue, 30);
+    assert.equal(result.taxableSubtotal, 28.57);
+    assert.equal(result.gstAmount, 1.43);
+    assert.equal(result.cgstAmount + result.sgstAmount, 1.43);
+  });
+
+  it("adds GST on top of menu prices when configured exclusive", () => {
     const result = computeOrderFinancials({
       items: [{ unitPrice: 200, quantity: 1, status: "SERVED" }],
       discountAmount: 0,
       gstEnabled: true,
       gstRate: 5,
+      gstInclusive: false,
     });
     assert.equal(result.gstAmount, 10);
     assert.equal(result.cgstAmount + result.sgstAmount, 10);
@@ -56,12 +71,25 @@ describe("canonical order financials", () => {
     assert.equal(result.amountDue, 210);
   });
 
-  it("applies GST after the order discount", () => {
+  it("extracts inclusive GST from the discounted MRP, without inflating the bill", () => {
     const result = computeOrderFinancials({
       items: [{ unitPrice: 200, quantity: 1, status: "SERVED" }],
       discountAmount: 50,
       gstEnabled: true,
       gstRate: 5,
+    });
+    assert.equal(result.grandTotal, 150);
+    assert.equal(result.taxableSubtotal, 142.86);
+    assert.equal(result.gstAmount, 7.14);
+  });
+
+  it("applies exclusive GST after the order discount", () => {
+    const result = computeOrderFinancials({
+      items: [{ unitPrice: 200, quantity: 1, status: "SERVED" }],
+      discountAmount: 50,
+      gstEnabled: true,
+      gstRate: 5,
+      gstInclusive: false,
     });
     assert.equal(result.taxableSubtotal, 150);
     assert.equal(result.gstAmount, 7.5);
@@ -144,5 +172,32 @@ describe("canonical order financials", () => {
     assert.deepEqual(checkout, recon);
     assert.equal(checkout.itemSubtotalPaise, 84550);
     assert.equal(checkout.orderDiscountPaise, 4550);
+  });
+
+  it("prints GST as included without increasing the receipt total", () => {
+    const payload = buildReceiptPayload(
+      {
+        name: "Cafe",
+        logoUrl: null,
+        receiptAddress: null,
+        receiptPhone: null,
+        receiptGstin: "29ABCDE1234F1Z5",
+        receiptGstEnabled: true,
+        receiptGstRate: 5,
+        receiptGstInclusive: true,
+        receiptFooter: null,
+      },
+      {
+        id: "o1",
+        orderNumber: 1,
+        customerName: null,
+        paidAt: new Date("2026-09-16T10:00:00.000Z"),
+        table: { number: 1 },
+        items: [{ itemName: "Water", quantity: 1, unitPrice: 30, status: "SERVED" }],
+      },
+    );
+    assert.equal(payload.total, 30);
+    assert.equal(payload.gstAmount, 1.43);
+    assert.equal(payload.restaurant.gstInclusive, true);
   });
 });

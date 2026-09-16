@@ -76,11 +76,11 @@ export default async function PublicReceiptPage({
           {receipt.gstAmount > 0 ? (
             <>
               <div className="flex justify-between text-muted">
-                <dt>CGST</dt>
+                <dt>{receipt.gstInclusive ? "CGST (incl.)" : "CGST"}</dt>
                 <dd>{formatCurrency(receipt.cgstAmount)}</dd>
               </div>
               <div className="flex justify-between text-muted">
-                <dt>SGST</dt>
+                <dt>{receipt.gstInclusive ? "SGST (incl.)" : "SGST"}</dt>
                 <dd>{formatCurrency(receipt.sgstAmount)}</dd>
               </div>
             </>

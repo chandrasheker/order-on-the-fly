@@ -143,6 +143,7 @@ async function handleGET(req: NextRequest) {
         pickupLocationLabel: true,
         receiptGstEnabled: true,
         receiptGstRate: true,
+        receiptGstInclusive: true,
       },
     });
     for (const order of ordersWithMenu) {

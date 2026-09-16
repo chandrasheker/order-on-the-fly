@@ -3,9 +3,11 @@ import { prisma } from "@/lib/prisma";
 import {
   canonicalFinancialsForOrder,
   projectItemsForFinancials,
+  RESTAURANT_GST_SELECT,
   type FinalizedBillTotals,
   type LedgerPayment,
   type OrderFinancialSummary,
+  type RestaurantGstSettings,
 } from "@/lib/order-financials";
 import { countsTowardBillableTotal } from "@/lib/utils";
 import {
@@ -55,6 +57,7 @@ export type OrderForCollection = {
   restaurant?: {
     receiptGstEnabled: boolean;
     receiptGstRate: number;
+    receiptGstInclusive: boolean;
   } | null;
   bills?: FinalizedBillTotals[];
 };
@@ -90,10 +93,7 @@ const ORDER_COLLECTION_SELECT = {
     },
   },
   restaurant: {
-    select: {
-      receiptGstEnabled: true,
-      receiptGstRate: true,
-    },
+    select: RESTAURANT_GST_SELECT,
   },
   bills: {
     where: { status: "FINALIZED" },
@@ -153,7 +153,8 @@ function collectionFinanceInput(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }) {
@@ -164,6 +165,7 @@ function collectionFinanceInput(order: {
     discountAmount: order.discountAmount,
     gstEnabled: order.gstEnabled ?? order.restaurant?.receiptGstEnabled,
     gstRate: order.gstRate ?? order.restaurant?.receiptGstRate,
+    gstInclusive: order.gstInclusive ?? order.restaurant?.receiptGstInclusive,
     finalizedBill:
       order.finalizedBill ??
       order.bills?.find((bill) => !bill.status || bill.status === "FINALIZED") ??
@@ -178,7 +180,8 @@ export function settlementFinancialsForOrder(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }): OrderFinancialSummary {
@@ -192,7 +195,8 @@ export function outstandingAmountPaiseForCollection(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }): number {
@@ -219,7 +223,8 @@ export function evaluateCollectionEligibility(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }): CollectionEligibility {
@@ -308,7 +313,8 @@ export function customerPickupState(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }): CustomerPickupState {
@@ -334,7 +340,8 @@ export function publicPickupView(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }, pickupLocationLabel?: string | null) {
@@ -376,7 +383,8 @@ export function throwIfSelfPickupHandoverBlocked(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }): void {

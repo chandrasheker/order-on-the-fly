@@ -802,7 +802,7 @@ describe("M7 dual/hybrid fulfillment", () => {
     const owner = await createStaff(restaurant, "OWNER", suffix);
     await prisma.restaurant.update({
       where: { id: restaurant.id },
-      data: { receiptGstEnabled: true, receiptGstRate: 5 },
+      data: { receiptGstEnabled: true, receiptGstRate: 5, receiptGstInclusive: false },
     });
     const category = await prisma.menuCategory.findFirst({ where: { restaurantId: restaurant.id } });
     assert.ok(category);
@@ -867,7 +867,45 @@ describe("M7 dual/hybrid fulfillment", () => {
     assert.ok(collected.collectedAt);
   });
 
-  it("collection outstanding uses the finalized Bill, not a later item recompute", async () => {
+  it("inclusive GST keeps SELF_PICKUP handover at the menu MRP", async () => {
+    const suffix = `gstincl-${Date.now()}`;
+    const { restaurant, table } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    await prisma.restaurant.update({
+      where: { id: restaurant.id },
+      data: { receiptGstEnabled: true, receiptGstRate: 5 },
+    });
+    const category = await prisma.menuCategory.findFirst({ where: { restaurantId: restaurant.id } });
+    assert.ok(category);
+    const water = await prisma.menuItem.create({
+      data: { name: "Water", price: 30, categoryId: category!.id },
+    });
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: water.id, quantity: 1 }],
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    await markItemsReady(created.order.id);
+    const pay = await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 30,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    assert.equal(pay.ok, true);
+    const bill = await prisma.bill.findFirst({ where: { orderId: created.order.id, status: "FINALIZED" } });
+    assert.ok(bill);
+    assert.equal(bill!.grandTotal, 30);
+    assert.equal(bill!.gstAmount, 1.43);
+    const elig = evaluateCollectionEligibility(
+      (await loadOrderForCollection(prisma, restaurant.id, created.order.id))!,
+    );
+    assert.equal(elig.outstandingAmountPaise, 0);
+    assert.equal(elig.collectable, true);
+  });
     const suffix = `authbill-${Date.now()}`;
     const { restaurant, table, burger } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
     const owner = await createStaff(restaurant, "OWNER", suffix);

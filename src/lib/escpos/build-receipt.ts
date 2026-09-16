@@ -73,10 +73,12 @@ export async function buildEscPosReceipt(receipt: ReceiptPayload) {
 
   if (receipt.restaurant.gstEnabled && receipt.gstAmount > 0) {
     const halfRate = receipt.restaurant.gstRate / 2;
+    const included = receipt.restaurant.gstInclusive === true;
+    const suffix = included ? " incl." : "";
     encoder
-      .line(padLine(`CGST @ ${halfRate}%`, formatReceiptMoney(receipt.cgstAmount), LINE_WIDTH))
-      .line(padLine(`SGST @ ${halfRate}%`, formatReceiptMoney(receipt.sgstAmount), LINE_WIDTH))
-      .line(padLine(`GST Total`, formatReceiptMoney(receipt.gstAmount), LINE_WIDTH));
+      .line(padLine(`CGST @ ${halfRate}%${suffix}`, formatReceiptMoney(receipt.cgstAmount), LINE_WIDTH))
+      .line(padLine(`SGST @ ${halfRate}%${suffix}`, formatReceiptMoney(receipt.sgstAmount), LINE_WIDTH))
+      .line(padLine(included ? "GST (incl. in MRP)" : "GST Total", formatReceiptMoney(receipt.gstAmount), LINE_WIDTH));
   }
 
   encoder

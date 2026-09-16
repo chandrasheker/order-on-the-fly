@@ -29,6 +29,7 @@ describe("canonical customer payment amount", () => {
       discountAmount: 50,
       gstEnabled: true,
       gstRate: 5,
+      gstInclusive: false,
     });
     const rawItemTotal = 200;
     assert.notEqual(financials.amountDue, rawItemTotal);

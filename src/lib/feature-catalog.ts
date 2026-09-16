@@ -175,7 +175,7 @@ export const FEATURE_CATALOG: FeatureDefinition[] = [
   {
     key: "gst_receipts",
     name: "GST receipt fields",
-    problem: "GSTIN, tax rate, and compliant receipt footer on print.",
+    problem: "GSTIN, tax rate, included-in-MRP vs added-on-top, and compliant receipt footer on print.",
     tier: "premium",
     defaultEnabled: false,
   },

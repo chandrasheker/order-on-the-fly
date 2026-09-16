@@ -12,7 +12,9 @@ import {
   FINANCIAL_PAID_EPSILON,
   MANUAL_UPI_VERIFICATION,
   PAYMENT_STATUS,
+  RESTAURANT_GST_SELECT,
   canonicalFinancialsForOrder,
+  gstInputFromRestaurant,
   isCapturedPayment,
   type OrderFinancialSummary,
 } from "@/lib/order-financials";
@@ -55,7 +57,11 @@ function computeSummaryFromOrder(
     fulfillmentMode?: string | null;
     items: OrderItemRow[];
     discountAmount?: number | null;
-    restaurant?: { receiptGstEnabled: boolean; receiptGstRate: number };
+    restaurant?: {
+      receiptGstEnabled: boolean;
+      receiptGstRate: number;
+      receiptGstInclusive: boolean;
+    };
     bills?: Array<{
       status: string;
       itemSubtotal: number;
@@ -101,8 +107,7 @@ function computeSummaryFromOrder(
     items: order.items,
     payments: order.payments,
     discountAmount: order.discountAmount,
-    gstEnabled: order.restaurant?.receiptGstEnabled,
-    gstRate: order.restaurant?.receiptGstRate,
+    ...gstInputFromRestaurant(order.restaurant),
     finalizedBill: order.bills?.find((bill) => bill.status === "FINALIZED"),
   });
 
@@ -147,7 +152,7 @@ export async function getOrderPaymentSummaries(orderIds: string[]) {
     include: {
       items: true,
       payments: { include: { allocations: true } },
-      restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+      restaurant: { select: RESTAURANT_GST_SELECT },
       bills: true,
     },
   });
@@ -165,7 +170,7 @@ export async function getOrderPaymentSummary(orderId: string) {
     include: {
       items: true,
       payments: { include: { allocations: true } },
-      restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+      restaurant: { select: RESTAURANT_GST_SELECT },
       bills: true,
     },
   });
@@ -370,7 +375,7 @@ export async function recordOrderPayment(params: {
         include: {
           items: true,
           payments: { include: { allocations: true } },
-          restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+          restaurant: { select: RESTAURANT_GST_SELECT },
           bills: true,
         },
       });
@@ -556,7 +561,7 @@ export async function recordOrderPayment(params: {
         include: {
           items: true,
           payments: { include: { allocations: true } },
-          restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+          restaurant: { select: RESTAURANT_GST_SELECT },
           bills: true,
         },
       });
@@ -934,7 +939,7 @@ export async function confirmManualUpiPayment(params: {
         include: {
           items: true,
           payments: { include: { allocations: true } },
-          restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+          restaurant: { select: RESTAURANT_GST_SELECT },
           bills: true,
         },
       });
@@ -993,7 +998,7 @@ export async function confirmManualUpiPayment(params: {
         include: {
           items: true,
           payments: { include: { allocations: true } },
-          restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+          restaurant: { select: RESTAURANT_GST_SELECT },
           bills: true,
         },
       });

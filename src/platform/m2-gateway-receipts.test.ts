@@ -315,7 +315,9 @@ describe("M2 gateway receipts", () => {
     });
     assert.equal(created.ok, true);
     if (!created.ok) return;
+    assert.equal(financials.amountDue, 150);
     assert.equal(created.checkout.amountPaise, toPaise(financials.amountDue));
+    assert.equal(created.checkout.amountPaise, 15000);
     assert.notEqual(created.checkout.amountPaise, 20000);
     const attempt = await prisma.gatewayPaymentAttempt.findUnique({
       where: { publicToken: created.checkout.publicToken },

@@ -33,6 +33,7 @@ async function handleGET() {
       gstin: gstEnabled ? (restaurant.receiptGstin ?? "") : "",
       gstEnabled: gstEnabled ? restaurant.receiptGstEnabled : false,
       gstRate: gstEnabled ? restaurant.receiptGstRate : 0,
+      gstInclusive: gstEnabled ? restaurant.receiptGstInclusive : true,
       footer: restaurant.receiptFooter ?? "",
     },
     capabilities: { gstReceipts: gstEnabled },
@@ -80,6 +81,9 @@ async function handlePATCH(req: NextRequest) {
         ...(gstFeature && gstRate !== undefined && {
           receiptGstRate: Number.isFinite(gstRate) ? Math.max(0, Math.min(100, gstRate)) : 5,
         }),
+        ...(gstFeature && body.gstInclusive !== undefined && {
+          receiptGstInclusive: Boolean(body.gstInclusive),
+        }),
         ...(body.footer !== undefined && {
           receiptFooter: String(body.footer).trim() || null,
         }),
@@ -89,7 +93,9 @@ async function handlePATCH(req: NextRequest) {
     const gstChanged =
       gstFeature &&
       ((body.gstEnabled !== undefined && body.gstEnabled !== before?.receiptGstEnabled) ||
-        (gstRate !== undefined && gstRate !== before?.receiptGstRate));
+        (gstRate !== undefined && gstRate !== before?.receiptGstRate) ||
+        (body.gstInclusive !== undefined &&
+          Boolean(body.gstInclusive) !== before?.receiptGstInclusive));
     await appendPlatformAuditEventInTx(tx, {
       category: AUDIT_CATEGORY.CONFIG,
       action: gstChanged ? AUDIT_ACTION.GST_SETTING_CHANGED : AUDIT_ACTION.RECEIPT_SETTINGS_CHANGED,
@@ -110,6 +116,7 @@ async function handlePATCH(req: NextRequest) {
       gstin: gstFeature ? (updated.receiptGstin ?? "") : "",
       gstEnabled: gstFeature ? updated.receiptGstEnabled : false,
       gstRate: gstFeature ? updated.receiptGstRate : 0,
+      gstInclusive: gstFeature ? updated.receiptGstInclusive : true,
       footer: updated.receiptFooter ?? "",
     },
     capabilities: { gstReceipts: gstFeature },

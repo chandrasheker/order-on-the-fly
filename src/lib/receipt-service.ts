@@ -1,4 +1,4 @@
-import { financialsForOrder } from "@/lib/order-financials";
+import { financialsForOrder, gstInputFromRestaurant } from "@/lib/order-financials";
 
 export type ReceiptLineItem = {
   name: string;
@@ -17,6 +17,7 @@ export type ReceiptPayload = {
     gstin: string | null;
     gstEnabled: boolean;
     gstRate: number;
+    gstInclusive?: boolean;
     footer: string | null;
   };
   order: {
@@ -44,6 +45,7 @@ type RestaurantReceiptFields = {
   receiptGstin: string | null;
   receiptGstEnabled: boolean;
   receiptGstRate: number;
+  receiptGstInclusive?: boolean;
   receiptFooter: string | null;
 };
 
@@ -71,8 +73,7 @@ export function buildReceiptPayload(
   const financials = financialsForOrder({
     items: order.items,
     discountAmount: order.discountAmount,
-    gstEnabled: restaurant.receiptGstEnabled,
-    gstRate: restaurant.receiptGstRate,
+    ...gstInputFromRestaurant(restaurant),
   });
   const gstRate = restaurant.receiptGstEnabled ? Math.max(0, restaurant.receiptGstRate) : 0;
 
@@ -85,6 +86,7 @@ export function buildReceiptPayload(
       gstin: restaurant.receiptGstin,
       gstEnabled: restaurant.receiptGstEnabled,
       gstRate,
+      gstInclusive: restaurant.receiptGstEnabled && restaurant.receiptGstInclusive !== false,
       footer: restaurant.receiptFooter,
     },
     order: {
@@ -118,6 +120,7 @@ export const RECEIPT_RESTAURANT_SELECT = {
   receiptGstin: true,
   receiptGstEnabled: true,
   receiptGstRate: true,
+  receiptGstInclusive: true,
   receiptFooter: true,
 } as const;
 

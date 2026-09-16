@@ -6,6 +6,7 @@ import {
   outstandingAmountPaiseForCollection,
 } from "@/lib/fulfillment/collection";
 import { evaluateSelfPickupNotifications } from "@/lib/fulfillment/notify";
+import { RESTAURANT_GST_SELECT } from "@/lib/order-financials";
 
 export async function getPickupQueue(restaurantId: string) {
   const restaurant = await prisma.restaurant.findUnique({
@@ -24,7 +25,7 @@ export async function getPickupQueue(restaurantId: string) {
       items: true,
       payments: true,
       table: { select: { number: true } },
-      restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+      restaurant: { select: RESTAURANT_GST_SELECT },
       bills: {
         where: { status: "FINALIZED" },
         select: {
