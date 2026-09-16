@@ -13,7 +13,7 @@ import { recordFullOrderPayment, recordOrderPayment, recordTableTabFullPayment, 
 import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
-import { canPerformOrderAction } from "@/lib/staff-permissions";
+import { canPerformOrderAction, canPerformOrderActionOnOrder } from "@/lib/staff-permissions";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { applyOrderTip } from "@/lib/tip-pool-service";
 import { recordGuestPayment } from "@/lib/guest-crm-service";
@@ -169,6 +169,7 @@ async function handlePATCH(
     "reject-item",
     "prepare-item",
     "ready-item",
+    "ready-all",
     "serve-all",
     "collect-order",
     "mark-paid",
@@ -176,7 +177,7 @@ async function handlePATCH(
   ] as const;
 
   if (staffActions.includes(action as (typeof staffActions)[number])) {
-    if (!canPerformOrderAction(session.role, action)) {
+    if (!canPerformOrderActionOnOrder(session.role, action, order)) {
       return NextResponse.json({ error: "Action not allowed for your role" }, { status: 403 });
     }
   }
@@ -504,6 +505,26 @@ async function handlePATCH(
         return NextResponse.json({ error: err.message, code: "INVALID_TRANSITION" }, { status: 409 });
       }
       throw err;
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === "ready-all") {
+    for (const item of order.items) {
+      if (item.status !== "PENDING" && item.status !== "PREPARING") continue;
+      try {
+        await transitionOrderItemDirect({
+          orderId: id,
+          itemId: item.id,
+          toStatus: "READY",
+          actorUserId: session.id,
+          actorName: session.name,
+          restaurantId: session.restaurantId,
+        });
+      } catch (err) {
+        if (err instanceof InvalidOrderTransitionError) continue;
+        throw err;
+      }
     }
     return NextResponse.json({ success: true });
   }

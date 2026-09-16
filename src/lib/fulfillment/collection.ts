@@ -507,7 +507,8 @@ export async function markSelfPickupCollected(input: {
   }
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    let claimedNow = false;
+    const result = await prisma.$transaction(async (tx) => {
       const order = await loadOrderForCollection(tx, input.restaurantId, input.orderId);
       if (!order) {
         throw new SelfPickupCollectionError("NOT_FOUND", "Order not found.", 404);
@@ -552,6 +553,7 @@ export async function markSelfPickupCollected(input: {
         }
         throw new SelfPickupCollectionError("NOT_FOUND", "Order not found.", 404);
       }
+      claimedNow = true;
 
       await tx.orderItem.updateMany({
         where: {
@@ -596,6 +598,11 @@ export async function markSelfPickupCollected(input: {
       }
       return collected;
     });
+    if (claimedNow) {
+      const { notifySelfPickupCollected } = await import("@/lib/fulfillment/notify");
+      await notifySelfPickupCollected(result.id);
+    }
+    return result;
   } catch (error) {
     if (error instanceof SelfPickupCollectionError && error.code === "PAYMENT_REQUIRED") {
       const latest = await loadOrderForCollection(prisma, input.restaurantId, input.orderId);

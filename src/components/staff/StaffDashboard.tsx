@@ -26,7 +26,8 @@ import {
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
-import { canAccessTab, canPerformOrderAction, type StaffTab } from "@/lib/staff-permissions";
+import { fromPaise } from "@/lib/money";
+import { canAccessTab, canMarkPickupReady, canPerformOrderAction, type StaffTab } from "@/lib/staff-permissions";
 import type { Role } from "@/generated/prisma/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -317,11 +318,23 @@ export function StaffDashboard() {
 
   const updateItem = async (orderId: string, itemId: string, action: string) => {
     try {
-      await fetch(`/api/orders/${orderId}`, {
+      const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, itemId: itemId || undefined }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const due = fromPaise(json.outstandingAmountPaise ?? 0);
+        const message =
+          json.code === "PAYMENT_REQUIRED"
+            ? `Collect blocked — ${formatCurrency(due)} still due`
+            : json.code === "NOT_READY"
+              ? "Mark items Ready to collect first"
+              : json.error || "Could not update order";
+        alert(message);
+        return;
+      }
       await fetchData();
     } catch (error) {
       swallowPollingFetchError(error);
@@ -888,6 +901,7 @@ export function StaffDashboard() {
             <div className="mb-6">
               <PickupQueuePanel
                 canCollect={canPerformOrderAction(role!, "collect-order")}
+                canReady={canMarkPickupReady(role!)}
                 onCollected={() => void fetchDashboard()}
               />
             </div>
@@ -1274,11 +1288,18 @@ function ActiveOrderCard({
   role: Role;
   onUpdate: (orderId: string, itemId: string, action: string) => void;
 }) {
+  const isPickup = order.fulfillmentMode === "SELF_PICKUP";
   const canStart = canPerformOrderAction(role, "prepare-item");
-  const canReady = canPerformOrderAction(role, "ready-item");
+  const canReady = isPickup ? canMarkPickupReady(role) : canPerformOrderAction(role, "ready-item");
   const canServe = canPerformOrderAction(role, "serve-item");
   const canReject = canPerformOrderAction(role, "reject-item");
   const canServeAll = canPerformOrderAction(role, "serve-all");
+  const canCollect = canPerformOrderAction(role, "collect-order");
+  const requiredItems = order.items.filter((item) => item.status !== "UNAVAILABLE");
+  const needsReady = requiredItems.some((item) => item.status === "PENDING" || item.status === "PREPARING");
+  const foodReady =
+    requiredItems.length > 0 &&
+    requiredItems.every((item) => item.status === "READY" || item.status === "SERVED");
 
   return (
     <motion.div
@@ -1342,7 +1363,7 @@ function ActiveOrderCard({
                   </span>
                 )}
               </div>
-              {isOrderItemOpen(item.status) && (canStart || canReady || canServe || canReject) && (
+              {isOrderItemOpen(item.status) && (canStart || canReady || (!isPickup && canServe) || canReject) && (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex gap-1.5">
                     {canStart && item.status === "PENDING" && (
@@ -1352,12 +1373,12 @@ function ActiveOrderCard({
                     )}
                     {canReady && (item.status === "PENDING" || item.status === "PREPARING") && (
                       <Button size="sm" variant="secondary" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "ready-item")}>
-                        Ready
+                        {isPickup ? "Ready to collect" : "Ready"}
                       </Button>
                     )}
-                    {canServe && (
-                      <Button size="sm" variant="success" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, order.fulfillmentMode === "SELF_PICKUP" ? "collect-order" : "serve-item")}>
-                        <CheckCircle2 className="w-3 h-3" /> {order.fulfillmentMode === "SELF_PICKUP" ? "Collect" : "Serve"}
+                    {!isPickup && canServe && item.status === "READY" && (
+                      <Button size="sm" variant="success" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "serve-item")}>
+                        <CheckCircle2 className="w-3 h-3" /> Serve
                       </Button>
                     )}
                   </div>
@@ -1376,8 +1397,16 @@ function ActiveOrderCard({
               {item.status === "PREPARING" && item.preparedByName && (
                 <span className="text-xs text-sky-400/80">Prep: {item.preparedByName}</span>
               )}
-              {item.status === "READY" && item.readyByName && (
-                <span className="text-xs text-amber-400/80">Ready: {item.readyByName}</span>
+              {item.status === "READY" && (
+                <span className="text-xs text-amber-400/80">
+                  {isPickup
+                    ? item.readyByName
+                      ? `Ready to collect · ${item.readyByName}`
+                      : "Ready to collect"
+                    : item.readyByName
+                      ? `Ready: ${item.readyByName}`
+                      : "Ready"}
+                </span>
               )}
               {item.status === "SERVED" && (
                 <span className="text-xs text-emerald-400 flex items-center gap-1">
@@ -1395,21 +1424,47 @@ function ActiveOrderCard({
         })}
       </div>
 
-      {(canServeAll || (order.fulfillmentMode === "SELF_PICKUP" && canPerformOrderAction(role, "collect-order"))) && (
-        <Button
-          variant="primary"
-          size="sm"
-          className="w-full"
-          onClick={() =>
-            onUpdate(
-              order.id,
-              "",
-              order.fulfillmentMode === "SELF_PICKUP" ? "collect-order" : "serve-all",
-            )
-          }
-        >
-          {order.fulfillmentMode === "SELF_PICKUP" ? "Mark Collected" : "Mark All Served"}
-        </Button>
+      {isPickup ? (
+        <div className="space-y-2">
+          {canReady && needsReady && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full"
+              onClick={() => onUpdate(order.id, "", "ready-all")}
+            >
+              Ready to collect
+            </Button>
+          )}
+          {canCollect && (
+            <Button
+              variant="primary"
+              size="sm"
+              className="w-full"
+              disabled={!foodReady}
+              onClick={() => onUpdate(order.id, "", "collect-order")}
+            >
+              Mark Collected
+            </Button>
+          )}
+          {canCollect && !foodReady && (
+            <p className="text-xs text-amber-300 text-center">
+              Mark items ready to collect first. Collection is blocked until the food is ready
+              {order.paidAt ? "" : " and paid"}.
+            </p>
+          )}
+        </div>
+      ) : (
+        canServeAll && (
+          <Button
+            variant="primary"
+            size="sm"
+            className="w-full"
+            onClick={() => onUpdate(order.id, "", "serve-all")}
+          >
+            Mark All Served
+          </Button>
+        )
       )}
     </motion.div>
   );

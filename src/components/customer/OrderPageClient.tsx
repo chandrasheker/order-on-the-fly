@@ -24,6 +24,7 @@ import { CustomerPageBackground } from "@/components/customer/CustomerPageBackgr
 import { isClientOffline, isNetworkFetchError } from "@/lib/client-fetch";
 import { useSelfPickupAlerts } from "@/hooks/useSelfPickupAlerts";
 import { useCustomerPush } from "@/hooks/useCustomerPush";
+import { CustomerPickupAlertsBanner } from "@/components/customer/CustomerPickupAlertsBanner";
 import type { OrderFulfillmentMode, RestaurantServiceMode } from "@/lib/fulfillment/constants";
 
 interface Props {
@@ -94,6 +95,7 @@ export function OrderPageClient({ slug, token }: Props) {
   const [tabPaymentPending, setTabPaymentPending] = useState(false);
   const [tabRemaining, setTabRemaining] = useState<number | null>(null);
   const [showThankYou, setShowThankYou] = useState(false);
+  const [dismissPushBanner, setDismissPushBanner] = useState(false);
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuAbortRef = useRef<AbortController | null>(null);
@@ -101,8 +103,11 @@ export function OrderPageClient({ slug, token }: Props) {
   const { customerName, setCustomerName, items, promoCode, setPromoCode, clearCart } = useCartStore();
   const tableSession = useTableSession(token, slug);
   useSelfPickupAlerts(orders);
-  useCustomerPush({
-    enabled: Boolean(data?.restaurant.serviceMode && data.restaurant.serviceMode !== "FULL_SERVICE"),
+  const wantsPickupAlerts =
+    Boolean(data?.restaurant.serviceMode && data.restaurant.serviceMode !== "FULL_SERVICE") ||
+    orders.some((order) => (order as { fulfillmentMode?: string }).fulfillmentMode === "SELF_PICKUP");
+  const customerPush = useCustomerPush({
+    enabled: wantsPickupAlerts && tableSession.diningVerified,
     tableId: data?.table.id,
     tableToken: token,
     sessionKey: tableSession.sessionKey,
@@ -192,11 +197,20 @@ export function OrderPageClient({ slug, token }: Props) {
     }
   }, [fetchMenu, fetchOrders, tableSession.loading, tableSession.diningVerified]);
 
+  const hasActivePickup = orders.some((order) => {
+    const state = (order as { pickup?: { pickupState?: string | null } }).pickup?.pickupState;
+    return (
+      (order as { fulfillmentMode?: string }).fulfillmentMode === "SELF_PICKUP" &&
+      state !== "COLLECTED" &&
+      state !== "CANCELLED"
+    );
+  });
+
   useEffect(() => {
-    if (!tabPaymentPending) return;
+    if (!tabPaymentPending && !hasActivePickup) return;
     const interval = setInterval(fetchOrders, 3000);
     return () => clearInterval(interval);
-  }, [tabPaymentPending, fetchOrders]);
+  }, [tabPaymentPending, hasActivePickup, fetchOrders]);
 
   useEffect(() => {
     let paymentConfirmed = false;
@@ -440,6 +454,19 @@ export function OrderPageClient({ slug, token }: Props) {
       </div>
 
       <div className="max-w-lg mx-auto px-4 space-y-6 pb-36">
+        <CustomerPickupAlertsBanner
+          visible={
+            wantsPickupAlerts &&
+            tableSession.diningVerified &&
+            !dismissPushBanner &&
+            customerPush.permission !== "granted" &&
+            customerPush.permission !== "unsupported"
+          }
+          enabling={customerPush.enabling}
+          denied={customerPush.permission === "denied"}
+          onEnable={() => void customerPush.enablePush()}
+          onDismiss={() => setDismissPushBanner(true)}
+        />
         {tabPaymentPending && (
           <div className="p-4 rounded-2xl bg-yellow-500/15 border border-yellow-500/30 text-center space-y-2">
             <p className="font-semibold text-yellow-300">Payment pending</p>

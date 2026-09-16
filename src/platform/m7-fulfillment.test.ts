@@ -7,7 +7,7 @@ import { after, before, describe, it } from "node:test";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { PAYMENT_STATUS } from "@/lib/order-financials";
 import { snapshotFulfillmentMode } from "@/lib/fulfillment/resolve";
-import { canPerformOrderAction } from "@/lib/staff-permissions";
+import { canMarkPickupReady, canPerformOrderAction, canPerformOrderActionOnOrder } from "@/lib/staff-permissions";
 
 const dbPath = path.join(os.tmpdir(), `tabletap-m7-${process.pid}-${Date.now()}.db`);
 process.env.DATABASE_URL = `file:${dbPath}`;
@@ -285,7 +285,18 @@ describe("M7 dual/hybrid fulfillment", () => {
     assert.equal(typeof meta.outstandingAmountPaise, "number");
     assert.equal(meta.secret, undefined);
     assert.ok(canPerformOrderAction("COOK", "collect-order"));
+    assert.ok(canPerformOrderAction("COOK", "ready-all"));
     assert.equal(canPerformOrderAction("COOK", "mark-paid"), false);
+    assert.equal(canPerformOrderAction("SERVER", "ready-item"), false);
+    assert.equal(canPerformOrderAction("SERVER", "ready-all"), false);
+    assert.ok(canMarkPickupReady("SERVER"));
+    assert.ok(
+      canPerformOrderActionOnOrder("SERVER", "ready-all", { fulfillmentMode: "SELF_PICKUP" }),
+    );
+    assert.equal(
+      canPerformOrderActionOnOrder("SERVER", "ready-all", { fulfillmentMode: "TABLE_SERVICE" }),
+      false,
+    );
   });
 
   it("partial, pending, and failed payments still block collection", async () => {
@@ -975,5 +986,56 @@ describe("M7 dual/hybrid fulfillment", () => {
       where: { action: "ORDER_COLLECTED", resourceId: created.order.id },
     });
     assert.equal(collectedEvents, 1);
+  });
+
+  it("notifies the customer after Mark Collected and Ready to collect is required first", async () => {
+    const suffix = `push-${Date.now()}`;
+    const { restaurant, table, burger } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: burger.id, quantity: 1 }],
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    await assert.rejects(
+      () =>
+        markSelfPickupCollected({
+          restaurantId: restaurant.id,
+          orderId: created.order.id,
+          actor: { id: owner.id, role: "OWNER", name: owner.name },
+        }),
+      (err: unknown) => err instanceof SelfPickupCollectionError && err.code === "NOT_READY",
+    );
+    await markItemsReady(created.order.id);
+    await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 280,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    const collected = await markSelfPickupCollected({
+      restaurantId: restaurant.id,
+      orderId: created.order.id,
+      actor: { id: owner.id, role: "OWNER", name: owner.name },
+    });
+    assert.ok(collected.collectedAt);
+    const customerNotes = await prisma.platformAuditEvent.findMany({
+      where: { action: "CUSTOMER_READY_NOTIFICATION_SENT", resourceId: created.order.id },
+    });
+    assert.ok(
+      customerNotes.some((event) => {
+        const meta = JSON.parse(event.metadataJson ?? "{}") as { notificationType?: string };
+        return meta.notificationType === "COLLECTED";
+      }),
+    );
+    assert.ok(
+      customerNotes.some((event) => {
+        const meta = JSON.parse(event.metadataJson ?? "{}") as { notificationType?: string };
+        return meta.notificationType === "READY_FOR_COLLECTION";
+      }),
+    );
   });
 });

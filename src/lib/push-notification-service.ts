@@ -106,7 +106,7 @@ export async function sendPushToRestaurant(
 export async function sendCustomerTablePush(
   restaurantId: string,
   tableId: string,
-  payload: { title: string; body: string; tag?: string; url?: string },
+  payload: { title: string; body: string; tag?: string; url?: string; urgent?: boolean },
 ) {
   const vapid = getVapidKeys();
   if (!vapid) return;
@@ -129,7 +129,7 @@ export async function sendCustomerTablePush(
     body: payload.body,
     tag: payload.tag ?? `customer-${tableId}`,
     url: payload.url ?? "/",
-    urgent: false,
+    urgent: Boolean(payload.urgent),
   });
 
   await Promise.all(

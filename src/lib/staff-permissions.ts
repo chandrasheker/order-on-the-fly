@@ -13,6 +13,7 @@ export type StaffTab =
 export type OrderAction =
   | "prepare-item"
   | "ready-item"
+  | "ready-all"
   | "serve-item"
   | "reject-item"
   | "serve-all"
@@ -31,6 +32,7 @@ const ACTION_ACCESS: Record<Role, OrderAction[]> = {
   OWNER: [
     "prepare-item",
     "ready-item",
+    "ready-all",
     "serve-item",
     "reject-item",
     "serve-all",
@@ -41,6 +43,7 @@ const ACTION_ACCESS: Record<Role, OrderAction[]> = {
   MANAGER: [
     "prepare-item",
     "ready-item",
+    "ready-all",
     "serve-item",
     "reject-item",
     "serve-all",
@@ -48,7 +51,7 @@ const ACTION_ACCESS: Record<Role, OrderAction[]> = {
     "mark-paid",
     "record-payment",
   ],
-  COOK: ["prepare-item", "ready-item", "reject-item", "collect-order"],
+  COOK: ["prepare-item", "ready-item", "ready-all", "reject-item", "collect-order"],
   SERVER: ["serve-item", "reject-item", "serve-all", "collect-order", "mark-paid", "record-payment"],
 };
 
@@ -62,6 +65,24 @@ export function getTabsForRole(role: Role) {
 
 export function canPerformOrderAction(role: Role, action: OrderAction) {
   return ACTION_ACCESS[role].includes(action);
+}
+
+/** Servers may mark I'll-collect items ready so handover is not stuck on kitchen-only Ready. */
+export function canPerformOrderActionOnOrder(
+  role: Role,
+  action: OrderAction,
+  order: { fulfillmentMode?: string | null },
+) {
+  if (canPerformOrderAction(role, action)) return true;
+  return (
+    (action === "ready-item" || action === "ready-all") &&
+    role === "SERVER" &&
+    order.fulfillmentMode === "SELF_PICKUP"
+  );
+}
+
+export function canMarkPickupReady(role: Role) {
+  return canPerformOrderAction(role, "ready-item") || role === "SERVER";
 }
 
 export function canAccessAdminMenu(role: Role) {

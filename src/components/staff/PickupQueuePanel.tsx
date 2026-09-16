@@ -24,6 +24,7 @@ type QueuePayload = {
   readyToHandover: QueueRow[];
   paymentRequired: QueueRow[];
   recentlyCollected: QueueRow[];
+  preparing?: QueueRow[];
 };
 
 function ageLabel(readyAt: string | null) {
@@ -40,9 +41,11 @@ function agingBadge(aging: QueueRow["aging"]) {
 
 export function PickupQueuePanel({
   canCollect,
+  canReady,
   onCollected,
 }: {
   canCollect: boolean;
+  canReady?: boolean;
   onCollected?: () => void;
 }) {
   const [queue, setQueue] = useState<QueuePayload | null>(null);
@@ -81,8 +84,31 @@ export function PickupQueuePanel({
         setError(
           json.code === "PAYMENT_REQUIRED"
             ? `Handover blocked · ${formatCurrency(fromPaise(json.outstandingAmountPaise ?? 0))} due`
-            : json.error || "Could not collect",
+            : json.code === "NOT_READY"
+              ? "Mark items Ready to collect first"
+              : json.error || "Could not collect",
         );
+        return;
+      }
+      await load();
+      onCollected?.();
+    } finally {
+      setCollectingId(null);
+    }
+  };
+
+  const markReady = async (orderId: string) => {
+    setCollectingId(orderId);
+    setError("");
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ready-all" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "Could not mark ready to collect");
         return;
       }
       await load();
@@ -102,7 +128,11 @@ export function PickupQueuePanel({
   if (!queue) return null;
 
   const empty =
-    queue.readyToHandover.length + queue.paymentRequired.length + queue.recentlyCollected.length === 0;
+    queue.readyToHandover.length +
+      queue.paymentRequired.length +
+      queue.recentlyCollected.length +
+      (queue.preparing?.length ?? 0) ===
+    0;
   if (empty) return null;
 
   const renderRow = (row: QueueRow, locked: boolean) => (
@@ -151,6 +181,32 @@ export function PickupQueuePanel({
         </Button>
       </div>
       {error && <p className="text-sm text-red-400">{error}</p>}
+      {(queue.preparing?.length ?? 0) > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-wide text-sky-300">Preparing</p>
+          {queue.preparing!.map((row) => (
+            <div
+              key={row.id}
+              className="flex items-center justify-between gap-3 p-3 rounded-xl border border-white/10 bg-white/5"
+            >
+              <div>
+                <p className="font-semibold">#{row.pickupNumber}</p>
+                <p className="text-xs text-zinc-400">Table {row.tableNumber} · still cooking</p>
+              </div>
+              {canReady ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={collectingId === row.id}
+                  onClick={() => void markReady(row.id)}
+                >
+                  {collectingId === row.id ? "Updating…" : "Ready to collect"}
+                </Button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
       {queue.readyToHandover.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-wide text-emerald-300">Ready to hand over</p>
