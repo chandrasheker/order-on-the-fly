@@ -1,3 +1,33 @@
+function wrapText(text, width = 32) {
+  const words = String(text ?? "")
+    .replace(/\r\n/g, "\n")
+    .split(/\s+/)
+    .filter(Boolean);
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    if (word.length > width) {
+      if (current) {
+        lines.push(current);
+        current = "";
+      }
+      for (let i = 0; i < word.length; i += width) {
+        lines.push(word.slice(i, i + width));
+      }
+      current = lines.pop() ?? "";
+      continue;
+    }
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= width) current = next;
+    else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 function line(text = "") {
   return `${String(text)}\n`;
 }
@@ -54,7 +84,11 @@ export function renderCustomerBill(payload = {}) {
   out += line(`TOTAL  ${formatMoney(financials.grandTotal)}`);
   if (restaurant.footer) {
     out += line("");
-    out += line(restaurant.footer);
+    for (const footerLine of wrapText(restaurant.footer, 32)) {
+      out += line(footerLine);
+    }
+    out += line("");
+    out += line("");
   }
   return out;
 }

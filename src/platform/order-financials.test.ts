@@ -7,8 +7,8 @@ import {
   refundedPaymentsTotal,
 } from "@/lib/order-financials";
 import { buildReceiptPayload } from "@/lib/receipt-service";
-import { formatReceiptMoney } from "@/lib/escpos/encoder";
-import { buildEscPosReceipt } from "@/lib/escpos/build-receipt";
+import { formatReceiptMoney, wrapText } from "@/lib/escpos/encoder";
+import { buildEscPosReceipt, RECEIPT_CUT_FEED_LINES } from "@/lib/escpos/build-receipt";
 import { formatCurrency } from "@/lib/utils";
 
 describe("canonical order financials", () => {
@@ -258,5 +258,59 @@ describe("receipt money decimals", () => {
     assert.match(text, /Rs\.3\.00/);
     assert.equal((text.match(/Rs\.1\.50/g) ?? []).length, 2);
     assert.doesNotMatch(text, /Rs\.1[^0-9.]/);
+  });
+});
+
+describe("POS receipt footer", () => {
+  it("wraps a long footer without dropping words", () => {
+    const lines = wrapText(
+      "Thank you for dining with us. Please visit again soon and share your feedback.",
+      32,
+    );
+    const joined = lines.join(" ");
+    assert.match(joined, /Thank you for dining with us/);
+    assert.match(joined, /share your feedback/);
+    assert.equal(lines.every((line) => line.length <= 32), true);
+  });
+
+  it("keeps explicit footer line breaks and long tokens", () => {
+    const lines = wrapText("GSTIN: 29ABCDE1234F1Z5\nPleaseComeAgainSoonAndBringFriends", 32);
+    assert.equal(lines[0], "GSTIN: 29ABCDE1234F1Z5");
+    assert.equal(lines.join("").includes("PleaseComeAgainSoonAndBringFriends"), true);
+    assert.equal(lines.every((line) => line.length <= 32), true);
+  });
+
+  it("prints the full footer and feeds past the cutter", async () => {
+    const footer = "Thank you for dining with us. Please visit again soon!";
+    const bytes = await buildEscPosReceipt({
+      restaurant: {
+        name: "Cafe",
+        logoUrl: null,
+        address: null,
+        phone: null,
+        gstin: null,
+        gstEnabled: false,
+        gstRate: 0,
+        footer,
+      },
+      order: {
+        id: "o1",
+        orderNumber: 1,
+        tableNumber: 4,
+        customerName: null,
+        paidAt: "2026-09-16T10:00:00.000Z",
+      },
+      items: [{ name: "Water", quantity: 2, unitPrice: 30, lineTotal: 60, status: "SERVED" }],
+      subtotal: 60,
+      gstAmount: 0,
+      cgstAmount: 0,
+      sgstAmount: 0,
+      total: 60,
+    });
+    const text = Buffer.from(bytes).toString("latin1");
+    assert.match(text, /Thank you for dining with us/);
+    assert.match(text, /visit again soon/);
+    const feed = Buffer.from([0x1b, 0x64, RECEIPT_CUT_FEED_LINES]);
+    assert.ok(Buffer.from(bytes).includes(feed), "expected extra line feed before cut");
   });
 });

@@ -3,6 +3,8 @@ import { EscPosEncoder, formatReceiptMoney, padLine, wrapText } from "@/lib/escp
 import { logoToEscPosRaster } from "@/lib/escpos/raster-image";
 
 const LINE_WIDTH = 32;
+/** Print-head to cutter gap on 58/80mm POS printers is ~30–50mm. */
+export const RECEIPT_CUT_FEED_LINES = 8;
 
 export async function buildEscPosReceipt(receipt: ReceiptPayload) {
   const encoder = new EscPosEncoder().init();
@@ -98,7 +100,7 @@ export async function buildEscPosReceipt(receipt: ReceiptPayload) {
     encoder.line("Thank you! Visit again.");
   }
 
-  encoder.feed(3).cut(true);
+  encoder.feed(RECEIPT_CUT_FEED_LINES).cut(true);
   return encoder.build();
 }
 
