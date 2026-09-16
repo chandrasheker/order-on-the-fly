@@ -772,6 +772,16 @@ export async function getCompletedOrders(restaurantId: string, limit = 50) {
     include: {
       table: true,
       items: true,
+      bills: {
+        where: { status: "FINALIZED" },
+        select: {
+          status: true,
+          grandTotal: true,
+          itemSubtotal: true,
+          gstAmount: true,
+          snapshot: true,
+        },
+      },
     },
     orderBy: { paidAt: "desc" },
     take: limit,

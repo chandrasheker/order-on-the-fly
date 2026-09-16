@@ -16,6 +16,7 @@ import {
   customerPaymentAction,
   resolveCanonicalCustomerDue,
 } from "@/lib/customer-payment-amount";
+import { gstBreakdownHintText } from "@/lib/revenue-audit";
 import { PaymentModal } from "@/components/customer/PaymentModal";
 import { Button, Badge } from "@/components/ui";
 import {
@@ -73,6 +74,9 @@ export function OrderTracker({
   upiMerchantName,
   automaticUpiEnabled,
   tabRemaining,
+  tabItemSubtotal,
+  tabGstAmount,
+  tabGstInclusive,
   onRefresh,
   onPaymentRequested,
   serviceMode,
@@ -85,6 +89,9 @@ export function OrderTracker({
   upiMerchantName?: string | null;
   automaticUpiEnabled?: boolean;
   tabRemaining?: number | null;
+  tabItemSubtotal?: number | null;
+  tabGstAmount?: number | null;
+  tabGstInclusive?: boolean;
   onRefresh: () => void;
   onPaymentRequested?: () => void;
   serviceMode?: string;
@@ -249,6 +256,15 @@ export function OrderTracker({
                 <p className="text-xl font-bold text-emerald-400">
                   {canonicalDue == null ? "…" : formatCurrency(canonicalDue)}
                 </p>
+                {tabGstAmount != null && tabGstAmount > 0 && (
+                  <p className="text-[11px] text-zinc-500">
+                    {gstBreakdownHintText({
+                      itemSubtotal: tabItemSubtotal ?? 0,
+                      gstAmount: tabGstAmount,
+                      gstInclusive: tabGstInclusive,
+                    })}
+                  </p>
+                )}
               </div>
             </div>
 

@@ -95,6 +95,9 @@ export function OrderPageClient({ slug, token }: Props) {
   const [fulfillmentChoice, setFulfillmentChoice] = useState<OrderFulfillmentMode | "">("");
   const [tabPaymentPending, setTabPaymentPending] = useState(false);
   const [tabRemaining, setTabRemaining] = useState<number | null>(null);
+  const [tabItemSubtotal, setTabItemSubtotal] = useState<number | null>(null);
+  const [tabGstAmount, setTabGstAmount] = useState<number | null>(null);
+  const [tabGstInclusive, setTabGstInclusive] = useState(true);
   const [showThankYou, setShowThankYou] = useState(false);
   const [dismissPushBanner, setDismissPushBanner] = useState(false);
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
@@ -174,8 +177,16 @@ export function OrderPageClient({ slug, token }: Props) {
         }
         if (typeof json.tabSummary?.remaining === "number" && Number.isFinite(json.tabSummary.remaining)) {
           setTabRemaining(json.tabSummary.remaining);
+          setTabItemSubtotal(
+            typeof json.tabSummary.itemSubtotal === "number" ? json.tabSummary.itemSubtotal : null,
+          );
+          setTabGstAmount(typeof json.tabSummary.gstAmount === "number" ? json.tabSummary.gstAmount : null);
+          setTabGstInclusive(json.tabSummary.gstInclusive !== false);
         } else {
           setTabRemaining(null);
+          setTabItemSubtotal(null);
+          setTabGstAmount(null);
+          setTabGstInclusive(true);
         }
       } else if (res.status === 403) {
         setOrders([]);
@@ -573,6 +584,9 @@ export function OrderPageClient({ slug, token }: Props) {
             upiMerchantName={data.restaurant.upiMerchantName}
             automaticUpiEnabled={data.restaurant.automaticUpiEnabled}
             tabRemaining={tabRemaining}
+            tabItemSubtotal={tabItemSubtotal}
+            tabGstAmount={tabGstAmount}
+            tabGstInclusive={tabGstInclusive}
             onRefresh={fetchOrders}
             onPaymentRequested={() => setTabPaymentPending(true)}
             serviceMode={data.restaurant.serviceMode}

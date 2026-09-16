@@ -8,6 +8,7 @@ import {
   checkOverdueItems,
 } from "@/lib/order-service";
 import { todayDateString, sumOrderRevenue, sumPaidOrderRevenue } from "@/lib/utils";
+import { staffCompletedOrderRevenuePayload } from "@/lib/revenue-audit";
 import { getTabsForRole } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { logApiRequest, logInfo } from "@/lib/logger";
@@ -67,6 +68,9 @@ async function handleGET(req: NextRequest) {
           overdueCount: 0,
           missedTimelineCount: 0,
           unreadAlerts: 0,
+          gstCollected: 0,
+          gstCgstCollected: 0,
+          gstSgstCollected: 0,
         },
       });
     }
@@ -92,11 +96,23 @@ async function handleGET(req: NextRequest) {
 
   const skipOverdue = { skipOverdueCheck: true as const };
 
-  const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests, todayPaymentSum] =
+  const [
+    orders,
+    pendingOrders,
+    completedOrders,
+    alerts,
+    orderCount,
+    missedData,
+    tableSwitchRequests,
+    todayPaymentSum,
+    todayGstSum,
+  ] =
     await Promise.all([
       getActiveOrders(session.restaurantId, skipOverdue),
       getPendingPaymentOrders(session.restaurantId),
-      live ? Promise.resolve([]) : getCompletedOrders(session.restaurantId),
+      live
+        ? Promise.resolve([] as Awaited<ReturnType<typeof getCompletedOrders>>)
+        : getCompletedOrders(session.restaurantId),
       prisma.alert.findMany({
         where: {
           restaurantId: session.restaurantId,
@@ -127,9 +143,20 @@ async function handleGET(req: NextRequest) {
         },
         _sum: { amount: true },
       }),
+      prisma.bill.aggregate({
+        where: {
+          restaurantId: session.restaurantId,
+          status: "FINALIZED",
+          createdAt: { gte: new Date(`${today}T00:00:00.000`) },
+        },
+        _sum: { gstAmount: true, cgstAmount: true, sgstAmount: true },
+      }),
     ]);
 
   const todayRevenue = todayPaymentSum._sum.amount ?? 0;
+  const todayGstCollected = todayGstSum._sum.gstAmount ?? 0;
+  const todayCgstCollected = todayGstSum._sum.cgstAmount ?? 0;
+  const todaySgstCollected = todayGstSum._sum.sgstAmount ?? 0;
 
   const overdueCount = orders.reduce(
     (sum, o) =>
@@ -197,8 +224,9 @@ async function handleGET(req: NextRequest) {
       }
       pendingWithPayments.push({
         ...order,
+        total: paymentSummary?.total ?? order.total,
         paymentSummary,
-      });
+      } as PendingWithPayment);
     }
   }
 
@@ -228,7 +256,17 @@ async function handleGET(req: NextRequest) {
     live,
     orders: activeOut,
     pendingOrders: pendingWithPayments,
-    completedOrders: withTotal(completedOrders),
+    completedOrders: completedOrders.map((order) => {
+      const { bills, ...rest } = order;
+      return {
+        ...rest,
+        ...staffCompletedOrderRevenuePayload({
+          items: order.items,
+          paidAt: order.paidAt,
+          bills,
+        }),
+      };
+    }),
     alerts,
     permissions: {
       tabs: roleTabs,
@@ -259,6 +297,9 @@ async function handleGET(req: NextRequest) {
       completedOrders: completedOrders.length,
       todayOrders: orderCount,
       revenue: todayRevenue,
+      gstCollected: todayGstCollected,
+      gstCgstCollected: todayCgstCollected,
+      gstSgstCollected: todaySgstCollected,
       overdueCount,
       missedTimelineCount: missedData.items.length,
       unreadAlerts: alerts.length,

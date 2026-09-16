@@ -95,6 +95,10 @@ export async function getTableTabPaymentSummary(tableId: string) {
   let billTotal = 0;
   let paidTotal = 0;
   let remaining = 0;
+  let itemSubtotal = 0;
+  let gstAmount = 0;
+  let gstInclusive = true;
+  let gstEnabled = false;
   const unpaidOrderIds: string[] = [];
 
   for (const order of payableOrders) {
@@ -103,6 +107,10 @@ export async function getTableTabPaymentSummary(tableId: string) {
     billTotal += summary.total;
     paidTotal += summary.paid;
     remaining += summary.remaining;
+    itemSubtotal += summary.itemSubtotal;
+    gstAmount += summary.gstAmount;
+    if (summary.gstEnabled) gstEnabled = true;
+    if (summary.gstInclusive === false) gstInclusive = false;
     if (summary.remaining > 0.01) unpaidOrderIds.push(order.id);
   }
 
@@ -115,6 +123,10 @@ export async function getTableTabPaymentSummary(tableId: string) {
     billTotal,
     paidTotal,
     remaining: Math.max(0, remaining),
+    itemSubtotal,
+    gstAmount,
+    gstInclusive,
+    gstEnabled,
     unpaidOrderIds,
     paymentRequested: Boolean(table?.tabPaymentRequestedAt && remaining > 0.01),
     tabPaymentRequestedAt: table?.tabPaymentRequestedAt ?? null,

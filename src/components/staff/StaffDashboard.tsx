@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
+import { gstBreakdownHintText } from "@/lib/revenue-audit";
 import { fromPaise } from "@/lib/money";
 import { canAccessTab, canMarkPickupReady, canPerformOrderAction, type StaffTab } from "@/lib/staff-permissions";
 import type { Role } from "@/generated/prisma/client";
@@ -85,6 +86,9 @@ interface Order {
   createdAt: string;
   total?: number;
   paidTotal?: number;
+  itemSubtotal?: number;
+  gstAmount?: number;
+  gstInclusive?: boolean;
   pickup?: {
     outstandingAmountPaise?: number;
     paid?: boolean;
@@ -97,6 +101,9 @@ interface Order {
     paid: number;
     remaining: number;
     fullyPaid: boolean;
+    itemSubtotal?: number;
+    gstAmount?: number;
+    gstInclusive?: boolean;
     items: Array<{
       id: string;
       itemName: string;
@@ -138,6 +145,9 @@ interface Stats {
   completedOrders: number;
   todayOrders: number;
   revenue: number;
+  gstCollected?: number;
+  gstCgstCollected?: number;
+  gstSgstCollected?: number;
   overdueCount: number;
   missedTimelineCount: number;
   unreadAlerts: number;
@@ -861,6 +871,11 @@ export function StaffDashboard() {
                     <p className="text-xs text-emerald-400/90">
                       {stats.completedOrders} paid order{stats.completedOrders === 1 ? "" : "s"}
                     </p>
+                    {(stats.gstCollected ?? 0) > 0 && (
+                      <p className="text-[11px] text-amber-300/90 mt-0.5">
+                        GST {formatCurrency(stats.gstCollected ?? 0)} collected
+                      </p>
+                    )}
                   </div>
                 </div>
               </button>
@@ -1099,14 +1114,25 @@ export function StaffDashboard() {
         {viewMode === "revenue" && showTab("revenue") && (
           <>
             <p className="text-sm text-zinc-400 mb-4">
-              Today&apos;s revenue from paid orders only (served items, out-of-stock excluded)
+              Today&apos;s collected payments — the amount actually taken, including GST when it is added on top of menu prices
             </p>
             <Card className="p-5 mb-4">
-              <p className="text-sm text-zinc-500">Total revenue</p>
+              <p className="text-sm text-zinc-500">Total collected</p>
               <p className="text-3xl font-bold text-emerald-400">{formatCurrency(stats?.revenue ?? 0)}</p>
               <p className="text-xs text-zinc-500 mt-1">
                 {stats?.completedOrders ?? 0} paid order{(stats?.completedOrders ?? 0) === 1 ? "" : "s"} today
               </p>
+              {(stats?.gstCollected ?? 0) > 0 && (
+                <div className="mt-4 pt-3 border-t border-white/10">
+                  <p className="text-xs text-zinc-500">GST collected today</p>
+                  <p className="text-lg font-semibold text-amber-300">{formatCurrency(stats?.gstCollected ?? 0)}</p>
+                  {(stats?.gstCgstCollected ?? 0) > 0 && (
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      CGST {formatCurrency(stats?.gstCgstCollected ?? 0)} · SGST {formatCurrency(stats?.gstSgstCollected ?? 0)}
+                    </p>
+                  )}
+                </div>
+              )}
             </Card>
             <div className="space-y-3">
               {completedOrders.length === 0 ? (
@@ -1616,6 +1642,12 @@ function ActiveOrderCard({
               <p className="text-xs text-amber-100/80">
                 Due {formatCurrency(due)}. Owner, manager, or server can take cash or mark online paid.
               </p>
+              <GstBreakdownNote
+                itemSubtotal={order.paymentSummary?.itemSubtotal ?? order.itemSubtotal}
+                gstAmount={order.paymentSummary?.gstAmount ?? order.gstAmount}
+                gstInclusive={order.paymentSummary?.gstInclusive ?? order.gstInclusive}
+                className="text-amber-100/80"
+              />
               {canPay ? (
                 <div className="flex gap-2">
                   <Button
@@ -1705,6 +1737,17 @@ function TableTabPendingCard({
     (sum, order) => sum + (order.paymentSummary?.remaining ?? order.total ?? 0),
     0,
   );
+  const itemSubtotal = orders.reduce(
+    (sum, order) => sum + (order.paymentSummary?.itemSubtotal ?? order.itemSubtotal ?? 0),
+    0,
+  );
+  const gstAmount = orders.reduce(
+    (sum, order) => sum + (order.paymentSummary?.gstAmount ?? order.gstAmount ?? 0),
+    0,
+  );
+  const gstInclusive = orders.every(
+    (order) => (order.paymentSummary?.gstInclusive ?? order.gstInclusive) !== false,
+  );
   const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
   const tableKey = `tab-${anchor.table.number}`;
 
@@ -1783,9 +1826,12 @@ function TableTabPendingCard({
         })}
       </div>
 
-      <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
+      <div className="flex items-center justify-between pt-3 border-t border-white/10">
         <span className="text-sm text-zinc-400">Table total due</span>
         <span className="text-lg font-bold text-yellow-400">{formatCurrency(total)}</span>
+      </div>
+      <div className="flex justify-end mb-4">
+        <GstBreakdownNote itemSubtotal={itemSubtotal} gstAmount={gstAmount} gstInclusive={gstInclusive} />
       </div>
 
       {canPay && (
@@ -1894,9 +1940,16 @@ function PendingPaymentCard({
         })}
       </div>
 
-      <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
+      <div className="flex items-center justify-between pt-3 border-t border-white/10">
         <span className="text-sm text-zinc-400">Due now</span>
         <span className="text-lg font-bold text-yellow-400">{formatCurrency(total)}</span>
+      </div>
+      <div className="flex justify-end mb-4">
+        <GstBreakdownNote
+          itemSubtotal={summary?.itemSubtotal ?? order.itemSubtotal}
+          gstAmount={summary?.gstAmount ?? order.gstAmount}
+          gstInclusive={summary?.gstInclusive ?? order.gstInclusive}
+        />
       </div>
 
       {canPay && summary && splitBillEnabled && (
@@ -1936,6 +1989,26 @@ function PendingPaymentCard({
   );
 }
 
+function GstBreakdownNote({
+  itemSubtotal,
+  gstAmount,
+  gstInclusive,
+  className,
+}: {
+  itemSubtotal?: number;
+  gstAmount?: number;
+  gstInclusive?: boolean;
+  className?: string;
+}) {
+  const text = gstBreakdownHintText({
+    itemSubtotal: itemSubtotal ?? 0,
+    gstAmount: gstAmount ?? 0,
+    gstInclusive,
+  });
+  if (!text) return null;
+  return <p className={cn("text-[11px] leading-tight text-zinc-500", className)}>{text}</p>;
+}
+
 function CompletedOrderRow({
   order,
   canReprint,
@@ -1947,6 +2020,15 @@ function CompletedOrderRow({
 }) {
   const total =
     order.total ??
+    sumOrderRevenue(
+      order.items.map((i) => ({
+        unitPrice: i.unitPrice ?? 0,
+        quantity: i.quantity,
+        status: i.status,
+      })),
+    );
+  const itemSubtotal =
+    order.itemSubtotal ??
     sumOrderRevenue(
       order.items.map((i) => ({
         unitPrice: i.unitPrice ?? 0,
@@ -2021,8 +2103,14 @@ function CompletedOrderRow({
           </div>
         </div>
         <div className="text-right sm:pl-4 sm:border-l sm:border-white/10 space-y-2">
-          <p className="text-xs text-zinc-500">Bill total</p>
+          <p className="text-xs text-zinc-500">Collected</p>
           <p className="text-xl font-bold text-emerald-400">{formatCurrency(total)}</p>
+          <GstBreakdownNote
+            itemSubtotal={itemSubtotal}
+            gstAmount={order.gstAmount}
+            gstInclusive={order.gstInclusive}
+            className="sm:text-right"
+          />
           {canReprint && order.paidAt && onReprint && (
             <Button
               size="sm"

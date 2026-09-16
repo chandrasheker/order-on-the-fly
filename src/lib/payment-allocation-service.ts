@@ -102,12 +102,13 @@ function computeSummaryFromOrder(
     };
   });
 
+  const gst = gstInputFromRestaurant(order.restaurant);
   const financials: OrderFinancialSummary = canonicalFinancialsForOrder({
     fulfillmentMode: order.fulfillmentMode,
     items: order.items,
     payments: order.payments,
     discountAmount: order.discountAmount,
-    ...gstInputFromRestaurant(order.restaurant),
+    ...gst,
     finalizedBill: order.bills?.find((bill) => bill.status === "FINALIZED"),
   });
 
@@ -121,7 +122,10 @@ function computeSummaryFromOrder(
     paid: financials.netPaid,
     remaining: financials.amountDue,
     discountAmount: financials.orderDiscount,
+    itemSubtotal: financials.itemSubtotal,
     gstAmount: financials.gstAmount,
+    gstInclusive: gst.gstInclusive,
+    gstEnabled: gst.gstEnabled,
     financials,
     fullyPaid:
       financials.amountDue <= FINANCIAL_PAID_EPSILON &&

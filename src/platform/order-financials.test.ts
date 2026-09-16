@@ -10,6 +10,11 @@ import { buildReceiptPayload } from "@/lib/receipt-service";
 import { centerPad, formatReceiptMoney, wrapText } from "@/lib/escpos/encoder";
 import { buildEscPosReceipt, RECEIPT_CUT_FEED_LINES } from "@/lib/escpos/build-receipt";
 import { formatCurrency } from "@/lib/utils";
+import {
+  gstBreakdownHintText,
+  staffCompletedOrderRevenuePayload,
+  sumFinalizedGst,
+} from "@/lib/revenue-audit";
 
 describe("canonical order financials", () => {
   it("uses served items only for the subtotal", () => {
@@ -72,6 +77,22 @@ describe("canonical order financials", () => {
     assert.equal(result.cgstAmount + result.sgstAmount, 10);
     assert.equal(result.grandTotal, 210);
     assert.equal(result.amountDue, 210);
+  });
+
+  it("charges ₹90 items as ₹94.50 when 5% GST is excluded from MRP", () => {
+    const result = computeOrderFinancials({
+      items: [{ unitPrice: 90, quantity: 1, status: "SERVED" }],
+      gstEnabled: true,
+      gstRate: 5,
+      gstInclusive: false,
+    });
+    assert.equal(result.itemSubtotal, 90);
+    assert.equal(result.gstAmount, 4.5);
+    assert.equal(result.grandTotal, 94.5);
+    assert.equal(result.amountDue, 94.5);
+    assert.equal(formatCurrency(result.grandTotal), "₹94.50");
+    assert.notEqual(formatCurrency(result.grandTotal), "₹95");
+    assert.notEqual(formatCurrency(result.grandTotal), "₹94");
   });
 
   it("extracts inclusive GST from the discounted MRP, without inflating the bill", () => {
@@ -213,6 +234,9 @@ describe("receipt money decimals", () => {
     assert.equal(formatReceiptMoney(60), "Rs.60.00");
     assert.equal(formatCurrency(1.5, 2), "₹1.50");
     assert.equal(formatCurrency(3, 2), "₹3.00");
+    assert.equal(formatCurrency(94.5), "₹94.50");
+    assert.equal(formatCurrency(90), "₹90");
+    assert.equal(formatCurrency(95), "₹95");
   });
 
   it("prints 2.5% CGST/SGST of ₹60 as 1.50 not 1", async () => {
@@ -355,6 +379,61 @@ describe("POS receipt footer", () => {
     const itemsAt = indexOfAscii(bytes, "ITEM            QTY    AMT");
     assert.equal(lastAlignBefore(bytes, gstinAt), "left");
     assert.equal(lastAlignBefore(bytes, itemsAt), "left");
+  });
+});
+
+describe("collected revenue vs GST audit display", () => {
+  it("keeps exclusive GST revenue at the collected grand total, not the item subtotal", () => {
+    const payload = staffCompletedOrderRevenuePayload({
+      paidAt: "2026-09-16",
+      items: [{ unitPrice: 90, quantity: 1, status: "SERVED" }],
+      bills: [
+        {
+          status: "FINALIZED",
+          grandTotal: 94.5,
+          itemSubtotal: 90,
+          gstAmount: 4.5,
+        },
+      ],
+    });
+    assert.equal(payload.total, 94.5);
+    assert.equal(payload.itemSubtotal, 90);
+    assert.equal(payload.gstAmount, 4.5);
+    assert.equal(payload.gstInclusive, false);
+    assert.equal(
+      gstBreakdownHintText(payload),
+      "₹90 + GST ₹4.50",
+    );
+  });
+
+  it("tracks inclusive GST for audit without changing the collected MRP", () => {
+    const payload = staffCompletedOrderRevenuePayload({
+      paidAt: "2026-09-16",
+      items: [{ unitPrice: 90, quantity: 1, status: "SERVED" }],
+      bills: [
+        {
+          status: "FINALIZED",
+          grandTotal: 90,
+          itemSubtotal: 90,
+          gstAmount: 4.29,
+        },
+      ],
+    });
+    assert.equal(payload.total, 90);
+    assert.equal(payload.gstAmount, 4.29);
+    assert.equal(payload.gstInclusive, true);
+    assert.equal(gstBreakdownHintText(payload), "incl. GST ₹4.29");
+  });
+
+  it("sums GST from finalized bills only", () => {
+    assert.equal(
+      sumFinalizedGst([
+        { status: "FINALIZED", gstAmount: 4.5 },
+        { status: "FINALIZED", gstAmount: 1.43 },
+        { status: "VOIDED", gstAmount: 10 },
+      ]),
+      5.93,
+    );
   });
 });
 
