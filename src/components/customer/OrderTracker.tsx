@@ -7,6 +7,7 @@ import {
   formatCurrency,
   getRemainingSeconds,
   isOrderItemOpen,
+  customerOrdersToDisplay,
   shouldShowCustomerOrder,
   shouldShowCustomerPaymentOrder,
 } from "@/lib/utils";
@@ -103,12 +104,14 @@ export function OrderTracker({
     return () => clearInterval(interval);
   }, []);
 
-  const activeOrders = orders.filter(
+  const visibleOrders = customerOrdersToDisplay(orders);
+  const activeOrders = visibleOrders.filter(
     (o) =>
-      shouldShowCustomerOrder(o.items) ||
-      (o.fulfillmentMode === "SELF_PICKUP" && o.pickup?.pickupState && o.pickup.pickupState !== "CANCELLED"),
+      o.fulfillmentMode === "SELF_PICKUP" ||
+      Boolean(o.pickup?.pickupState) ||
+      shouldShowCustomerOrder(o.items),
   );
-  const paymentOrders = orders.filter(
+  const paymentOrders = visibleOrders.filter(
     (o) => o.fulfillmentMode !== "SELF_PICKUP" && shouldShowCustomerPaymentOrder(o),
   );
 

@@ -5,7 +5,7 @@ import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { isTablePaymentBlocked } from "@/lib/payment-service";
 import { getTableTabPaymentSummary } from "@/lib/table-tab-service";
-import { todayDateString } from "@/lib/utils";
+import { todayDateString, customerOrdersToDisplay } from "@/lib/utils";
 import { requireSession } from "@/lib/auth";
 import { loadTableByQrForRequest, opaqueNotFoundJson, trustedRestaurantId, hostRestaurantId } from "@/platform/tenant-scope";
 import { resolveTenantFromHost } from "@/platform/host-tenant";
@@ -181,19 +181,20 @@ async function handleGET(req: NextRequest) {
       list.push(bill);
       billsByOrder.set(bill.orderId, list);
     }
+    const mappedOrders = ordersWithMenu.map((order) => ({
+      ...order,
+      receiptUrl: receiptByOrder.get(order.id) ?? null,
+      pickup: publicPickupView(
+        {
+          ...order,
+          restaurant,
+          bills: billsByOrder.get(order.id) ?? [],
+        },
+        restaurant?.pickupLocationLabel,
+      ),
+    }));
     return NextResponse.json({
-      orders: ordersWithMenu.map((order) => ({
-        ...order,
-        receiptUrl: receiptByOrder.get(order.id) ?? null,
-        pickup: publicPickupView(
-          {
-            ...order,
-            restaurant,
-            bills: billsByOrder.get(order.id) ?? [],
-          },
-          restaurant?.pickupLocationLabel,
-        ),
-      })),
+      orders: customerOrdersToDisplay(mappedOrders),
       paymentBlocked: await isTablePaymentBlocked(table.id),
       tabPaymentPending: tabSummary.paymentRequested,
       tabSummary: {

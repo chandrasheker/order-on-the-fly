@@ -112,7 +112,7 @@ export async function requestTableTabPayment(tableId: string, tableToken: string
       : `${unpaidServed.length} orders`;
   const paymentMessage = hasManualUpi
     ? `Table ${table.number} says they paid by UPI (${orderLabel}) — ${formatCurrency(tabSummary.remaining)} (one-click confirm after you verify)`
-    : `Table ${table.number} needs to pay (${orderLabel}) — ${formatCurrency(tabSummary.remaining)} (one-click take cash/UPI)`;
+    : `Table ${table.number} needs to pay (${orderLabel}) — ${formatCurrency(tabSummary.remaining)} (one-click take cash)`;
 
   if (!existing) {
     await prisma.alert.create({

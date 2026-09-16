@@ -11,7 +11,7 @@ import { FeedbackButton } from "@/components/customer/FeedbackButton";
 import { Input, Button, Spinner } from "@/components/ui";
 import { useCartStore } from "@/store/cart";
 import { useCartDraftSync } from "@/hooks/useCartDraftSync";
-import { shouldShowCustomerOrder, shouldShowCustomerPaymentOrder, customerOrderBillTotal } from "@/lib/utils";
+import { customerOrdersToDisplay, customerOrderBillTotal, shouldShowCustomerPaymentOrder } from "@/lib/utils";
 import { useTableSession } from "@/hooks/useTableSession";
 import { UtensilsCrossed, Sparkles, Users, Heart, QrCode, ShieldAlert } from "lucide-react";
 import Link from "next/link";
@@ -337,10 +337,11 @@ export function OrderPageClient({ slug, token }: Props) {
     );
   }
 
-  const hasActiveOrders = orders.some((o) => shouldShowCustomerOrder(o.items));
-  const hasPaymentOrders = orders.some((o) => shouldShowCustomerPaymentOrder(o));
-  const hasVisibleOrders = hasActiveOrders || hasPaymentOrders;
-  const latestOrderId = orders[0]?.id;
+  const displayedOrders = customerOrdersToDisplay(orders);
+  const hasVisibleOrders = displayedOrders.length > 0;
+  const latestOrderId = displayedOrders[0]?.id ?? orders[0]?.id;
+  const showTabPaymentBanner =
+    tabPaymentPending && displayedOrders.some((order) => shouldShowCustomerPaymentOrder(order));
   const canOrder = tableSession.canOrder && !data?.kitchenPaused;
   const showOrderingGate =
     !canOrder &&
@@ -456,7 +457,7 @@ export function OrderPageClient({ slug, token }: Props) {
           onEnable={() => void customerPush.enablePush()}
           onDismiss={() => setDismissPushBanner(true)}
         />
-        {tabPaymentPending && (
+        {showTabPaymentBanner && (
           <div className="p-4 rounded-2xl bg-yellow-500/15 border border-yellow-500/30 text-center space-y-2">
             <p className="font-semibold text-yellow-300">Payment pending</p>
             <p className="text-sm text-muted">
@@ -543,7 +544,7 @@ export function OrderPageClient({ slug, token }: Props) {
 
         {!showThankYou && (
           <OutOfStockNotice
-            orders={orders}
+            orders={displayedOrders}
             tableToken={token}
             onDismissed={fetchOrders}
           />
@@ -565,7 +566,7 @@ export function OrderPageClient({ slug, token }: Props) {
 
         {hasVisibleOrders && !showThankYou && (
           <OrderTracker
-            orders={orders}
+            orders={displayedOrders}
             tableToken={token}
             paymentQrUrl={data.restaurant.paymentQrUrl}
             upiVpa={data.restaurant.upiVpa}

@@ -179,7 +179,7 @@ type OfflineIntent = "walkin" | "takeaway" | "delivery" | "aggregators";
 type ItemFilter = "all" | "overdue" | "alarm";
 
 function paymentMethodFromAlert(message: string): "CASH" | "UPI" {
-  return /UPI/i.test(message) ? "UPI" : "CASH";
+  return /paid by UPI/i.test(message) ? "UPI" : "CASH";
 }
 
 type RestaurantFeatures = {
