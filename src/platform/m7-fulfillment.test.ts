@@ -906,6 +906,8 @@ describe("M7 dual/hybrid fulfillment", () => {
     assert.equal(elig.outstandingAmountPaise, 0);
     assert.equal(elig.collectable, true);
   });
+
+  it("collection outstanding uses the finalized Bill, not a later item recompute", async () => {
     const suffix = `authbill-${Date.now()}`;
     const { restaurant, table, burger } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
     const owner = await createStaff(restaurant, "OWNER", suffix);

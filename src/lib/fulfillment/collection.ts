@@ -163,9 +163,9 @@ function collectionFinanceInput(order: {
     items: order.items,
     payments: order.payments ?? [],
     discountAmount: order.discountAmount,
-    gstEnabled: order.gstEnabled ?? order.restaurant?.receiptGstEnabled,
-    gstRate: order.gstRate ?? order.restaurant?.receiptGstRate,
-    gstInclusive: order.gstInclusive ?? order.restaurant?.receiptGstInclusive,
+    gstEnabled: order.gstEnabled ?? order.restaurant?.receiptGstEnabled ?? undefined,
+    gstRate: order.gstRate ?? order.restaurant?.receiptGstRate ?? undefined,
+    gstInclusive: order.gstInclusive ?? order.restaurant?.receiptGstInclusive ?? undefined,
     finalizedBill:
       order.finalizedBill ??
       order.bills?.find((bill) => !bill.status || bill.status === "FINALIZED") ??
