@@ -2,6 +2,12 @@ function line(text = "") {
   return `${String(text)}\n`;
 }
 
+function formatMoney(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return "";
+  return (Math.round(n * 100) / 100).toFixed(2);
+}
+
 export function renderKitchenChit(payload = {}) {
   const items = Array.isArray(payload.items) ? payload.items : [];
   let out = "";
@@ -34,16 +40,18 @@ export function renderCustomerBill(payload = {}) {
   if (payload.finalizedAt) out += line(String(payload.finalizedAt));
   out += line("----------------");
   for (const item of items) {
-    out += line(`${item.quantity ?? 1} x ${item.name ?? "Item"}  ${item.lineTotal ?? ""}`);
+    const amount = item.lineTotal == null ? "" : formatMoney(item.lineTotal);
+    out += line(`${item.quantity ?? 1} x ${item.name ?? "Item"}  ${amount}`.trimEnd());
   }
   out += line("----------------");
-  out += line(`Subtotal  ${financials.taxableSubtotal ?? financials.itemSubtotal ?? ""}`);
-  if (financials.orderDiscount) out += line(`Discount  ${financials.orderDiscount}`);
+  out += line(`Subtotal  ${formatMoney(financials.taxableSubtotal ?? financials.itemSubtotal)}`);
+  if (financials.orderDiscount) out += line(`Discount  ${formatMoney(financials.orderDiscount)}`);
   if (financials.gstAmount) {
-    out += line(`CGST  ${financials.cgstAmount ?? ""}`);
-    out += line(`SGST  ${financials.sgstAmount ?? ""}`);
+    out += line(`CGST  ${formatMoney(financials.cgstAmount)}`);
+    out += line(`SGST  ${formatMoney(financials.sgstAmount)}`);
+    out += line(`GST  ${formatMoney(financials.gstAmount)}`);
   }
-  out += line(`TOTAL  ${financials.grandTotal ?? ""}`);
+  out += line(`TOTAL  ${formatMoney(financials.grandTotal)}`);
   if (restaurant.footer) {
     out += line("");
     out += line(restaurant.footer);

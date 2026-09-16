@@ -213,12 +213,15 @@ describe("printer-agent processing", () => {
         billNumber: "20260904-001",
         restaurant: { name: "Cafe", footer: "Thanks" },
         order: { orderNumber: 7, tableNumber: 3 },
-        items: [{ name: "Tea", quantity: 1, lineTotal: 200 }],
-        financials: { taxableSubtotal: 200, gstAmount: 10, cgstAmount: 5, sgstAmount: 5, grandTotal: 210 },
+        items: [{ name: "Tea", quantity: 2, lineTotal: 60 }],
+        financials: { taxableSubtotal: 60, gstAmount: 3, cgstAmount: 1.5, sgstAmount: 1.5, grandTotal: 63 },
       },
     });
     assert.match(bill, /Bill 20260904-001/);
-    assert.match(bill, /TOTAL  210/);
+    assert.match(bill, /CGST  1.50/);
+    assert.match(bill, /SGST  1.50/);
+    assert.match(bill, /GST  3.00/);
+    assert.match(bill, /TOTAL  63.00/);
     assert.match(bill, /Thanks/);
   });
 });

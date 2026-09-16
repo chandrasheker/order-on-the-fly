@@ -7,6 +7,9 @@ import {
   refundedPaymentsTotal,
 } from "@/lib/order-financials";
 import { buildReceiptPayload } from "@/lib/receipt-service";
+import { formatReceiptMoney } from "@/lib/escpos/encoder";
+import { buildEscPosReceipt } from "@/lib/escpos/build-receipt";
+import { formatCurrency } from "@/lib/utils";
 
 describe("canonical order financials", () => {
   it("uses served items only for the subtotal", () => {
@@ -199,5 +202,61 @@ describe("canonical order financials", () => {
     assert.equal(payload.total, 30);
     assert.equal(payload.gstAmount, 1.43);
     assert.equal(payload.restaurant.gstInclusive, true);
+  });
+});
+
+describe("receipt money decimals", () => {
+  it("prints paise instead of rounding CGST/SGST to whole rupees", () => {
+    assert.equal(formatReceiptMoney(1.5), "Rs.1.50");
+    assert.equal(formatReceiptMoney(1.43), "Rs.1.43");
+    assert.equal(formatReceiptMoney(3), "Rs.3.00");
+    assert.equal(formatReceiptMoney(60), "Rs.60.00");
+    assert.equal(formatCurrency(1.5, 2), "₹1.50");
+    assert.equal(formatCurrency(3, 2), "₹3.00");
+  });
+
+  it("prints 2.5% CGST/SGST of ₹60 as 1.50 not 1", async () => {
+    const financials = computeOrderFinancials({
+      items: [{ unitPrice: 30, quantity: 2, status: "SERVED" }],
+      gstEnabled: true,
+      gstRate: 5,
+      gstInclusive: false,
+    });
+    assert.equal(financials.itemSubtotal, 60);
+    assert.equal(financials.cgstAmount, 1.5);
+    assert.equal(financials.sgstAmount, 1.5);
+    assert.equal(financials.gstAmount, 3);
+
+    const bytes = await buildEscPosReceipt({
+      restaurant: {
+        name: "Cafe",
+        logoUrl: null,
+        address: null,
+        phone: null,
+        gstin: null,
+        gstEnabled: true,
+        gstRate: 5,
+        gstInclusive: false,
+        footer: null,
+      },
+      order: {
+        id: "o1",
+        orderNumber: 1,
+        tableNumber: 4,
+        customerName: null,
+        paidAt: "2026-09-16T10:00:00.000Z",
+      },
+      items: [{ name: "Water", quantity: 2, unitPrice: 30, lineTotal: 60, status: "SERVED" }],
+      subtotal: financials.itemSubtotal,
+      gstAmount: financials.gstAmount,
+      cgstAmount: financials.cgstAmount,
+      sgstAmount: financials.sgstAmount,
+      total: financials.grandTotal,
+    });
+    const text = Buffer.from(bytes).toString("latin1");
+    assert.match(text, /Rs\.1\.50/);
+    assert.match(text, /Rs\.3\.00/);
+    assert.equal((text.match(/Rs\.1\.50/g) ?? []).length, 2);
+    assert.doesNotMatch(text, /Rs\.1[^0-9.]/);
   });
 });

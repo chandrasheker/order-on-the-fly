@@ -80,8 +80,12 @@ export function padLine(left: string, right: string, width = 32) {
   return `${trimmedLeft}${" ".repeat(gap)}${right}`.slice(0, width);
 }
 
+/** Thermal printers use ASCII; always show paise so CGST 1.50 is not rounded to 1. */
 export function formatReceiptMoney(amount: number) {
-  return `Rs.${Math.round(amount)}`;
+  const paise = Math.round((Number(amount) || 0) * 100);
+  const safe = Number.isFinite(paise) ? paise : 0;
+  const sign = safe < 0 ? "-" : "";
+  return `${sign}Rs.${(Math.abs(safe) / 100).toFixed(2)}`;
 }
 
 export function wrapText(text: string, width = 32) {

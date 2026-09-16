@@ -57,7 +57,7 @@ export default async function PublicReceiptPage({
               <span>
                 {item.quantity} × {item.name}
               </span>
-              <span>{formatCurrency(item.lineTotal)}</span>
+              <span>{formatCurrency(item.lineTotal, 2)}</span>
             </li>
           ))}
         </ul>
@@ -65,29 +65,29 @@ export default async function PublicReceiptPage({
         <dl className="mt-4 space-y-1 text-sm">
           <div className="flex justify-between text-muted">
             <dt>Subtotal</dt>
-            <dd>{formatCurrency(receipt.subtotal)}</dd>
+            <dd>{formatCurrency(receipt.subtotal, 2)}</dd>
           </div>
           {receipt.discountAmount > 0 ? (
             <div className="flex justify-between text-muted">
               <dt>Discount</dt>
-              <dd>-{formatCurrency(receipt.discountAmount)}</dd>
+              <dd>-{formatCurrency(receipt.discountAmount, 2)}</dd>
             </div>
           ) : null}
           {receipt.gstAmount > 0 ? (
             <>
               <div className="flex justify-between text-muted">
                 <dt>{receipt.gstInclusive ? "CGST (incl.)" : "CGST"}</dt>
-                <dd>{formatCurrency(receipt.cgstAmount)}</dd>
+                <dd>{formatCurrency(receipt.cgstAmount, 2)}</dd>
               </div>
               <div className="flex justify-between text-muted">
                 <dt>{receipt.gstInclusive ? "SGST (incl.)" : "SGST"}</dt>
-                <dd>{formatCurrency(receipt.sgstAmount)}</dd>
+                <dd>{formatCurrency(receipt.sgstAmount, 2)}</dd>
               </div>
             </>
           ) : null}
           <div className="flex justify-between pt-2 text-base font-semibold text-foreground">
             <dt>Total</dt>
-            <dd>{formatCurrency(receipt.total)}</dd>
+            <dd>{formatCurrency(receipt.total, 2)}</dd>
           </div>
         </dl>
 

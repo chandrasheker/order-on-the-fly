@@ -12,8 +12,16 @@ export function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function formatCurrency(amount: number) {
-  const rounded = Math.round(Number(amount) || 0);
+export function formatCurrency(amount: number, fractionDigits = 0) {
+  const n = Number(amount) || 0;
+  if (fractionDigits > 0) {
+    const paise = Math.round(n * 100) / 100;
+    return `₹${paise.toLocaleString("en-IN", {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    })}`;
+  }
+  const rounded = Math.round(n);
   return `₹${rounded.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
