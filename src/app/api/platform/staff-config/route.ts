@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, requirePlatformAdmin } from "@/lib/auth";
+import { assertPlatformPasswordPolicy } from "@/lib/password-policy";
 import type { Role } from "@/generated/prisma/client";
 import {
   buildSlotKeys,
@@ -170,12 +171,13 @@ async function handlePOST(req: NextRequest) {
             role: Role;
             slotKey: string;
             passwordHash?: string;
-            plainPassword?: string;
+            authVersion?: { increment: number };
           } = { name, email, role, slotKey };
 
           if (enteredPassword) {
+            assertPlatformPasswordPolicy(enteredPassword);
             updateData.passwordHash = await hashPassword(enteredPassword);
-            updateData.plainPassword = enteredPassword;
+            updateData.authVersion = { increment: 1 };
           }
 
           await tx.user.update({
@@ -200,6 +202,9 @@ async function handlePOST(req: NextRequest) {
             throw new Error(`Email already in use: ${email}`);
           }
 
+          if (enteredPassword) {
+            assertPlatformPasswordPolicy(enteredPassword);
+          }
           const password = enteredPassword || generatePassword();
           const passwordHash = await hashPassword(password);
 
@@ -210,7 +215,6 @@ async function handlePOST(req: NextRequest) {
               role,
               slotKey,
               passwordHash,
-              plainPassword: password,
               restaurantId,
             },
           });

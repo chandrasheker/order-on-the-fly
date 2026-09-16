@@ -28,7 +28,7 @@ let getPickupQueue: typeof import("@/lib/fulfillment/pickup-queue").getPickupQue
 let getCommandCenter: typeof import("@/platform/command-center/metrics-service").getCommandCenter;
 let resolveTimeRange: typeof import("@/platform/command-center/time-range").resolveTimeRange;
 let maybeAutoCloseTableAfterPayment: typeof import("@/lib/table-ordering-service").maybeAutoCloseTableAfterPayment;
-let closeTableOrdering: typeof import("@/lib/table-ordering-service").closeTableOrdering;
+let openTableOrdering: typeof import("@/lib/table-ordering-service").openTableOrdering;
 let hashPassword: typeof import("@/lib/auth").hashPassword;
 let finalizeOrderBill: typeof import("@/lib/bill-service").finalizeOrderBill;
 
@@ -64,7 +64,7 @@ before(async () => {
   ({ getPickupQueue } = await import("@/lib/fulfillment/pickup-queue"));
   ({ getCommandCenter } = await import("@/platform/command-center/metrics-service"));
   ({ resolveTimeRange } = await import("@/platform/command-center/time-range"));
-  ({ maybeAutoCloseTableAfterPayment, closeTableOrdering } = await import("@/lib/table-ordering-service"));
+  ({ maybeAutoCloseTableAfterPayment, openTableOrdering } = await import("@/lib/table-ordering-service"));
   ({ hashPassword } = await import("@/lib/auth"));
   ({ finalizeOrderBill } = await import("@/lib/bill-service"));
 });
@@ -428,7 +428,7 @@ describe("M7 dual/hybrid fulfillment", () => {
     assert.equal(tableAfter?.orderingEnabled, true);
   });
 
-  it("keeps idle full-service tables available after settlement and still allows owner close", async () => {
+  it("closes idle full-service tables after settlement until staff reopen them", async () => {
     const suffix = `idle-avail-${Date.now()}`;
     const { table } = await seedRestaurant(suffix, { serviceMode: "FULL_SERVICE" });
     await prisma.table.update({
@@ -437,13 +437,13 @@ describe("M7 dual/hybrid fulfillment", () => {
     });
     await maybeAutoCloseTableAfterPayment(table.id);
     const afterPay = await prisma.table.findUnique({ where: { id: table.id } });
-    assert.equal(afterPay?.orderingEnabled, true);
+    assert.equal(afterPay?.orderingEnabled, false);
     assert.equal(afterPay?.seatedAt, null);
     assert.equal(afterPay?.guestCount, null);
 
-    await closeTableOrdering(table.id);
-    const afterClose = await prisma.table.findUnique({ where: { id: table.id } });
-    assert.equal(afterClose?.orderingEnabled, false);
+    await openTableOrdering(table.id);
+    const afterOpen = await prisma.table.findUnique({ where: { id: table.id } });
+    assert.equal(afterOpen?.orderingEnabled, true);
   });
 
   it("requires all items ready and rejects cancelled orders", async () => {

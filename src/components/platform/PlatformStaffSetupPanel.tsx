@@ -174,7 +174,7 @@ export function PlatformStaffSetupPanel({ tenantId }: { tenantId: string }) {
     if (res.ok) {
       setMessage({
         type: "ok",
-        text: "Staff configuration saved. Passwords you entered are now active — use Download CSV to export them.",
+        text: "Staff configuration saved. Passwords you entered are now active.",
       });
       await load();
     } else {
@@ -184,8 +184,34 @@ export function PlatformStaffSetupPanel({ tenantId }: { tenantId: string }) {
     setSavingId(null);
   };
 
-  const downloadCsv = (restaurantId: string, reset = false) => {
-    window.location.href = `/api/platform/staff-export?restaurantId=${restaurantId}${reset ? "&reset=true" : ""}`;
+  const resetAndExport = async (restaurantId: string) => {
+    try {
+      const res = await fetch("/api/platform/staff-export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setMessage({ type: "err", text: data.error || "Reset & export failed" });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "staff-credentials.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setMessage({
+        type: "ok",
+        text: "New staff passwords were generated once. Save the CSV — they are not stored in plaintext.",
+      });
+    } catch {
+      setMessage({ type: "err", text: "Reset & export failed" });
+    }
   };
 
   if (loading) {
@@ -284,15 +310,8 @@ export function PlatformStaffSetupPanel({ tenantId }: { tenantId: string }) {
                 )}
               </button>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" onClick={() => downloadCsv(restaurant.id)}>
-                  <Download className="w-4 h-4" /> Download CSV
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => downloadCsv(restaurant.id, true)}
-                >
-                  Reset &amp; export
+                <Button size="sm" variant="secondary" onClick={() => void resetAndExport(restaurant.id)}>
+                  <Download className="w-4 h-4" /> Reset &amp; export
                 </Button>
               </div>
             </div>
@@ -413,8 +432,8 @@ export function PlatformStaffSetupPanel({ tenantId }: { tenantId: string }) {
                 </Button>
 
                 <p className="text-xs text-zinc-500">
-                  Save first with the passwords you want staff to use. Download CSV exports those
-                  saved passwords without changing them.
+                  Save with the passwords you want staff to use. Reset &amp; export generates new
+                  passwords, returns them once in the CSV, and signs everyone out of old sessions.
                 </p>
               </div>
             )}

@@ -117,7 +117,7 @@ async function handlePOST(req: NextRequest) {
         tableCount: body.tableCount ? Number(body.tableCount) : undefined,
         ownerEmail: String(body.ownerEmail ?? "").toLowerCase(),
         ownerName: String(body.ownerName ?? "Owner"),
-        ownerPassword: body.ownerPassword ? String(body.ownerPassword) : undefined,
+        ownerPassword: String(body.ownerPassword ?? ""),
       });
       return NextResponse.json(
         {

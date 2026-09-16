@@ -27,6 +27,7 @@ import {
   syncTenantRestaurantHostnames,
 } from "@/lib/hostname-allocation";
 import { slotCountsFromRestaurant } from "@/lib/staff-slots";
+import { assertRequiredOwnerPassword } from "@/lib/password-policy";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -68,7 +69,6 @@ async function bootstrapRestaurant(
     slug: string;
     ownerEmail: string;
     ownerName: string;
-    ownerPassword: string;
     passwordHash: string;
     tableCount?: number;
   },
@@ -116,7 +116,6 @@ async function bootstrapRestaurant(
       role: "OWNER",
       slotKey: "owner1",
       passwordHash: input.passwordHash,
-      plainPassword: input.ownerPassword,
       restaurantId: restaurant.id,
       tenantId: tenant.id,
       branchId: branch.id,
@@ -132,7 +131,7 @@ async function bootstrapRestaurant(
       tenantId: tenant.id,
       branchId: branch.id,
       floorId: floor.id,
-      orderingEnabled: true,
+      orderingEnabled: false,
     })),
   });
 
@@ -195,6 +194,10 @@ export async function signupTenantWithRestaurants(input: SignupTenantGroupInput)
   const emails = planned.map((restaurant) => restaurant.ownerEmail);
   if (new Set(emails).size !== emails.length) {
     throw new Error("Each restaurant owner email must be unique");
+  }
+
+  for (const restaurant of planned) {
+    assertRequiredOwnerPassword(restaurant.ownerPassword);
   }
 
   const hashed = await Promise.all(
@@ -280,12 +283,12 @@ export async function addRestaurantToTenant(
     tableCount?: number;
     ownerEmail: string;
     ownerName: string;
-    ownerPassword?: string;
+    ownerPassword: string;
   },
 ) {
   const name = assertRestaurantName(input.name);
-  const password = input.ownerPassword || "changeme123";
-  const passwordHash = await bcrypt.hash(password, 10);
+  assertRequiredOwnerPassword(input.ownerPassword);
+  const passwordHash = await bcrypt.hash(input.ownerPassword, 10);
   const ownerEmail = input.ownerEmail.trim().toLowerCase();
   const slugsToInvalidate = new Set<string>();
 
@@ -317,7 +320,6 @@ export async function addRestaurantToTenant(
       slug,
       ownerEmail,
       ownerName: input.ownerName.trim() || "Owner",
-      ownerPassword: password,
       passwordHash,
       tableCount: input.tableCount,
     });

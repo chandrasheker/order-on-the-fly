@@ -23,6 +23,7 @@ export interface SessionUser {
   restaurantSlug: string;
   restaurantLogoUrl?: string | null;
   staffSessionId?: string;
+  authVersion?: number;
 }
 
 export interface PlatformAdminSession {
@@ -62,8 +63,18 @@ export async function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
 }
 
-export async function createToken(user: SessionUser) {
-  return new SignJWT({ ...user, type: "staff" })
+export function staffTokenAuthVersion(payload: { authVersion?: unknown }) {
+  return typeof payload.authVersion === "number" ? payload.authVersion : 0;
+}
+
+export async function createToken(user: SessionUser, authVersion = 0) {
+  return new SignJWT({
+    ...user,
+    type: "staff",
+    userId: user.id,
+    restaurantId: user.restaurantId,
+    authVersion,
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
@@ -137,11 +148,13 @@ export async function getSession(): Promise<SessionUser | null> {
       role: true,
       tenantId: true,
       restaurantId: true,
+      authVersion: true,
       restaurant: { select: { id: true, name: true, slug: true, tenantId: true, logoUrl: true } },
     },
   });
 
   if (!user?.restaurant) return null;
+  if (staffTokenAuthVersion(payload) !== user.authVersion) return null;
 
   const { getRestaurantAccessState } = await import("@/lib/access-control-service");
   const access = await getRestaurantAccessState(user.restaurant.id);
@@ -170,7 +183,7 @@ export async function getSession(): Promise<SessionUser | null> {
 
   if (staffSessionId !== payload.staffSessionId) {
     try {
-      const newToken = await createToken(sessionUser);
+      const newToken = await createToken(sessionUser, user.authVersion);
       cookieStore.set(STAFF_SESSION_COOKIE, newToken, staffSessionCookieOptions());
     } catch {
       // Cookie writes are not allowed in some server component contexts.

@@ -14,7 +14,10 @@ export async function applyStaffUserMutationInTx(
 ) {
   const user = await tx.user.update({
     where: { id: params.userId },
-    data: params.data,
+    data: {
+      ...params.data,
+      ...(params.data.passwordHash ? { authVersion: { increment: 1 } } : {}),
+    },
     include: { restaurant: { select: { id: true, name: true, slug: true } } },
   });
   const before = auditStaffSnapshot(params.existing);

@@ -165,11 +165,6 @@ describe("tenant administrator tenant details", () => {
         receiptGstin: "29AAAAA0000A1Z5",
       },
     });
-    await prisma.user.update({
-      where: { id: owner.id },
-      data: { plainPassword: "visible-should-not-leak" },
-    });
-
     const overview = await getTenantOverview(created.tenant.id);
     assert.ok(overview);
     assert.equal(overview.tenant.billingEmail, created.tenant.billingEmail);

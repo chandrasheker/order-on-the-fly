@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { hashPassword, requirePlatformAdmin } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
+import { requireApexPlatformAdmin } from "@/platform/command-center/platform-admin-gate";
 import {
   buildSlotKeys,
   defaultEmailForSlot,
@@ -13,15 +14,29 @@ import { roleForSlotKey } from "@/lib/staff-permissions";
 import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
-async function handleGET(req: NextRequest) {
-  logApiRequest("platform/staff-export", "GET");
-  const admin = await requirePlatformAdmin();
-  if (!admin) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+function csvHeaders(filename: string) {
+  return {
+    "Content-Type": "text/csv",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Cache-Control": "no-store",
+  };
+}
 
-  const restaurantId = req.nextUrl.searchParams.get("restaurantId");
-  const reset = req.nextUrl.searchParams.get("reset") === "true";
+async function handleGET() {
+  return NextResponse.json(
+    { error: "Use POST /api/platform/staff-export to reset and download new credentials." },
+    { status: 405, headers: { Allow: "POST", "Cache-Control": "no-store" } },
+  );
+}
+
+async function handlePOST(req: NextRequest) {
+  logApiRequest("platform/staff-export", "POST");
+  const gate = await requireApexPlatformAdmin(req);
+  if (!gate.ok) return gate.response;
+  const admin = gate.admin;
+
+  const body = await req.json().catch(() => ({}));
+  const restaurantId = String(body.restaurantId ?? req.nextUrl.searchParams.get("restaurantId") ?? "");
 
   if (!restaurantId) {
     return NextResponse.json({ error: "restaurantId required" }, { status: 400 });
@@ -50,21 +65,17 @@ async function handleGET(req: NextRequest) {
 
     for (const slotKey of slotKeys) {
       const user = restaurant.users.find((u) => u.slotKey === slotKey);
+      const password = generatePassword();
+      const passwordHash = await hashPassword(password);
 
       if (user) {
-        let password = user.plainPassword ?? "";
-
-        if (reset || !password) {
-          password = generatePassword();
-          await prisma.user.update({
-            where: { id: user.id },
-            data: {
-              passwordHash: await hashPassword(password),
-              plainPassword: password,
-            },
-          });
-        }
-
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            passwordHash,
+            authVersion: { increment: 1 },
+          },
+        });
         rows.push({
           restaurant: restaurant.name,
           slotKey,
@@ -77,15 +88,13 @@ async function handleGET(req: NextRequest) {
         const role = roleForSlotKey(slotKey)!;
         const email = defaultEmailForSlot(restaurant.slug, slotKey);
         const name = defaultNameForSlot(slotKey);
-        const password = generatePassword();
         await prisma.user.create({
           data: {
             name,
             email,
             role,
             slotKey,
-            passwordHash: await hashPassword(password),
-            plainPassword: password,
+            passwordHash,
             restaurantId: restaurant.id,
           },
         });
@@ -101,23 +110,20 @@ async function handleGET(req: NextRequest) {
     }
 
     const csv = slotsToCsv(rows);
-    logInfo("platform/staff-export", "Staff credentials exported", {
+    logInfo("platform/staff-export", "Staff credentials reset and exported", {
       adminId: admin.id,
       restaurantId,
       slotCount: rows.length,
-      reset,
     });
 
     return new NextResponse(csv, {
-      headers: {
-        "Content-Type": "text/csv",
-        "Content-Disposition": `attachment; filename="${restaurant.slug}-staff-credentials.csv"`,
-      },
+      headers: csvHeaders(`${restaurant.slug}-staff-credentials.csv`),
     });
   } catch (error) {
-    logApiError("platform/staff-export", "GET", error);
+    logApiError("platform/staff-export", "POST", error);
     return NextResponse.json({ error: "Export failed" }, { status: 500 });
   }
 }
 
 export const GET = withForensicApiRoute(handleGET);
+export const POST = withForensicApiRoute(handlePOST);
