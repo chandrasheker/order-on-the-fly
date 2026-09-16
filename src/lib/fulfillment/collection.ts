@@ -298,6 +298,7 @@ export function evaluateCollectionEligibility(order: {
 }
 
 export type CustomerPickupState =
+  | "AWAITING_PAYMENT"
   | "PREPARING"
   | "FOOD_READY_PAYMENT_REQUIRED"
   | "READY_FOR_COLLECTION"
@@ -322,8 +323,8 @@ export function customerPickupState(order: {
   if (isOrderCollected(order)) return "COLLECTED";
   const eligibility = evaluateCollectionEligibility(order);
   if (eligibility.collectable) return "READY_FOR_COLLECTION";
-  if (eligibility.foodReady && !eligibility.financiallySettled) {
-    return "FOOD_READY_PAYMENT_REQUIRED";
+  if (!eligibility.financiallySettled) {
+    return eligibility.foodReady ? "FOOD_READY_PAYMENT_REQUIRED" : "AWAITING_PAYMENT";
   }
   return "PREPARING";
 }

@@ -344,8 +344,8 @@ export async function finalizeOrderIfSettled(
       const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
       await maybeAutoCloseTableAfterPayment(orderRow.tableId);
     } else {
-      const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
-      await evaluateSelfPickupNotifications(orderId);
+      const { onSelfPickupSettled } = await import("@/lib/fulfillment/kitchen-release");
+      await onSelfPickupSettled(orderId);
     }
   }
   return true;
@@ -684,8 +684,8 @@ export async function recordOrderPayment(params: {
         select: { fulfillmentMode: true },
       });
       if (paidOrder?.fulfillmentMode === "SELF_PICKUP") {
-        const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
-        await evaluateSelfPickupNotifications(result.orderId);
+        const { onSelfPickupSettled } = await import("@/lib/fulfillment/kitchen-release");
+        await onSelfPickupSettled(result.orderId);
       } else {
         const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
         await maybeAutoCloseTableAfterPayment(result.tableId);
@@ -1089,8 +1089,8 @@ export async function confirmManualUpiPayment(params: {
         select: { fulfillmentMode: true },
       });
       if (paidOrder?.fulfillmentMode === "SELF_PICKUP") {
-        const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
-        await evaluateSelfPickupNotifications(result.orderId);
+        const { onSelfPickupSettled } = await import("@/lib/fulfillment/kitchen-release");
+        await onSelfPickupSettled(result.orderId);
       } else {
         const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
         await maybeAutoCloseTableAfterPayment(result.tableId);

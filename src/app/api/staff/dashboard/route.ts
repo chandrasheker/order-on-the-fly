@@ -15,6 +15,9 @@ import { getOrderPaymentSummaries, finalizeOrderIfSettled } from "@/lib/payment-
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import { ensureServiceTables } from "@/lib/service-tables";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+import { areRequiredItemsReady } from "@/lib/fulfillment/collection";
+import { pickupHandoverPhase } from "@/lib/fulfillment/constants";
+import { toPaise } from "@/lib/money";
 
 async function handleGET() {
   logApiRequest("staff/dashboard", "GET");
@@ -134,7 +137,7 @@ async function handleGET() {
     0
   );
 
-  const withTotal = <T extends { id: string; items: Array<{ unitPrice: number; quantity: number; status: string }>; paidAt?: Date | null }>(
+  const withTotal = <T extends { id: string; items: Array<{ unitPrice: number; quantity: number; status: string }>; paidAt?: Date | string | null }>(
     list: T[]
   ) =>
     list.map((o) => ({
@@ -142,6 +145,32 @@ async function handleGET() {
       total: sumOrderRevenue(o.items),
       paidTotal: sumPaidOrderRevenue(o, o.items),
     }));
+
+  const activeWithTotals = withTotal(orders);
+  const pickupIds = activeWithTotals
+    .filter((order) => (order as { fulfillmentMode?: string }).fulfillmentMode === "SELF_PICKUP")
+    .map((order) => order.id);
+  const pickupSummaries =
+    pickupIds.length > 0 ? await getOrderPaymentSummaries(pickupIds) : new Map();
+  const activeOut = activeWithTotals.map((order) => {
+    if ((order as { fulfillmentMode?: string }).fulfillmentMode !== "SELF_PICKUP") return order;
+    const paymentSummary = pickupSummaries.get(order.id) ?? null;
+    const remaining = paymentSummary?.remaining ?? 0;
+    const paid = remaining <= 0.01;
+    const foodReady = areRequiredItemsReady(order.items);
+    const collected = Boolean((order as { collectedAt?: Date | string | null }).collectedAt);
+    return {
+      ...order,
+      paymentSummary,
+      pickup: {
+        outstandingAmountPaise: toPaise(remaining),
+        paid,
+        foodReady,
+        collectable: foodReady && paid,
+        phase: pickupHandoverPhase({ foodReady, paid, collected }),
+      },
+    };
+  });
 
   const pendingWithTotals = withTotal(pendingOrders);
   type PendingWithPayment = (typeof pendingWithTotals)[number] & {
@@ -193,7 +222,7 @@ async function handleGET() {
   }
 
   return NextResponse.json({
-    orders,
+    orders: activeOut,
     pendingOrders: pendingWithPayments,
     completedOrders: withTotal(completedOrders),
     alerts,

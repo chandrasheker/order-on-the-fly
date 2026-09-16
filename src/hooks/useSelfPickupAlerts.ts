@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 
 export type PickupAlertState =
+  | "AWAITING_PAYMENT"
   | "PREPARING"
   | "FOOD_READY_PAYMENT_REQUIRED"
   | "READY_FOR_COLLECTION"

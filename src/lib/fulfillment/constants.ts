@@ -15,13 +15,34 @@ export const READY_AGING_WAITING_MS = 5 * 60 * 1000;
 export const READY_AGING_OVERDUE_MS = 10 * 60 * 1000;
 
 export type SelfPickupCustomerState =
+  | "AWAITING_PAYMENT"
   | "PREPARING"
   | "FOOD_READY_PAYMENT_REQUIRED"
   | "READY_FOR_COLLECTION"
   | "COLLECTED"
   | "CANCELLED";
 
-export type ReadyAgingLevel = "NORMAL" | "WAITING" | "OVERDUE";
+export type PickupHandoverPhase = "AWAIT_PAYMENT" | "COOKING" | "HANDOVER" | "DONE";
+
+/** I'll-collect steps: pay first → kitchen → hand over. Collect only on HANDOVER. */
+export function pickupHandoverPhase(input: {
+  foodReady: boolean;
+  paid: boolean;
+  collected?: boolean;
+}): PickupHandoverPhase {
+  if (input.collected) return "DONE";
+  if (!input.paid) return "AWAIT_PAYMENT";
+  if (!input.foodReady) return "COOKING";
+  return "HANDOVER";
+}
+
+export function pickupCollectEnabled(input: {
+  foodReady: boolean;
+  paid: boolean;
+  collected?: boolean;
+}) {
+  return pickupHandoverPhase(input) === "HANDOVER";
+}
 
 export function isRestaurantServiceMode(value: unknown): value is RestaurantServiceMode {
   return typeof value === "string" && (RESTAURANT_SERVICE_MODES as readonly string[]).includes(value);
@@ -44,6 +65,8 @@ export function allowedFulfillmentModes(serviceMode: RestaurantServiceMode): Ord
   if (serviceMode === "HYBRID") return ["TABLE_SERVICE", "SELF_PICKUP"];
   return ["TABLE_SERVICE"];
 }
+
+export type ReadyAgingLevel = "NORMAL" | "WAITING" | "OVERDUE";
 
 export function readyAgingLevel(readyAt: Date | null | undefined, now = new Date()): ReadyAgingLevel | null {
   if (!readyAt) return null;

@@ -8,6 +8,8 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import { PAYMENT_STATUS } from "@/lib/order-financials";
 import { snapshotFulfillmentMode } from "@/lib/fulfillment/resolve";
 import { canMarkPickupReady, canPerformOrderAction, canPerformOrderActionOnOrder } from "@/lib/staff-permissions";
+import { pickupHandoverPhase } from "@/lib/fulfillment/constants";
+import { kitchenChitIdempotencyKey } from "@/lib/print-constants";
 
 const dbPath = path.join(os.tmpdir(), `tabletap-m7-${process.pid}-${Date.now()}.db`);
 process.env.DATABASE_URL = `file:${dbPath}`;
@@ -31,6 +33,10 @@ let maybeAutoCloseTableAfterPayment: typeof import("@/lib/table-ordering-service
 let openTableOrdering: typeof import("@/lib/table-ordering-service").openTableOrdering;
 let hashPassword: typeof import("@/lib/auth").hashPassword;
 let finalizeOrderBill: typeof import("@/lib/bill-service").finalizeOrderBill;
+let getKitchenTickets: typeof import("@/lib/kitchen-service").getKitchenTickets;
+let throwIfSelfPickupKitchenHeld: typeof import("@/lib/fulfillment/kitchen-release").throwIfSelfPickupKitchenHeld;
+let releaseSelfPickupToKitchenIfPaid: typeof import("@/lib/fulfillment/kitchen-release").releaseSelfPickupToKitchenIfPaid;
+let checkOverdueItems: typeof import("@/lib/order-service").checkOverdueItems;
 
 before(async () => {
   execFileSync(
@@ -67,6 +73,11 @@ before(async () => {
   ({ maybeAutoCloseTableAfterPayment, openTableOrdering } = await import("@/lib/table-ordering-service"));
   ({ hashPassword } = await import("@/lib/auth"));
   ({ finalizeOrderBill } = await import("@/lib/bill-service"));
+  ({ getKitchenTickets } = await import("@/lib/kitchen-service"));
+  ({ throwIfSelfPickupKitchenHeld, releaseSelfPickupToKitchenIfPaid } = await import(
+    "@/lib/fulfillment/kitchen-release"
+  ));
+  ({ checkOverdueItems } = await import("@/lib/order-service"));
 });
 
 after(async () => {
@@ -770,6 +781,12 @@ describe("M7 dual/hybrid fulfillment", () => {
     assert.equal(first.ok, true);
     const afterPartial = await prisma.order.findUnique({ where: { id: created.order.id } });
     assert.equal(afterPartial?.paidAt, null);
+    assert.equal(
+      await prisma.printJob.count({
+        where: { restaurantId: restaurant.id, kind: "kitchen_chit", orderId: created.order.id },
+      }),
+      0,
+    );
     const partialElig = evaluateCollectionEligibility(
       (await loadOrderForCollection(prisma, restaurant.id, created.order.id))!,
     );
@@ -1036,6 +1053,140 @@ describe("M7 dual/hybrid fulfillment", () => {
         const meta = JSON.parse(event.metadataJson ?? "{}") as { notificationType?: string };
         return meta.notificationType === "READY_FOR_COLLECTION";
       }),
+    );
+  });
+
+  it("I'll-collect waits for payment before kitchen, then cook and collect", async () => {
+    assert.equal(pickupHandoverPhase({ foodReady: false, paid: false }), "AWAIT_PAYMENT");
+    assert.equal(pickupHandoverPhase({ foodReady: true, paid: false }), "AWAIT_PAYMENT");
+    assert.equal(pickupHandoverPhase({ foodReady: false, paid: true }), "COOKING");
+    assert.equal(pickupHandoverPhase({ foodReady: true, paid: true }), "HANDOVER");
+    assert.ok(canPerformOrderAction("OWNER", "mark-paid"));
+    assert.ok(canPerformOrderAction("MANAGER", "mark-paid"));
+    assert.ok(canPerformOrderAction("SERVER", "mark-paid"));
+    assert.equal(canPerformOrderAction("COOK", "mark-paid"), false);
+
+    const suffix = `payfirst-${Date.now()}`;
+    const { restaurant, table, burger } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: burger.id, quantity: 1 }],
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    assert.equal(created.order.fulfillmentMode, "SELF_PICKUP");
+    assert.equal(
+      customerPickupState((await loadOrderForCollection(prisma, restaurant.id, created.order.id))!),
+      "AWAITING_PAYMENT",
+    );
+    const jobsBefore = await prisma.printJob.findMany({
+      where: { restaurantId: restaurant.id, kind: "kitchen_chit", orderId: created.order.id },
+    });
+    assert.equal(jobsBefore.length, 0);
+    const kitchenBefore = await getKitchenTickets(restaurant.id);
+    assert.equal(
+      kitchenBefore.tickets.some((ticket) => ticket && ticket.id === created.order.id),
+      false,
+    );
+    await assert.rejects(
+      () => throwIfSelfPickupKitchenHeld(restaurant.id, created.order.id),
+      (err: unknown) =>
+        err instanceof SelfPickupCollectionError &&
+        err.code === "PAYMENT_REQUIRED" &&
+        err.status === 409,
+    );
+
+    await prisma.orderItem.updateMany({
+      where: { orderId: created.order.id },
+      data: { expectedReadyAt: new Date(Date.now() - 20 * 60 * 1000) },
+    });
+    await checkOverdueItems(restaurant.id, true);
+    const overdueWhileUnpaid = await prisma.orderItem.findFirst({ where: { orderId: created.order.id } });
+    assert.equal(overdueWhileUnpaid?.isOverdue, false);
+
+    const heldAgain = await releaseSelfPickupToKitchenIfPaid(created.order.id);
+    assert.equal(heldAgain.held, true);
+    assert.equal(heldAgain.released, false);
+
+    const pay = await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 280,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    assert.equal(pay.ok, true);
+    const jobsAfter = await prisma.printJob.findMany({
+      where: { restaurantId: restaurant.id, kind: "kitchen_chit", orderId: created.order.id },
+    });
+    assert.equal(jobsAfter.length, 1);
+    assert.equal(jobsAfter[0]?.idempotencyKey, kitchenChitIdempotencyKey(created.order.id));
+    const kitchenAfter = await getKitchenTickets(restaurant.id);
+    assert.ok(kitchenAfter.tickets.some((ticket) => ticket && ticket.id === created.order.id));
+    const resetItem = await prisma.orderItem.findFirst({ where: { orderId: created.order.id } });
+    assert.ok((resetItem?.expectedReadyAt.getTime() ?? 0) > Date.now() - 5_000);
+    assert.equal(
+      customerPickupState((await loadOrderForCollection(prisma, restaurant.id, created.order.id))!),
+      "PREPARING",
+    );
+    await throwIfSelfPickupKitchenHeld(restaurant.id, created.order.id);
+
+    const secondRelease = await releaseSelfPickupToKitchenIfPaid(created.order.id);
+    assert.equal(secondRelease.alreadyReleased, true);
+    const jobsTwice = await prisma.printJob.count({
+      where: { restaurantId: restaurant.id, kind: "kitchen_chit", orderId: created.order.id },
+    });
+    assert.equal(jobsTwice, 1);
+
+    const queue = await getPickupQueue(restaurant.id);
+    assert.ok(queue.preparing.some((row) => row.id === created.order.id && row.paid));
+    assert.equal(
+      queue.awaitingPayment.some((row) => row.id === created.order.id),
+      false,
+    );
+
+    await markItemsReady(created.order.id);
+    const ready = await loadOrderForCollection(prisma, restaurant.id, created.order.id);
+    assert.equal(customerPickupState(ready!), "READY_FOR_COLLECTION");
+    const collected = await markSelfPickupCollected({
+      restaurantId: restaurant.id,
+      orderId: created.order.id,
+      actor: { id: owner.id, role: "OWNER", name: owner.name },
+    });
+    assert.ok(collected.collectedAt);
+  });
+
+  it("zero-amount I'll-collect goes to kitchen immediately", async () => {
+    const suffix = `free-${Date.now()}`;
+    const { restaurant, table } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
+    const category = await prisma.menuCategory.findFirst({ where: { restaurantId: restaurant.id } });
+    const water = await prisma.menuItem.create({
+      data: {
+        name: "Water",
+        price: 0,
+        categoryId: category!.id,
+        prepTimeMinutes: 1,
+      },
+    });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: water.id, quantity: 1 }],
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    const jobs = await prisma.printJob.findMany({
+      where: { restaurantId: restaurant.id, kind: "kitchen_chit", orderId: created.order.id },
+    });
+    assert.equal(jobs.length, 1);
+    const kitchen = await getKitchenTickets(restaurant.id);
+    assert.ok(kitchen.tickets.some((ticket) => ticket && ticket.id === created.order.id));
+    assert.equal(
+      customerPickupState((await loadOrderForCollection(prisma, restaurant.id, created.order.id))!),
+      "PREPARING",
     );
   });
 });

@@ -182,6 +182,24 @@ async function handlePATCH(
     }
   }
 
+  if (
+    order.fulfillmentMode === "SELF_PICKUP" &&
+    (action === "prepare-item" || action === "ready-item" || action === "ready-all")
+  ) {
+    try {
+      const { throwIfSelfPickupKitchenHeld } = await import("@/lib/fulfillment/kitchen-release");
+      await throwIfSelfPickupKitchenHeld(session.restaurantId, id);
+    } catch (err) {
+      const { SelfPickupCollectionError, collectionErrorToJson } = await import(
+        "@/lib/fulfillment/collection"
+      );
+      if (err instanceof SelfPickupCollectionError) {
+        return NextResponse.json(collectionErrorToJson(err), { status: err.status });
+      }
+      throw err;
+    }
+  }
+
   if (action === "mark-paid") {
     if (payTab) {
       const result = await recordTableTabFullPayment({

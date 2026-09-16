@@ -186,5 +186,11 @@ export async function getKitchenTickets(restaurantId: string, stationSlug?: stri
     })
     .filter(Boolean);
 
-  return { stations, tickets, activeStation: station?.slug ?? stationSlug ?? "all" };
+  const { selfPickupKitchenHeldOrderIds } = await import("@/lib/fulfillment/kitchen-release");
+  const heldOrderIds = await selfPickupKitchenHeldOrderIds(orders);
+  const visibleTickets = tickets.filter(
+    (ticket): ticket is NonNullable<typeof ticket> => Boolean(ticket) && !heldOrderIds.has(ticket.id),
+  );
+
+  return { stations, tickets: visibleTickets, activeStation: station?.slug ?? stationSlug ?? "all" };
 }

@@ -380,12 +380,28 @@ export function OrderTracker({
               className={`rounded-2xl border backdrop-blur-xl p-5 ${
                 state === "READY_FOR_COLLECTION"
                   ? "border-emerald-400/50 bg-emerald-500/15"
-                  : state === "FOOD_READY_PAYMENT_REQUIRED"
+                  : state === "AWAITING_PAYMENT" || state === "FOOD_READY_PAYMENT_REQUIRED"
                     ? "border-amber-400/40 bg-amber-500/10"
                     : "border-white/10 bg-white/5"
               }`}
             >
               <p className="text-sm text-zinc-400">Pickup #{pickupNumber}</p>
+              {state === "AWAITING_PAYMENT" && (
+                <>
+                  <p className="text-xl font-bold text-amber-200 mt-1">Pay now to start the kitchen</p>
+                  <p className="text-sm text-amber-100 mt-1">
+                    We send this order to the kitchen after payment. Staff can also take cash at the counter.
+                  </p>
+                  <p className="text-lg font-semibold mt-2">Due: {formatMoney(due)}</p>
+                  <Button
+                    variant="success"
+                    className="w-full mt-4"
+                    onClick={() => openPayModal(order)}
+                  >
+                    Pay Now
+                  </Button>
+                </>
+              )}
               {state === "PREPARING" && (
                 <>
                   <p className="text-xl font-bold mt-1">We&apos;re preparing your order.</p>
@@ -417,8 +433,12 @@ export function OrderTracker({
                 </>
               )}
               {state === "COLLECTED" && <p className="text-lg font-semibold mt-1">Order collected</p>}
-              {serviceMode === "SELF_SERVICE" && state === "PREPARING" && (
-                <p className="text-xs text-zinc-500 mt-3">Payment must be completed before collection.</p>
+              {serviceMode === "SELF_SERVICE" && (state === "PREPARING" || state === "AWAITING_PAYMENT") && (
+                <p className="text-xs text-zinc-500 mt-3">
+                  {state === "AWAITING_PAYMENT"
+                    ? "Pay now — kitchen starts after this payment."
+                    : "Payment received. Kitchen is preparing your order."}
+                </p>
               )}
             </motion.div>
           );

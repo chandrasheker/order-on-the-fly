@@ -78,11 +78,19 @@ interface Order {
   status: string;
   alarmTriggered: boolean;
   paidAt?: string | null;
+  collectedAt?: string | null;
   table: { number: number; assignedServerId?: string | null };
   items: OrderItem[];
   createdAt: string;
   total?: number;
   paidTotal?: number;
+  pickup?: {
+    outstandingAmountPaise?: number;
+    paid?: boolean;
+    foodReady?: boolean;
+    collectable?: boolean;
+    phase?: "AWAIT_PAYMENT" | "COOKING" | "HANDOVER" | "DONE";
+  } | null;
   paymentSummary?: {
     total: number;
     paid: number;
@@ -328,7 +336,9 @@ export function StaffDashboard() {
         const due = fromPaise(json.outstandingAmountPaise ?? 0);
         const message =
           json.code === "PAYMENT_REQUIRED"
-            ? `Collect blocked — ${formatCurrency(due)} still due`
+            ? json.error
+              ? `${json.error}${due > 0 ? ` · ${formatCurrency(due)} due` : ""}`
+              : `Payment required · ${formatCurrency(due)} due`
             : json.code === "NOT_READY"
               ? "Mark items Ready to collect first"
               : json.error || "Could not update order";
@@ -902,7 +912,24 @@ export function StaffDashboard() {
               <PickupQueuePanel
                 canCollect={canPerformOrderAction(role!, "collect-order")}
                 canReady={canMarkPickupReady(role!)}
+                canPay={canPerformOrderAction(role!, "mark-paid") || canPerformOrderAction(role!, "record-payment")}
+                payingKey={payingKey}
                 onCollected={() => void fetchDashboard()}
+                onPay={(orderId, method) => {
+                  void runPayment(`pickup-queue-${orderId}`, async () => {
+                    try {
+                      const res = await fetch(`/api/orders/${orderId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "mark-paid", method }),
+                      });
+                      const json = await res.json().catch(() => ({}));
+                      await handlePaymentComplete(res, json);
+                    } catch (error) {
+                      swallowPollingFetchError(error);
+                    }
+                  });
+                }}
               />
             </div>
             <div className="flex flex-wrap gap-2 mb-4">
@@ -951,7 +978,23 @@ export function StaffDashboard() {
                     order={order}
                     now={now}
                     role={role!}
+                    payingKey={payingKey}
                     onUpdate={updateItem}
+                    onPay={(orderId, method) => {
+                      void runPayment(`pickup-active-${orderId}`, async () => {
+                        try {
+                          const res = await fetch(`/api/orders/${orderId}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "mark-paid", method }),
+                          });
+                          const json = await res.json().catch(() => ({}));
+                          await handlePaymentComplete(res, json);
+                        } catch (error) {
+                          swallowPollingFetchError(error);
+                        }
+                      });
+                    }}
                   />
                 ))}
               </div>
@@ -1053,7 +1096,23 @@ export function StaffDashboard() {
                       order={order}
                       now={now}
                       role={role!}
+                      payingKey={payingKey}
                       onUpdate={updateItem}
+                      onPay={(orderId, method) => {
+                        void runPayment(`pickup-overdue-${orderId}`, async () => {
+                          try {
+                            const res = await fetch(`/api/orders/${orderId}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action: "mark-paid", method }),
+                            });
+                            const json = await res.json().catch(() => ({}));
+                            await handlePaymentComplete(res, json);
+                          } catch (error) {
+                            swallowPollingFetchError(error);
+                          }
+                        });
+                      }}
                     />
                   ))}
               </div>
@@ -1281,12 +1340,16 @@ function ActiveOrderCard({
   order,
   now,
   role,
+  payingKey,
   onUpdate,
+  onPay,
 }: {
   order: Order;
   now: number;
   role: Role;
+  payingKey: string | null;
   onUpdate: (orderId: string, itemId: string, action: string) => void;
+  onPay: (orderId: string, method: "CASH" | "UPI") => void;
 }) {
   const isPickup = order.fulfillmentMode === "SELF_PICKUP";
   const canStart = canPerformOrderAction(role, "prepare-item");
@@ -1295,11 +1358,21 @@ function ActiveOrderCard({
   const canReject = canPerformOrderAction(role, "reject-item");
   const canServeAll = canPerformOrderAction(role, "serve-all");
   const canCollect = canPerformOrderAction(role, "collect-order");
+  const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
   const requiredItems = order.items.filter((item) => item.status !== "UNAVAILABLE");
   const needsReady = requiredItems.some((item) => item.status === "PENDING" || item.status === "PREPARING");
   const foodReady =
-    requiredItems.length > 0 &&
-    requiredItems.every((item) => item.status === "READY" || item.status === "SERVED");
+    order.pickup?.foodReady ??
+    (requiredItems.length > 0 &&
+      requiredItems.every((item) => item.status === "READY" || item.status === "SERVED"));
+  const paid =
+    order.pickup?.paid ??
+    (order.paymentSummary ? order.paymentSummary.remaining <= 0.01 : Boolean(order.paidAt));
+  const due = order.pickup?.outstandingAmountPaise != null
+    ? fromPaise(order.pickup.outstandingAmountPaise)
+    : order.paymentSummary?.remaining ?? 0;
+  const collectable = order.pickup?.collectable ?? (foodReady && paid);
+  const kitchenReleased = !isPickup || paid;
 
   return (
     <motion.div
@@ -1363,7 +1436,7 @@ function ActiveOrderCard({
                   </span>
                 )}
               </div>
-              {isOrderItemOpen(item.status) && (canStart || canReady || (!isPickup && canServe) || canReject) && (
+              {isOrderItemOpen(item.status) && kitchenReleased && (canStart || canReady || (!isPickup && canServe) || canReject) && (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex gap-1.5">
                     {canStart && item.status === "PENDING" && (
@@ -1426,7 +1499,39 @@ function ActiveOrderCard({
 
       {isPickup ? (
         <div className="space-y-2">
-          {canReady && needsReady && (
+          {!paid && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+              <p className="text-sm font-semibold text-amber-200">Pay first — kitchen starts after payment</p>
+              <p className="text-xs text-amber-100/80">
+                Due {formatCurrency(due)}. Owner, manager, or server can take cash or mark online paid.
+              </p>
+              {canPay ? (
+                <div className="flex gap-2">
+                  <Button
+                    variant="success"
+                    size="sm"
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-500"
+                    disabled={Boolean(payingKey)}
+                    onClick={() => onPay(order.id, "CASH")}
+                  >
+                    Take cash · {formatCurrency(due)}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                    disabled={Boolean(payingKey)}
+                    onClick={() => onPay(order.id, "UPI")}
+                  >
+                    Mark UPI paid
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-400">Ask an owner, manager, or server to take payment.</p>
+              )}
+            </div>
+          )}
+          {canReady && needsReady && kitchenReleased && (
             <Button
               variant="secondary"
               size="sm"
@@ -1441,16 +1546,17 @@ function ActiveOrderCard({
               variant="primary"
               size="sm"
               className="w-full"
-              disabled={!foodReady}
+              disabled={!collectable}
               onClick={() => onUpdate(order.id, "", "collect-order")}
             >
               Mark Collected
             </Button>
           )}
-          {canCollect && !foodReady && (
+          {canCollect && !collectable && (
             <p className="text-xs text-amber-300 text-center">
-              Mark items ready to collect first. Collection is blocked until the food is ready
-              {order.paidAt ? "" : " and paid"}.
+              {!paid
+                ? "Take payment first. The kitchen ticket prints after this order is paid."
+                : "Mark items ready to collect first."}
             </p>
           )}
         </div>
