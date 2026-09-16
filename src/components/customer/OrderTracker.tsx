@@ -103,11 +103,6 @@ export function OrderTracker({
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    const interval = setInterval(onRefresh, 10000);
-    return () => clearInterval(interval);
-  }, [onRefresh]);
-
   const activeOrders = orders.filter(
     (o) =>
       shouldShowCustomerOrder(o.items) ||

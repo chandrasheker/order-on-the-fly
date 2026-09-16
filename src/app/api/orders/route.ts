@@ -96,8 +96,6 @@ async function handlePOST(req: NextRequest) {
   }
 }
 
-export const POST = withForensicApiRoute(handlePOST);
-
 async function handleGET(req: NextRequest) {
   const tableToken = req.nextUrl.searchParams.get("tableToken");
   const restaurantId = req.nextUrl.searchParams.get("restaurantId");
@@ -149,7 +147,7 @@ async function handleGET(req: NextRequest) {
     for (const order of ordersWithMenu) {
       if (order.fulfillmentMode === "SELF_PICKUP") {
         const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
-        await evaluateSelfPickupNotifications(order.id);
+        void evaluateSelfPickupNotifications(order.id);
       }
     }
     const { publicPickupView } = await import("@/lib/fulfillment/collection");
@@ -238,4 +236,5 @@ async function handleGET(req: NextRequest) {
   return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
 }
 
-export const GET = withForensicApiRoute(handleGET);
+export const GET = withForensicApiRoute(handleGET, { suppressRequestEvent: true });
+export const POST = withForensicApiRoute(handlePOST);

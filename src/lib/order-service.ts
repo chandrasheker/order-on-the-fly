@@ -553,6 +553,7 @@ export async function createOrderForTable(params: {
     orderNumber: order.orderNumber,
     total,
     tableNumber: table.number,
+    tableId: table.id,
   });
 
   const { clearTableCartDraft } = await import("@/lib/table-cart-draft-service");

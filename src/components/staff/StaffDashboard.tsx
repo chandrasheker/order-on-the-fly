@@ -30,7 +30,7 @@ import { fromPaise } from "@/lib/money";
 import { canAccessTab, canMarkPickupReady, canPerformOrderAction, type StaffTab } from "@/lib/staff-permissions";
 import type { Role } from "@/generated/prisma/client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 import { useStaffReadyAlerts } from "@/hooks/useStaffReadyAlerts";
 import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
@@ -48,6 +48,7 @@ import { ServiceModeToggle } from "@/components/staff/ServiceModeToggle";
 import { useStaffPush } from "@/hooks/useStaffPush";
 import type { ReceiptPayload } from "@/lib/receipt-service";
 import { isClientOffline, isNetworkFetchError, swallowPollingFetchError } from "@/lib/client-fetch";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { CookKitchenDashboard } from "@/components/staff/CookKitchenDashboard";
 import { PickupQueuePanel } from "@/components/staff/PickupQueuePanel";
 import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
@@ -123,6 +124,7 @@ interface Alert {
   type: string;
   message: string;
   tableNumber: number;
+  orderId?: string | null;
   isRead: boolean;
   createdAt: string;
   targetUserId?: string | null;
@@ -176,6 +178,10 @@ type ViewMode = StaffTab;
 type OfflineIntent = "walkin" | "takeaway" | "delivery" | "aggregators";
 type ItemFilter = "all" | "overdue" | "alarm";
 
+function paymentMethodFromAlert(message: string): "CASH" | "UPI" {
+  return /UPI/i.test(message) ? "UPI" : "CASH";
+}
+
 type RestaurantFeatures = {
   kds?: boolean;
   floor_plan?: boolean;
@@ -221,7 +227,10 @@ export function StaffDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
-  const [viewMode, setViewMode] = useState<ViewMode>("active");
+  const searchParams = useSearchParams();
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    searchParams.get("view") === "alerts" ? "alerts" : "active",
+  );
   const [offlineIntent, setOfflineIntent] = useState<OfflineIntent>("walkin");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
   const [features, setFeatures] = useState<RestaurantFeatures>({});
@@ -235,7 +244,6 @@ export function StaffDashboard() {
   const [printMessage, setPrintMessage] = useState<string | null>(null);
   const [tableOrdersRefreshKey, setTableOrdersRefreshKey] = useState(0);
   const [payingKey, setPayingKey] = useState<string | null>(null);
-  const dashAbortRef = useRef<AbortController | null>(null);
   const dashFailCountRef = useRef(0);
 
   useEffect(() => {
@@ -243,16 +251,32 @@ export function StaffDashboard() {
     return () => clearInterval(t);
   }, []);
 
-  const fetchDashboard = useCallback(async () => {
+  useEffect(() => {
+    if (searchParams.get("view") === "alerts") {
+      setViewMode("alerts");
+      return;
+    }
+    setViewMode((current) => (current === "alerts" ? "active" : current));
+  }, [searchParams]);
+
+  const goToView = useCallback(
+    (mode: ViewMode) => {
+      setViewMode(mode);
+      const alertsQuery = searchParams.get("view") === "alerts";
+      if (mode === "alerts" && !alertsQuery) {
+        router.replace("/staff/dashboard?view=alerts", { scroll: false });
+      } else if (mode !== "alerts" && alertsQuery) {
+        router.replace("/staff/dashboard", { scroll: false });
+      }
+    },
+    [router, searchParams],
+  );
+
+  const fetchDashboard = useCallback(async (live = false) => {
     if (isClientOffline()) return;
 
-    dashAbortRef.current?.abort();
-    const controller = new AbortController();
-    dashAbortRef.current = controller;
-
     try {
-      const dashRes = await fetch("/api/staff/dashboard", {
-        signal: controller.signal,
+      const dashRes = await fetch(live ? "/api/staff/dashboard?live=1" : "/api/staff/dashboard", {
         cache: "no-store",
       });
       if (dashRes.status === 401) {
@@ -263,13 +287,24 @@ export function StaffDashboard() {
       const data = await dashRes.json();
       setOrders(data.orders);
       setPendingOrders(data.pendingOrders ?? []);
-      setCompletedOrders(data.completedOrders ?? []);
+      if (!data.live) {
+        setCompletedOrders(data.completedOrders ?? []);
+        setMissedTimeline(data.missedTimeline ?? []);
+        setMissedSummary(data.missedSummary ?? []);
+      }
       setAllowedTabs(data.permissions?.tabs ?? ["active"]);
       setAlerts(data.alerts);
-      setMissedTimeline(data.missedTimeline ?? []);
-      setMissedSummary(data.missedSummary ?? []);
       setTableSwitchRequests(data.tableSwitchRequests ?? []);
-      setStats(data.stats);
+      setStats((prev) =>
+        data.live && prev
+          ? {
+              ...prev,
+              ...data.stats,
+              completedOrders: prev.completedOrders,
+              missedTimelineCount: prev.missedTimelineCount,
+            }
+          : data.stats,
+      );
       setFeatures(data.features ?? {});
       setRestaurantLogoUrl(data.restaurant?.logoUrl ?? null);
       dashFailCountRef.current = 0;
@@ -295,7 +330,7 @@ export function StaffDashboard() {
         return;
       }
       setUser(me.user);
-      await fetchDashboard();
+      await fetchDashboard(false);
     } catch (error) {
       console.error("Dashboard fetch failed:", error);
     } finally {
@@ -305,24 +340,13 @@ export function StaffDashboard() {
 
   useEffect(() => {
     void fetchData();
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.hidden) return;
-      if (isClientOffline()) return;
-      void fetchDashboard();
-    }, 8000);
-    const onVisible = () => {
-      if (!document.hidden) void fetchDashboard();
-    };
-    const onOnline = () => void fetchDashboard();
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("online", onOnline);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("online", onOnline);
-      dashAbortRef.current?.abort();
-    };
-  }, [fetchData, fetchDashboard]);
+  }, [fetchData]);
+
+  useLiveRefresh(() => fetchDashboard(true), {
+    enabled: Boolean(user) && user?.role !== "COOK",
+    intervalMs: 2000,
+    streamUrl: "/api/live/stream",
+  });
 
   const updateItem = async (orderId: string, itemId: string, action: string) => {
     try {
@@ -448,7 +472,31 @@ export function StaffDashboard() {
   };
 
   const openAlertsView = () => {
-    setViewMode("alerts");
+    goToView("alerts");
+  };
+
+  const confirmPaymentFromAlert = async (alert: Alert) => {
+    const orderId =
+      alert.orderId ||
+      pendingOrders.find((order) => order.table.number === alert.tableNumber)?.id;
+    if (!orderId) {
+      goToView("pending");
+      return;
+    }
+    const method = paymentMethodFromAlert(alert.message);
+    await runPayment(`alert-${alert.id}`, async () => {
+      try {
+        const res = await fetch(`/api/orders/${orderId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "mark-paid", method, payTab: true }),
+        });
+        const json = await res.json().catch(() => ({}));
+        await handlePaymentComplete(res, json);
+      } catch (error) {
+        swallowPollingFetchError(error);
+      }
+    });
   };
 
   const dismissAlerts = async () => {
@@ -509,25 +557,34 @@ export function StaffDashboard() {
   const isItemActive = (status: string) => isOrderItemOpen(status);
 
   const goToOverdueFromAlert = () => {
-    setViewMode("overdue");
+    goToView("overdue");
     setItemFilter("overdue");
   };
 
   const role = user?.role;
   const showTab = (tab: StaffTab) => role && canAccessTab(role, tab) && allowedTabs.includes(tab);
+  const paymentAlerts = alerts.filter((alert) => alert.type === "PAYMENT");
+  const otherAlerts = alerts.filter((alert) => alert.type !== "PAYMENT");
+  const canConfirmPayment = Boolean(role && canPerformOrderAction(role, "mark-paid"));
 
   return (
     <RestaurantShell
       wide
-      title={user?.restaurantName ?? "Restaurant"}
-      subtitle={user ? `${user.name} · ${user.role.toLowerCase()}` : undefined}
+      title={viewMode === "alerts" ? "Notifications" : user?.restaurantName ?? "Restaurant"}
+      subtitle={
+        viewMode === "alerts"
+          ? "Payment requests, overdue items, and customer alarms — confirm table payments in one click"
+          : user
+            ? `${user.name} · ${user.role.toLowerCase()}`
+            : undefined
+      }
       user={
         user
           ? { ...user, restaurantLogoUrl: restaurantLogoUrl ?? user.restaurantLogoUrl }
           : user
       }
       features={features}
-      activeItem="dashboard"
+      activeItem={viewMode === "alerts" ? "notifications" : "dashboard"}
       actions={
         <div className="flex flex-wrap items-center justify-end gap-2">
             {!alertsEnabled && (
@@ -609,7 +666,7 @@ export function StaffDashboard() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {alerts.length > 0 && (
+        {otherAlerts.length > 0 && (
           <motion.div
             initial={{ height: 0 }}
             animate={{ height: "auto" }}
@@ -624,10 +681,10 @@ export function StaffDashboard() {
               <div className="flex items-center gap-2 text-red-300 text-sm min-w-0">
                 <Bell className="w-4 h-4 animate-bounce shrink-0" />
                 <span className="font-medium shrink-0">
-                  {alerts.length} alert{alerts.length > 1 ? "s" : ""}
+                  {otherAlerts.length} alert{otherAlerts.length > 1 ? "s" : ""}
                 </span>
                 <span className="text-red-400/70 truncate hidden sm:inline">
-                  — {alerts[0]?.message}
+                  — {otherAlerts[0]?.message}
                 </span>
                 <span className="text-xs text-red-300/80 sm:hidden">Tap to view</span>
               </div>
@@ -641,6 +698,43 @@ export function StaffDashboard() {
         {printMessage && (
           <div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-200">
             {printMessage}
+          </div>
+        )}
+        {paymentAlerts.length > 0 && viewMode !== "alerts" && (
+          <div className="mb-4 space-y-2">
+            {paymentAlerts.map((alert) => {
+              const upi = paymentMethodFromAlert(alert.message) === "UPI";
+              return (
+                <div
+                  key={alert.id}
+                  className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-emerald-200">
+                      Table {alert.tableNumber} · payment to confirm
+                    </p>
+                    <p className="text-sm text-emerald-100/80 truncate">{alert.message}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    {canConfirmPayment ? (
+                      <Button
+                        size="sm"
+                        variant="success"
+                        className="bg-emerald-600 hover:bg-emerald-500"
+                        disabled={Boolean(payingKey)}
+                        onClick={() => void confirmPaymentFromAlert(alert)}
+                      >
+                        <CircleDollarSign className="w-3.5 h-3.5" />
+                        {upi ? "Confirm UPI paid" : "Take cash"}
+                      </Button>
+                    ) : null}
+                    <Button size="sm" variant="secondary" onClick={openAlertsView}>
+                      Notifications
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
         <div className="flex flex-col lg:flex-row lg:items-start gap-4 mb-6">
@@ -705,7 +799,7 @@ export function StaffDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
             {showTab("active") && (
               <button
-                onClick={() => { setViewMode("active"); setItemFilter("all"); }}
+                onClick={() => { goToView("active"); setItemFilter("all"); }}
                 className={cn(
                   "text-left rounded-2xl border p-4 transition-all",
                   viewMode === "active"
@@ -725,7 +819,7 @@ export function StaffDashboard() {
 
             {showTab("pending") && (
               <button
-                onClick={() => setViewMode("pending")}
+                onClick={() => goToView("pending")}
                 className={cn(
                   "text-left rounded-2xl border p-4 transition-all",
                   viewMode === "pending"
@@ -751,7 +845,7 @@ export function StaffDashboard() {
             {showTab("revenue") && (
               <button
                 type="button"
-                onClick={() => setViewMode("revenue")}
+                onClick={() => goToView("revenue")}
                 className={cn(
                   "text-left rounded-2xl border p-4 transition-all",
                   viewMode === "revenue"
@@ -776,7 +870,7 @@ export function StaffDashboard() {
               <button
                 type="button"
                 onClick={() => {
-                  setViewMode("overdue");
+                  goToView("overdue");
                   setItemFilter("overdue");
                 }}
                 className={cn(
@@ -799,7 +893,7 @@ export function StaffDashboard() {
             {showTab("missed") && (
               <button
                 type="button"
-                onClick={() => setViewMode("missed")}
+                onClick={() => goToView("missed")}
                 className={cn(
                   "text-left rounded-2xl border p-4 transition-all",
                   viewMode === "missed"
@@ -820,7 +914,7 @@ export function StaffDashboard() {
             {showTab("tables_today") && (
               <button
                 type="button"
-                onClick={() => setViewMode("tables_today")}
+                onClick={() => goToView("tables_today")}
                 className={cn(
                   "text-left rounded-2xl border p-4 transition-all",
                   viewMode === "tables_today"
@@ -886,7 +980,7 @@ export function StaffDashboard() {
               type="button"
               onClick={() => {
                 setOfflineIntent("aggregators");
-                setViewMode("offline");
+                goToView("offline");
               }}
               className={cn(
                 "text-left rounded-2xl border p-3 transition-all",
@@ -963,7 +1057,7 @@ export function StaffDashboard() {
                 )}
                 {showTab("pending") && (
                 <button
-                  onClick={() => setViewMode("pending")}
+                  onClick={() => goToView("pending")}
                   className="text-sm text-yellow-400 hover:text-yellow-300"
                 >
                   View pending payments →
@@ -1235,7 +1329,7 @@ export function StaffDashboard() {
           <>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
               <p className="text-sm text-zinc-400">
-                Active alerts — overdue items and customer alarms
+                Notifications — payment requests, overdue items, and customer alarms. Confirm table payments here in one click.
               </p>
               <div className="flex gap-2">
                 <Button size="sm" variant="secondary" onClick={goToOverdueFromAlert}>
@@ -1296,14 +1390,31 @@ export function StaffDashboard() {
                           })}
                         </p>
                       </div>
-                      <div className="flex gap-2 shrink-0">
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        {alert.type === "PAYMENT" &&
+                          showTab("pending") &&
+                          canPerformOrderAction(role!, "mark-paid") &&
+                          alert.orderId && (
+                            <Button
+                              size="sm"
+                              variant="success"
+                              className="bg-emerald-600 hover:bg-emerald-500"
+                              disabled={Boolean(payingKey)}
+                              onClick={() => void confirmPaymentFromAlert(alert)}
+                            >
+                              <CircleDollarSign className="w-3.5 h-3.5" />
+                              {paymentMethodFromAlert(alert.message) === "UPI"
+                                ? "Confirm UPI paid"
+                                : "Take cash"}
+                            </Button>
+                          )}
                         {alert.type === "PAYMENT" && showTab("pending") && (
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => setViewMode("pending")}
+                            onClick={() => goToView("pending")}
                           >
-                            View pending
+                            View bill
                           </Button>
                         )}
                         {alert.type === "OVERDUE" && (
@@ -1597,13 +1708,13 @@ function TableTabPendingCard({
   const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
   const tableKey = `tab-${anchor.table.number}`;
 
-  const payOrder = (orderId: string, payTab: boolean) => {
-    void runPayment(`${tableKey}-${orderId}`, async () => {
+  const payOrder = (orderId: string, payTab: boolean, method: "CASH" | "UPI") => {
+    void runPayment(`${tableKey}-${orderId}-${method}`, async () => {
       try {
         const res = await fetch(`/api/orders/${orderId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "mark-paid", method: "UPI", ...(payTab ? { payTab: true } : {}) }),
+          body: JSON.stringify({ action: "mark-paid", method, ...(payTab ? { payTab: true } : {}) }),
         });
         const json = await res.json().catch(() => ({}));
         await onPaymentComplete(res, json);
@@ -1647,7 +1758,7 @@ function TableTabPendingCard({
                   size="sm"
                   className="shrink-0 bg-emerald-600 hover:bg-emerald-500 text-xs px-2 py-1 h-auto"
                   disabled={Boolean(payingKey)}
-                  onClick={() => payOrder(order.id, false)}
+                  onClick={() => payOrder(order.id, false, "UPI")}
                 >
                   Pay {formatCurrency(due)}
                 </Button>
@@ -1678,15 +1789,26 @@ function TableTabPendingCard({
       </div>
 
       {canPay && (
-        <Button
-          variant="success"
-          size="sm"
-          className="w-full bg-emerald-600 hover:bg-emerald-500"
-          disabled={Boolean(payingKey) || total <= 0.01}
-          onClick={() => payOrder(anchor.id, true)}
-        >
-          Mark entire table paid · {formatCurrency(total)}
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="success"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-500"
+            disabled={Boolean(payingKey) || total <= 0.01}
+            onClick={() => payOrder(anchor.id, true, "CASH")}
+          >
+            Take cash · {formatCurrency(total)}
+          </Button>
+          <Button
+            variant="success"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-500"
+            disabled={Boolean(payingKey) || total <= 0.01}
+            onClick={() => payOrder(anchor.id, true, "UPI")}
+          >
+            Confirm UPI · {formatCurrency(total)}
+          </Button>
+        </div>
       )}
     </motion.div>
   );
@@ -1712,13 +1834,13 @@ function PendingPaymentCard({
   const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
   const paymentKey = `order-${order.id}`;
 
-  const payFull = () => {
-    void runPayment(paymentKey, async () => {
+  const payFull = (method: "CASH" | "UPI") => {
+    void runPayment(`${paymentKey}-${method}`, async () => {
       try {
         const res = await fetch(`/api/orders/${order.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "mark-paid", method: "UPI" }),
+          body: JSON.stringify({ action: "mark-paid", method, payTab: true }),
         });
         const json = await res.json().catch(() => ({}));
         await onPaymentComplete(res, json);
@@ -1789,15 +1911,26 @@ function PendingPaymentCard({
         />
       )}
       {canPay && (!splitBillEnabled || !summary) && (
-        <Button
-          variant="success"
-          size="sm"
-          className="w-full bg-emerald-600 hover:bg-emerald-500"
-          disabled={Boolean(payingKey) || total <= 0.01}
-          onClick={payFull}
-        >
-          <CircleDollarSign className="w-4 h-4" /> Pay full {formatCurrency(total)}
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="success"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-500"
+            disabled={Boolean(payingKey) || total <= 0.01}
+            onClick={() => payFull("CASH")}
+          >
+            Take cash
+          </Button>
+          <Button
+            variant="success"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-500"
+            disabled={Boolean(payingKey) || total <= 0.01}
+            onClick={() => payFull("UPI")}
+          >
+            Confirm UPI
+          </Button>
+        </div>
       )}
     </motion.div>
   );

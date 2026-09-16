@@ -104,25 +104,40 @@ export async function requestTableTabPayment(tableId: string, tableToken: string
     },
   });
 
+  const hasQr = await paymentQrExists(table.restaurantId);
+  const hasManualUpi = Boolean(table.restaurant.upiVpa || hasQr);
+  const orderLabel =
+    unpaidServed.length === 1
+      ? `Order #${unpaidServed[0]!.orderNumber}`
+      : `${unpaidServed.length} orders`;
+  const paymentMessage = hasManualUpi
+    ? `Table ${table.number} says they paid by UPI (${orderLabel}) — ${formatCurrency(tabSummary.remaining)} (one-click confirm after you verify)`
+    : `Table ${table.number} needs to pay (${orderLabel}) — ${formatCurrency(tabSummary.remaining)} (one-click take cash/UPI)`;
+
   if (!existing) {
-    const hasQr = await paymentQrExists(table.restaurantId);
-    const hasManualUpi = Boolean(table.restaurant.upiVpa || hasQr);
-    const orderLabel =
-      unpaidServed.length === 1
-        ? `Order #${unpaidServed[0]!.orderNumber}`
-        : `${unpaidServed.length} orders`;
     await prisma.alert.create({
       data: {
         type: "PAYMENT",
-        message: hasManualUpi
-          ? `Table ${table.number} says they paid by UPI (${orderLabel}) — ${formatCurrency(tabSummary.remaining)} (verify before marking paid)`
-          : `Table ${table.number} needs to pay (${orderLabel}) — ${formatCurrency(tabSummary.remaining)} (collect cash/UPI offline)`,
+        message: paymentMessage,
         tableNumber: table.number,
         restaurantId: table.restaurantId,
         orderId: unpaidServed[0]?.id,
       },
     });
+  } else if (!existing.orderId && unpaidServed[0]?.id) {
+    await prisma.alert.update({
+      where: { id: existing.id },
+      data: { orderId: unpaidServed[0].id, message: paymentMessage },
+    });
   }
+
+  const { pingLive } = await import("@/lib/live-hub");
+  pingLive({
+    restaurantId: table.restaurantId,
+    type: "PAYMENT_REQUESTED",
+    tableId: table.id,
+    entityId: unpaidServed[0]?.id,
+  });
 
   return {
     ok: true as const,

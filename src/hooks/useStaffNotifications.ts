@@ -119,12 +119,13 @@ export function useStaffNotifications(
         continue;
       }
 
+      const notificationsHref = "/staff/dashboard?view=alerts";
       if (alert.type === "ALARM") {
         if (permission === "granted") {
           showStaffBrowserNotification(
             `Table ${alert.tableNumber} — Service alarm`,
             alert.message,
-            { tag: `alarm-${alert.id}`, urgent: true }
+            { tag: `alarm-${alert.id}`, urgent: true, href: notificationsHref }
           );
         }
         void playAlarmBuzzer();
@@ -133,7 +134,7 @@ export function useStaffNotifications(
           showStaffBrowserNotification(
             `Overdue — Table ${alert.tableNumber}`,
             alert.message,
-            { tag: `overdue-${alert.id}` }
+            { tag: `overdue-${alert.id}`, href: notificationsHref }
           );
         }
         void playOverdueChime();
@@ -142,7 +143,7 @@ export function useStaffNotifications(
           showStaffBrowserNotification(
             `Ready to bump — Table ${alert.tableNumber}`,
             alert.message,
-            { tag: `item-ready-${alert.id}`, urgent: true },
+            { tag: `item-ready-${alert.id}`, urgent: true, href: notificationsHref },
           );
         }
         void playReadyBumpChime();
@@ -151,13 +152,14 @@ export function useStaffNotifications(
           showStaffBrowserNotification(
             `Payment — Table ${alert.tableNumber}`,
             alert.message,
-            { tag: `payment-${alert.id}`, urgent: true }
+            { tag: `payment-${alert.id}`, urgent: true, href: notificationsHref }
           );
         }
         void playOverdueChime();
       } else if (permission === "granted") {
         showStaffBrowserNotification(`Table ${alert.tableNumber}`, alert.message, {
           tag: alert.id,
+          href: notificationsHref,
         });
       }
     }

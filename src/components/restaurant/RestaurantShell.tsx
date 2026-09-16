@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Button, Spinner } from "@/components/ui";
 import {
   BarChart3,
+  Bell,
   ChefHat,
   ClipboardList,
   Gift,
@@ -26,17 +27,20 @@ import {
   canAccessFloorPlan,
   canAccessKitchen,
   canAccessReports,
+  canAccessTab,
   canPlaceOfflineOrder,
 } from "@/lib/staff-permissions";
 import { forgetTakeOrderSession } from "@/store/staff-cart";
 import { takeOrderPath } from "@/lib/take-order-return";
 import type { Role } from "@/generated/prisma/client";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { LOGO_CHANGED_EVENT } from "@/lib/admin-api-error";
 import { cn } from "@/lib/utils";
 
 export type RestaurantNavId =
   | "dashboard"
+  | "notifications"
   | "kitchen"
   | "floor"
   | "menu"
@@ -85,7 +89,9 @@ function flagOn(features: FeatureFlags | undefined, key: string) {
 /** Floor is the same table map as Dashboard → Table ordering. Keep the route; hide the duplicate nav. */
 const SHOW_FLOOR_NAV = false;
 
-function navFromPath(pathname: string): RestaurantNavId {
+function navFromPath(pathname: string, search?: string): RestaurantNavId {
+  const view = new URLSearchParams(search ?? "").get("view");
+  if (pathname.startsWith("/staff/dashboard") && view === "alerts") return "notifications";
   if (pathname.startsWith("/admin/menu")) return "menu";
   if (pathname.startsWith("/admin/qr")) return "qr";
   if (pathname.startsWith("/admin/rewards")) return "rewards";
@@ -104,6 +110,14 @@ function buildNav(role: Role | undefined, features: FeatureFlags | undefined): N
   const items: NavItem[] = [
     { id: "dashboard", href: "/staff/dashboard", label: "Dashboard", icon: LayoutDashboard },
   ];
+  if (role && canAccessTab(role, "alerts")) {
+    items.push({
+      id: "notifications",
+      href: "/staff/dashboard?view=alerts",
+      label: "Notifications",
+      icon: Bell,
+    });
+  }
   if (role && canAccessKitchen(role) && flagOn(features, "kds")) {
     items.push({ id: "kitchen", href: "/kitchen", label: "Kitchen", icon: ChefHat });
   }
@@ -155,6 +169,7 @@ export function RestaurantShell({
   const [fetchedFeatures, setFetchedFeatures] = useState<FeatureFlags>({});
   const [sessionResolved, setSessionResolved] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(userProp?.restaurantLogoUrl ?? null);
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
 
   useEffect(() => {
     if (userProp) return;
@@ -231,6 +246,25 @@ export function RestaurantShell({
   const contentWidth = full ? "max-w-none" : wide ? "max-w-[88rem]" : "max-w-5xl";
   const navItems = useMemo(() => buildNav(user?.role, features), [features, user?.role]);
   const canTakeOrder = Boolean(user?.role && canPlaceOfflineOrder(user.role));
+  const canSeeAlerts = Boolean(user?.role && canAccessTab(user.role, "alerts"));
+
+  useLiveRefresh(
+    async () => {
+      const res = await fetch("/api/alerts", { cache: "no-store", credentials: "same-origin" });
+      if (!res.ok) return;
+      const json = await res.json();
+      const count = (json.alerts ?? []).filter(
+        (alert: { isRead?: boolean; type?: string }) =>
+          !alert.isRead && alert.type !== "NEW_KITCHEN_ITEM",
+      ).length;
+      setUnreadAlerts(count);
+    },
+    {
+      enabled: canSeeAlerts,
+      intervalMs: 4000,
+      streamUrl: canSeeAlerts ? "/api/live/stream" : null,
+    },
+  );
 
   const onTakeOrderPage = (pathname ?? "") === "/staff/take-order";
 
@@ -277,7 +311,12 @@ export function RestaurantShell({
             )}
           >
             <Icon className="w-4 h-4 shrink-0" />
-            {label}
+            <span className="flex-1 truncate">{label}</span>
+            {id === "notifications" && unreadAlerts > 0 ? (
+              <span className="min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-[11px] leading-5 text-white text-center font-semibold">
+                {unreadAlerts > 99 ? "99+" : unreadAlerts}
+              </span>
+            ) : null}
           </Link>
         );
       })}

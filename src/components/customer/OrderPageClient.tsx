@@ -22,6 +22,7 @@ import { PromoCodeInput } from "@/components/customer/PromoCodeInput";
 import { ComboMealsSection } from "@/components/customer/ComboMealsSection";
 import { CustomerPageBackground } from "@/components/customer/CustomerPageBackground";
 import { isClientOffline, isNetworkFetchError } from "@/lib/client-fetch";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useSelfPickupAlerts } from "@/hooks/useSelfPickupAlerts";
 import { useCustomerPush } from "@/hooks/useCustomerPush";
 import { CustomerPickupAlertsBanner } from "@/components/customer/CustomerPickupAlertsBanner";
@@ -99,7 +100,6 @@ export function OrderPageClient({ slug, token }: Props) {
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuAbortRef = useRef<AbortController | null>(null);
-  const ordersAbortRef = useRef<AbortController | null>(null);
   const { customerName, setCustomerName, items, promoCode, setPromoCode, clearCart } = useCartStore();
   const tableSession = useTableSession(token, slug);
   useSelfPickupAlerts(orders);
@@ -161,14 +161,10 @@ export function OrderPageClient({ slug, token }: Props) {
     if (!tableSession.sessionKey) return;
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
 
-    ordersAbortRef.current?.abort();
-    const controller = new AbortController();
-    ordersAbortRef.current = controller;
-
     try {
       const res = await fetch(
         `/api/orders?tableToken=${encodeURIComponent(token)}&sessionKey=${encodeURIComponent(tableSession.sessionKey)}`,
-        { credentials: "include", signal: controller.signal, cache: "no-store" },
+        { credentials: "include", cache: "no-store" },
       );
       if (res.ok) {
         const json = await res.json();
@@ -197,20 +193,14 @@ export function OrderPageClient({ slug, token }: Props) {
     }
   }, [fetchMenu, fetchOrders, tableSession.loading, tableSession.diningVerified]);
 
-  const hasActivePickup = orders.some((order) => {
-    const state = (order as { pickup?: { pickupState?: string | null } }).pickup?.pickupState;
-    return (
-      (order as { fulfillmentMode?: string }).fulfillmentMode === "SELF_PICKUP" &&
-      state !== "COLLECTED" &&
-      state !== "CANCELLED"
-    );
+  useLiveRefresh(fetchOrders, {
+    enabled: tableSession.diningVerified && Boolean(tableSession.sessionKey),
+    intervalMs: 2000,
+    streamUrl:
+      tableSession.diningVerified && tableSession.sessionKey
+        ? `/api/live/stream?tableToken=${encodeURIComponent(token)}&sessionKey=${encodeURIComponent(tableSession.sessionKey)}`
+        : null,
   });
-
-  useEffect(() => {
-    if (!tabPaymentPending && !hasActivePickup) return;
-    const interval = setInterval(fetchOrders, 3000);
-    return () => clearInterval(interval);
-  }, [tabPaymentPending, hasActivePickup, fetchOrders]);
 
   useEffect(() => {
     let paymentConfirmed = false;
@@ -255,7 +245,6 @@ export function OrderPageClient({ slug, token }: Props) {
     return () => {
       if (thankYouTimerRef.current) clearTimeout(thankYouTimerRef.current);
       menuAbortRef.current?.abort();
-      ordersAbortRef.current?.abort();
     };
   }, []);
 

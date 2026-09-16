@@ -45,7 +45,7 @@ export async function getPickupQueue(restaurantId: string) {
 
   for (const order of orders) {
     if (!order.collectedAt) {
-      await evaluateSelfPickupNotifications(order.id);
+      void evaluateSelfPickupNotifications(order.id);
     }
   }
 

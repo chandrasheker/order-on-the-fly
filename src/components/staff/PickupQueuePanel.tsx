@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Badge, Button, Card, Spinner } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import { fromPaise } from "@/lib/money";
 import { Lock, RefreshCw } from "lucide-react";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 
 type QueueRow = {
   id: string;
@@ -71,11 +72,10 @@ export function PickupQueuePanel({
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    const interval = setInterval(() => void load(), 8000);
-    return () => clearInterval(interval);
-  }, [load]);
+  useLiveRefresh(load, {
+    intervalMs: 2000,
+    streamUrl: "/api/live/stream",
+  });
 
   const collect = async (orderId: string) => {
     setCollectingId(orderId);

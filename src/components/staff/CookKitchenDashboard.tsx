@@ -16,6 +16,7 @@ import { Spinner } from "@/components/ui";
 import { cn, formatCountdown } from "@/lib/utils";
 import { formatCookChannelShort } from "@/lib/order-channel";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useKitchenTicketAlerts } from "@/hooks/useKitchenTicketAlerts";
 import { useStaffNotifications, type StaffAlertItem } from "@/hooks/useStaffNotifications";
 import type { KitchenBoardTicket } from "@/components/kitchen/KitchenTicketBoard";
@@ -203,21 +204,15 @@ export function CookKitchenDashboard({
 
   useEffect(() => {
     void loadKitchen().finally(() => setLoading(false));
-    const poll = setInterval(() => {
-      if (document.hidden) return;
-      void loadKitchen();
-    }, 5000);
     const tick = setInterval(() => setNow(Date.now()), 1000);
-    const onVisible = () => {
-      if (!document.hidden) void loadKitchen();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(poll);
-      clearInterval(tick);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+    return () => clearInterval(tick);
   }, [loadKitchen]);
+
+  useLiveRefresh(loadKitchen, {
+    enabled: kdsEnabled,
+    intervalMs: 2000,
+    streamUrl: kdsEnabled ? "/api/live/stream" : null,
+  });
 
   const matchesCategoryFilter = useCallback(
     (categorySlug: string) =>

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import {
   getActiveOrders,
@@ -19,12 +19,13 @@ import { areRequiredItemsReady } from "@/lib/fulfillment/collection";
 import { pickupHandoverPhase } from "@/lib/fulfillment/constants";
 import { toPaise } from "@/lib/money";
 
-async function handleGET() {
+async function handleGET(req: NextRequest) {
   logApiRequest("staff/dashboard", "GET");
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const live = req.nextUrl.searchParams.get("live") === "1";
 
   try {
     const restaurant = await prisma.restaurant.findUnique({
@@ -71,7 +72,7 @@ async function handleGET() {
     }
 
     try {
-      await ensureServiceTables(session.restaurantId, session.restaurantSlug);
+      if (!live) await ensureServiceTables(session.restaurantId, session.restaurantSlug);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Setup failed";
       if (message.includes("Restaurant not found")) {
@@ -82,12 +83,12 @@ async function handleGET() {
       }
       throw error;
     }
-  if (features.aggregator_inbox) {
+  if (!live && features.aggregator_inbox) {
     const { ensureAggregatorConnectionRows } = await import("@/lib/aggregator-connection-service");
     await ensureAggregatorConnectionRows(session.restaurantId);
   }
 
-  await checkOverdueItems(session.restaurantId);
+  if (!live) await checkOverdueItems(session.restaurantId);
 
   const skipOverdue = { skipOverdueCheck: true as const };
 
@@ -95,7 +96,7 @@ async function handleGET() {
     await Promise.all([
       getActiveOrders(session.restaurantId, skipOverdue),
       getPendingPaymentOrders(session.restaurantId),
-      getCompletedOrders(session.restaurantId),
+      live ? Promise.resolve([]) : getCompletedOrders(session.restaurantId),
       prisma.alert.findMany({
         where: {
           restaurantId: session.restaurantId,
@@ -109,7 +110,9 @@ async function handleGET() {
       prisma.order.count({
         where: { restaurantId: session.restaurantId, date: today },
       }),
-      getMissedTimelineItems(session.restaurantId, skipOverdue),
+      live
+        ? Promise.resolve({ items: [], summary: [] })
+        : getMissedTimelineItems(session.restaurantId, skipOverdue),
       prisma.tableSwitchRequest.findMany({
         where: { restaurantId: session.restaurantId, status: "PENDING" },
         orderBy: { requestedAt: "asc" },
@@ -222,6 +225,7 @@ async function handleGET() {
   }
 
   return NextResponse.json({
+    live,
     orders: activeOut,
     pendingOrders: pendingWithPayments,
     completedOrders: withTotal(completedOrders),
@@ -269,4 +273,4 @@ async function handleGET() {
   }
 }
 
-export const GET = withForensicApiRoute(handleGET);
+export const GET = withForensicApiRoute(handleGET, { suppressRequestEvent: true });

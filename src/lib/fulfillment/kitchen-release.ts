@@ -169,5 +169,13 @@ export async function releaseSelfPickupToKitchenIfPaid(orderId: string): Promise
     });
   }
 
+  const { pingLive } = await import("@/lib/live-hub");
+  pingLive({
+    restaurantId: order.restaurantId,
+    type: alreadyReleased ? "KITCHEN_ALREADY_RELEASED" : "KITCHEN_RELEASED",
+    entityId: order.id,
+    tableId: order.tableId,
+  });
+
   return { released: !alreadyReleased, alreadyReleased, held: false };
 }

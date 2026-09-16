@@ -427,6 +427,7 @@ export async function recordOrderPayment(params: {
             fullyPaid: summary.fullyPaid,
             tableId: order.tableId,
             orderId: order.id,
+            restaurantId: order.restaurantId,
             idempotent: true as const,
           };
         }
@@ -473,6 +474,7 @@ export async function recordOrderPayment(params: {
           fullyPaid: true,
           tableId: order.tableId,
           orderId: order.id,
+          restaurantId: order.restaurantId,
           idempotent: true as const,
         };
       }
@@ -631,6 +633,7 @@ export async function recordOrderPayment(params: {
         fullyPaid: updated.fullyPaid,
         tableId: order.tableId,
         orderId: order.id,
+        restaurantId: order.restaurantId,
         billCreated: billResult.created,
       };
     }),
@@ -691,6 +694,14 @@ export async function recordOrderPayment(params: {
         await maybeAutoCloseTableAfterPayment(result.tableId);
       }
     }
+
+    const { pingLive } = await import("@/lib/live-hub");
+    pingLive({
+      restaurantId: result.payment?.restaurantId || result.restaurantId,
+      type: "ORDER_PAID",
+      entityId: result.orderId,
+      tableId: result.tableId,
+    });
 
     return {
       ok: true as const,

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { isClientOffline, swallowPollingFetchError } from "@/lib/client-fetch";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useKitchenTicketAlerts } from "@/hooks/useKitchenTicketAlerts";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 import { Bell, Volume2 } from "lucide-react";
@@ -107,21 +108,14 @@ export default function KitchenClient() {
 
   useEffect(() => {
     void load();
-    const poll = setInterval(() => {
-      if (document.hidden) return;
-      void loadKitchen();
-    }, 6000);
     const tick = setInterval(() => setNow(Date.now()), 1000);
-    const onVisible = () => {
-      if (!document.hidden) void loadKitchen();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(poll);
-      clearInterval(tick);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [load, loadKitchen]);
+    return () => clearInterval(tick);
+  }, [load]);
+
+  useLiveRefresh(loadKitchen, {
+    intervalMs: 2000,
+    streamUrl: "/api/live/stream",
+  });
 
   const updateItem = async (orderId: string, itemId: string, action: string) => {
     try {

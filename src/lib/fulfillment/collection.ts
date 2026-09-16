@@ -602,6 +602,13 @@ export async function markSelfPickupCollected(input: {
     if (claimedNow) {
       const { notifySelfPickupCollected } = await import("@/lib/fulfillment/notify");
       await notifySelfPickupCollected(result.id);
+      const { pingLive } = await import("@/lib/live-hub");
+      pingLive({
+        restaurantId: input.restaurantId,
+        type: "ORDER_COLLECTED",
+        entityId: result.id,
+        tableId: result.tableId,
+      });
     }
     return result;
   } catch (error) {
