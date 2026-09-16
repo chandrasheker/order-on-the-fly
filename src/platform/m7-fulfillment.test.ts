@@ -1258,4 +1258,58 @@ describe("M7 dual/hybrid fulfillment", () => {
       "PREPARING",
     );
   });
+
+  it("customer table payment request is confirmable in one staff mark-paid", async () => {
+    const suffix = `oneclick-${Date.now()}`;
+    const { restaurant, table, burger } = await seedRestaurant(suffix);
+    const server = await createStaff(restaurant, "SERVER", suffix);
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: burger.id, quantity: 1 }],
+      placedByUserId: server.id,
+      placedByName: server.name,
+    });
+    await prisma.orderItem.updateMany({
+      where: { orderId: created.order.id },
+      data: { status: "SERVED" },
+    });
+    const { syncOrderStatus } = await import("@/lib/order-service");
+    await syncOrderStatus(created.order.id);
+
+    const pings: string[] = [];
+    const { subscribeLive } = await import("@/lib/live-hub");
+    const unsub = subscribeLive(restaurant.id, (ping) => {
+      pings.push(ping.type ?? "");
+    });
+
+    const { requestTableTabPayment } = await import("@/lib/payment-service");
+    const requested = await requestTableTabPayment(table.id, table.qrToken);
+    assert.equal(requested.ok, true);
+
+    const alert = await prisma.alert.findFirst({
+      where: { restaurantId: restaurant.id, type: "PAYMENT", isRead: false },
+    });
+    assert.ok(alert);
+    assert.equal(alert.orderId, created.order.id);
+    assert.match(alert.message, /Table 12/);
+    assert.ok(pings.includes("PAYMENT_REQUESTED"));
+
+    const { recordTableTabFullPayment } = await import("@/lib/payment-allocation-service");
+    const paid = await recordTableTabFullPayment({
+      tableId: table.id,
+      method: "UPI",
+      collectedByUserId: server.id,
+      collectedByName: server.name,
+    });
+    assert.equal(paid.ok, true);
+    unsub();
+
+    const after = await prisma.alert.findUnique({ where: { id: alert.id } });
+    assert.equal(after?.isRead, true);
+    const order = await prisma.order.findUnique({ where: { id: created.order.id } });
+    assert.ok(order?.paidAt);
+    assert.ok(pings.includes("ORDER_PAID"));
+    assert.equal(canPerformOrderAction("COOK", "mark-paid"), false);
+  });
 });
