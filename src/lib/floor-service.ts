@@ -101,8 +101,11 @@ export async function getFloorSnapshot(restaurantId: string) {
     tables.map(async (table, index) => {
       const tableOrders = ordersByTable.get(table.id) ?? [];
       const dineInOrders = tableOrders.filter((order) => order.fulfillmentMode !== "SELF_PICKUP");
-      const pickupOnly = tableOrders.length > 0 && dineInOrders.length === 0;
-      const occupancyOrders = pickupOnly ? [] : dineInOrders;
+      const pickupOrders = tableOrders.filter((order) => order.fulfillmentMode === "SELF_PICKUP");
+      const dineInHasOpenItems = dineInOrders.some((order) =>
+        order.items.some((item) => isOrderItemOpen(item.status)),
+      );
+      const occupancyOrders = dineInHasOpenItems ? dineInOrders : [];
       const kitchenItems = occupancyOrders.reduce(
         (sum, order) =>
           sum +
@@ -127,12 +130,12 @@ export async function getFloorSnapshot(restaurantId: string) {
       const draftItemCount = draftCounts.get(table.id) ?? 0;
 
       const tabSummary = await getTableTabPaymentSummary(table.id);
-      const servedUnpaid = pickupOnly ? false : tabSummary.remaining > 0.01;
+      const servedUnpaid = dineInHasOpenItems ? tabSummary.remaining > 0.01 : false;
 
-      const isTableOpen =
-        !pickupOnly && (table.orderingEnabled || Boolean(table.seatedAt || table.orderingOpenedAt));
+      const isTableOpen = table.orderingEnabled || Boolean(table.seatedAt || table.orderingOpenedAt);
+      const ignoreSeatForPickup = pickupOrders.length > 0 && !dineInHasOpenItems;
       const occupancyStartedAt =
-        pickupOnly
+        ignoreSeatForPickup
           ? null
           : table.assignedServerId && isTableOpen
             ? table.seatedAt ?? table.orderingOpenedAt

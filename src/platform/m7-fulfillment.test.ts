@@ -489,9 +489,14 @@ describe("M7 dual/hybrid fulfillment", () => {
       where: { orderId: leftover.order.id },
       data: { status: "SERVED" },
     });
-    await prisma.order.update({
-      where: { id: leftover.order.id },
-      data: { status: "SERVED", paidAt: new Date() },
+    const { syncOrderStatus } = await import("@/lib/order-service");
+    await syncOrderStatus(leftover.order.id);
+    await recordOrderPayment({
+      orderId: leftover.order.id,
+      amount: leftover.total,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
     });
 
     const created = await createOrderForTable({
