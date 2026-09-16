@@ -3,6 +3,7 @@ import { purgeStaleTableSessions } from "@/lib/table-session-service";
 import { todayDateString } from "@/lib/utils";
 import { clearTableCartDraft } from "@/lib/table-cart-draft-service";
 import { clearTableTabFlags, isTabFullySettled, ensureTableTabId } from "@/lib/table-tab-service";
+import { isSelfPickupOrder } from "@/lib/fulfillment/collection";
 
 export async function hasOpenTableWork(tableId: string) {
   const count = await prisma.order.count({
@@ -78,6 +79,35 @@ export async function openTableOrdering(tableId: string) {
   });
 }
 
+async function todaysVisitOrders(tableId: string) {
+  return prisma.order.findMany({
+    where: { tableId, date: todayDateString(), status: { not: "CANCELLED" } },
+    select: { fulfillmentMode: true, status: true },
+  });
+}
+
+function hasOpenDineInWork(
+  visitOrders: Array<{ fulfillmentMode: string | null; status: string }>,
+) {
+  return visitOrders.some((order) => !isSelfPickupOrder(order) && order.status !== "SERVED");
+}
+
+/** I'll-collect must not seat or close a dine-in table. Keep QR available for the next guest. */
+export async function keepDineInTableAvailableForPickup(tableId: string) {
+  const visitOrders = await todaysVisitOrders(tableId);
+  if (hasOpenDineInWork(visitOrders)) return;
+
+  await prisma.table.update({
+    where: { id: tableId },
+    data: {
+      orderingEnabled: true,
+      orderingOpenedAt: null,
+      seatedAt: null,
+      guestCount: null,
+    },
+  });
+}
+
 export async function maybeAutoCloseTableAfterPayment(tableId: string) {
   const table = await prisma.table.findUnique({
     where: { id: tableId },
@@ -85,13 +115,11 @@ export async function maybeAutoCloseTableAfterPayment(tableId: string) {
       restaurant: { select: { serviceMode: true } },
     },
   });
-  if (table?.restaurant.serviceMode === "SELF_SERVICE") return;
 
-  const visitOrders = await prisma.order.findMany({
-    where: { tableId, date: todayDateString(), status: { not: "CANCELLED" } },
-    select: { fulfillmentMode: true },
-  });
-  if (visitOrders.length > 0 && visitOrders.every((order) => order.fulfillmentMode === "SELF_PICKUP")) {
+  const visitOrders = await todaysVisitOrders(tableId);
+  const hasPickup = visitOrders.some((order) => isSelfPickupOrder(order));
+  if (table?.restaurant.serviceMode === "SELF_SERVICE" || hasPickup) {
+    await keepDineInTableAvailableForPickup(tableId);
     return;
   }
 

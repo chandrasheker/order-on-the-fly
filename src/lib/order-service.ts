@@ -563,6 +563,11 @@ export async function createOrderForTable(params: {
     void createNewKitchenItemAlertsForOrder(order.id);
   }
 
+  if (order.fulfillmentMode === "SELF_PICKUP") {
+    const { keepDineInTableAvailableForPickup } = await import("@/lib/table-ordering-service");
+    await keepDineInTableAvailableForPickup(table.id);
+  }
+
   return { order, total };
 }
 

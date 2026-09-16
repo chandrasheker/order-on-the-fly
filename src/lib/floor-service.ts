@@ -100,7 +100,10 @@ export async function getFloorSnapshot(restaurantId: string) {
   const tableSnapshots = await Promise.all(
     tables.map(async (table, index) => {
       const tableOrders = ordersByTable.get(table.id) ?? [];
-      const kitchenItems = tableOrders.reduce(
+      const dineInOrders = tableOrders.filter((order) => order.fulfillmentMode !== "SELF_PICKUP");
+      const pickupOnly = tableOrders.length > 0 && dineInOrders.length === 0;
+      const occupancyOrders = pickupOnly ? [] : dineInOrders;
+      const kitchenItems = occupancyOrders.reduce(
         (sum, order) =>
           sum +
           order.items.filter(
@@ -110,12 +113,12 @@ export async function getFloorSnapshot(restaurantId: string) {
           ).length,
         0,
       );
-      const readyItems = tableOrders.reduce(
+      const readyItems = occupancyOrders.reduce(
         (sum, order) =>
           sum + order.items.filter((item) => item.status === "READY").length,
         0,
       );
-      const overdueItems = tableOrders.reduce(
+      const overdueItems = occupancyOrders.reduce(
         (sum, order) =>
           sum +
           order.items.filter((item) => item.isOverdue && isOrderItemOpen(item.status)).length,
@@ -124,13 +127,16 @@ export async function getFloorSnapshot(restaurantId: string) {
       const draftItemCount = draftCounts.get(table.id) ?? 0;
 
       const tabSummary = await getTableTabPaymentSummary(table.id);
-      const servedUnpaid = tabSummary.remaining > 0.01;
+      const servedUnpaid = pickupOnly ? false : tabSummary.remaining > 0.01;
 
-      const isTableOpen = table.orderingEnabled || Boolean(table.seatedAt || table.orderingOpenedAt);
+      const isTableOpen =
+        !pickupOnly && (table.orderingEnabled || Boolean(table.seatedAt || table.orderingOpenedAt));
       const occupancyStartedAt =
-        table.assignedServerId && isTableOpen
-          ? table.seatedAt ?? table.orderingOpenedAt
-          : null;
+        pickupOnly
+          ? null
+          : table.assignedServerId && isTableOpen
+            ? table.seatedAt ?? table.orderingOpenedAt
+            : null;
       const occupancyMinutes = occupancyStartedAt
         ? Math.floor((Date.now() - occupancyStartedAt.getTime()) / 60000)
         : null;

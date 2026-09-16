@@ -528,6 +528,8 @@ async function handlePATCH(
   }
 
   if (action === "ready-all") {
+    let updated = 0;
+    let lastTransitionError: InvalidOrderTransitionError | null = null;
     for (const item of order.items) {
       if (item.status !== "PENDING" && item.status !== "PREPARING") continue;
       try {
@@ -539,12 +541,30 @@ async function handlePATCH(
           actorName: session.name,
           restaurantId: session.restaurantId,
         });
+        updated += 1;
       } catch (err) {
-        if (err instanceof InvalidOrderTransitionError) continue;
+        if (err instanceof InvalidOrderTransitionError) {
+          lastTransitionError = err;
+          continue;
+        }
         throw err;
       }
     }
-    return NextResponse.json({ success: true });
+    const remaining = await prisma.orderItem.findMany({
+      where: { orderId: id, status: { in: ["PENDING", "PREPARING"] } },
+      select: { id: true },
+    });
+    if (remaining.length > 0 && updated === 0) {
+      return NextResponse.json(
+        {
+          error: lastTransitionError?.message ?? "Could not mark items ready to collect",
+          code: "INVALID_TRANSITION",
+        },
+        { status: 409 },
+      );
+    }
+    await syncOrderStatus(id);
+    return NextResponse.json({ success: true, updated });
   }
 
   if (action === "serve-all") {

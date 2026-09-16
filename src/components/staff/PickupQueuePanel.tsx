@@ -88,13 +88,14 @@ export function PickupQueuePanel({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(
+        const message =
           json.code === "PAYMENT_REQUIRED"
             ? json.error || `Handover blocked · ${formatCurrency(fromPaise(json.outstandingAmountPaise ?? 0))} due`
             : json.code === "NOT_READY"
               ? "Mark items Ready to collect first"
-              : json.error || "Could not collect",
-        );
+              : json.error || "Could not collect";
+        setError(message);
+        alert(message);
         return;
       }
       await load();
@@ -115,11 +116,12 @@ export function PickupQueuePanel({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(
+        const message =
           json.code === "PAYMENT_REQUIRED"
             ? json.error || `Pay first · ${formatCurrency(fromPaise(json.outstandingAmountPaise ?? 0))} due`
-            : json.error || "Could not mark ready to collect",
-        );
+            : json.error || "Could not mark ready to collect";
+        setError(message);
+        alert(message);
         return;
       }
       await load();

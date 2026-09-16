@@ -468,6 +468,70 @@ describe("M7 dual/hybrid fulfillment", () => {
     assert.equal(afterOpen?.orderingEnabled, true);
   });
 
+  it("I'll-collect keeps the dine-in table available instead of Closed", async () => {
+    const suffix = `pickup-avail-${Date.now()}`;
+    const { restaurant, table, burger } = await seedRestaurant(suffix, { serviceMode: "HYBRID" });
+    const owner = await createStaff(restaurant, "OWNER", suffix);
+    await prisma.table.update({
+      where: { id: table.id },
+      data: { orderingEnabled: true, seatedAt: new Date(), guestCount: 2 },
+    });
+
+    const leftover = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: burger.id, quantity: 1 }],
+      requestedFulfillmentMode: "TABLE_SERVICE",
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    await prisma.orderItem.updateMany({
+      where: { orderId: leftover.order.id },
+      data: { status: "SERVED" },
+    });
+    await prisma.order.update({
+      where: { id: leftover.order.id },
+      data: { status: "SERVED", paidAt: new Date() },
+    });
+
+    const created = await createOrderForTable({
+      tableId: table.id,
+      restaurantId: restaurant.id,
+      items: [{ menuItemId: burger.id, quantity: 1 }],
+      requestedFulfillmentMode: "SELF_PICKUP",
+      placedByUserId: owner.id,
+      placedByName: owner.name,
+    });
+    assert.equal(created.order.fulfillmentMode, "SELF_PICKUP");
+    const afterCreate = await prisma.table.findUnique({ where: { id: table.id } });
+    assert.equal(afterCreate?.orderingEnabled, true);
+    assert.equal(afterCreate?.seatedAt, null);
+    assert.equal(afterCreate?.guestCount, null);
+
+    const kitchenHeld = await getKitchenTickets(restaurant.id);
+    assert.equal(
+      kitchenHeld.tickets.some((ticket) => ticket.id === created.order.id),
+      false,
+    );
+
+    await recordOrderPayment({
+      orderId: created.order.id,
+      amount: 280,
+      method: "CASH",
+      collectedByUserId: owner.id,
+      collectedByName: owner.name,
+    });
+    const afterPay = await prisma.table.findUnique({ where: { id: table.id } });
+    assert.equal(afterPay?.orderingEnabled, true);
+    assert.equal(afterPay?.seatedAt, null);
+
+    const { getFloorSnapshot } = await import("@/lib/floor-service");
+    const floor = await getFloorSnapshot(restaurant.id);
+    const tile = floor.tables.find((row) => row.id === table.id);
+    assert.equal(tile?.state, "available");
+    assert.equal(tile?.orderingEnabled, true);
+  });
+
   it("requires all items ready and rejects cancelled orders", async () => {
     const suffix = `ready-${Date.now()}`;
     const { restaurant, table, burger, pizza } = await seedRestaurant(suffix, { serviceMode: "SELF_SERVICE" });
@@ -1087,7 +1151,7 @@ describe("M7 dual/hybrid fulfillment", () => {
     assert.equal(jobsBefore.length, 0);
     const kitchenBefore = await getKitchenTickets(restaurant.id);
     assert.equal(
-      kitchenBefore.tickets.some((ticket) => ticket && ticket.id === created.order.id),
+      kitchenBefore.tickets.some((ticket) => ticket.id === created.order.id),
       false,
     );
     await assert.rejects(
@@ -1124,7 +1188,7 @@ describe("M7 dual/hybrid fulfillment", () => {
     assert.equal(jobsAfter.length, 1);
     assert.equal(jobsAfter[0]?.idempotencyKey, kitchenChitIdempotencyKey(created.order.id));
     const kitchenAfter = await getKitchenTickets(restaurant.id);
-    assert.ok(kitchenAfter.tickets.some((ticket) => ticket && ticket.id === created.order.id));
+    assert.ok(kitchenAfter.tickets.some((ticket) => ticket.id === created.order.id));
     const resetItem = await prisma.orderItem.findFirst({ where: { orderId: created.order.id } });
     assert.ok((resetItem?.expectedReadyAt.getTime() ?? 0) > Date.now() - 5_000);
     assert.equal(
@@ -1183,7 +1247,7 @@ describe("M7 dual/hybrid fulfillment", () => {
     });
     assert.equal(jobs.length, 1);
     const kitchen = await getKitchenTickets(restaurant.id);
-    assert.ok(kitchen.tickets.some((ticket) => ticket && ticket.id === created.order.id));
+    assert.ok(kitchen.tickets.some((ticket) => ticket.id === created.order.id));
     assert.equal(
       customerPickupState((await loadOrderForCollection(prisma, restaurant.id, created.order.id))!),
       "PREPARING",
