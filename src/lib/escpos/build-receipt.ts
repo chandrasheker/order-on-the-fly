@@ -29,26 +29,35 @@ export async function buildEscPosReceipt(receipt: ReceiptPayload) {
   }
 
   if (receipt.restaurant.phone) {
-    encoder.line(`Tel: ${receipt.restaurant.phone}`);
+    for (const line of wrapText(`Tel: ${receipt.restaurant.phone}`, LINE_WIDTH)) {
+      encoder.line(line);
+    }
   }
 
   if (receipt.restaurant.gstin) {
-    encoder.line(`GSTIN: ${receipt.restaurant.gstin}`);
+    for (const line of wrapText(`GSTIN: ${receipt.restaurant.gstin}`, LINE_WIDTH)) {
+      encoder.line(line);
+    }
+  }
+
+  encoder.line("--------------------------------");
+  encoder.line(
+    receipt.order.billNumber ? `Bill ${receipt.order.billNumber}` : `Order #${receipt.order.orderNumber}`,
+  );
+  encoder.line(`Order #${receipt.order.orderNumber}`);
+  encoder.line(`Table ${receipt.order.tableNumber}`);
+  encoder.line(formatReceiptDate(receipt.order.paidAt));
+  if (receipt.order.customerName) {
+    for (const line of wrapText(`Guest: ${receipt.order.customerName}`, LINE_WIDTH)) {
+      encoder.line(line);
+    }
   }
 
   encoder
     .line("--------------------------------")
     .align("left")
-    .line(receipt.order.billNumber ? `Bill ${receipt.order.billNumber}` : `Order #${receipt.order.orderNumber}`)
-    .line(`Order #${receipt.order.orderNumber}`)
-    .line(`Table: ${receipt.order.tableNumber}`)
-    .line(`Date: ${formatReceiptDate(receipt.order.paidAt)}`);
-
-  if (receipt.order.customerName) {
-    encoder.line(`Guest: ${receipt.order.customerName}`);
-  }
-
-  encoder.line("--------------------------------").line("ITEM            QTY    AMT").line("--------------------------------");
+    .line("ITEM            QTY    AMT")
+    .line("--------------------------------");
 
   for (const item of receipt.items) {
     const nameLines = wrapText(item.name, 16);

@@ -313,4 +313,63 @@ describe("POS receipt footer", () => {
     const feed = Buffer.from([0x1b, 0x64, RECEIPT_CUT_FEED_LINES]);
     assert.ok(Buffer.from(bytes).includes(feed), "expected extra line feed before cut");
   });
+
+  it("centers GSTIN, bill, order, and table with the shop header", async () => {
+    const bytes = await buildEscPosReceipt({
+      restaurant: {
+        name: "Cafe",
+        logoUrl: null,
+        address: null,
+        phone: null,
+        gstin: "dskjhfkjshfjsdf",
+        gstEnabled: false,
+        gstRate: 0,
+        footer: null,
+      },
+      order: {
+        id: "o1",
+        orderNumber: 12,
+        tableNumber: 4,
+        customerName: null,
+        paidAt: "2026-09-16T10:00:00.000Z",
+        billNumber: "20260916-0001",
+      },
+      items: [{ name: "Water", quantity: 2, unitPrice: 30, lineTotal: 60, status: "SERVED" }],
+      subtotal: 60,
+      gstAmount: 0,
+      cgstAmount: 0,
+      sgstAmount: 0,
+      total: 60,
+    });
+    const gstinAt = indexOfAscii(bytes, "GSTIN: dskjhfkjshfjsdf");
+    const billAt = indexOfAscii(bytes, "Bill 20260916-0001");
+    const orderAt = indexOfAscii(bytes, "Order #12");
+    const tableAt = indexOfAscii(bytes, "Table 4");
+    const itemsAt = indexOfAscii(bytes, "ITEM            QTY    AMT");
+    assert.ok(gstinAt >= 0 && billAt >= 0 && orderAt >= 0 && tableAt >= 0 && itemsAt >= 0);
+    assert.equal(lastAlignBefore(bytes, gstinAt), "center");
+    assert.equal(lastAlignBefore(bytes, billAt), "center");
+    assert.equal(lastAlignBefore(bytes, orderAt), "center");
+    assert.equal(lastAlignBefore(bytes, tableAt), "center");
+    assert.equal(lastAlignBefore(bytes, itemsAt), "left");
+  });
 });
+
+function indexOfAscii(bytes: Uint8Array, value: string) {
+  const needle = Buffer.from(value, "ascii");
+  const haystack = Buffer.from(bytes);
+  return haystack.indexOf(needle);
+}
+
+function lastAlignBefore(bytes: Uint8Array, offset: number) {
+  let align: "left" | "center" | "right" | null = null;
+  for (let i = 0; i < offset - 2; i += 1) {
+    if (bytes[i] === 0x1b && bytes[i + 1] === 0x61) {
+      const mode = bytes[i + 2];
+      if (mode === 0) align = "left";
+      else if (mode === 1) align = "center";
+      else if (mode === 2) align = "right";
+    }
+  }
+  return align;
+}
