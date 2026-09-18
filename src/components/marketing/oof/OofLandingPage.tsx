@@ -297,6 +297,19 @@ export function OofLandingPage() {
                 caption="The live menu guests see is the menu you are actually running."
               />
             </div>
+            <div className="mt-10 grid items-center gap-8 md:grid-cols-[16rem_1fr]">
+              <PhoneFrame
+                src="/marketing/oof/10-staff-login.png"
+                alt="Staff login on a restaurant host"
+                width={860}
+                height={1864}
+                caption="Staff sign-in stays on the restaurant host — not on the company website."
+              />
+              <p className="text-sm leading-relaxed text-zinc-400">
+                DVADTech.com is the company. The restaurant host is the floor. Mixing those two would leak
+                control-plane UI onto customer links. We keep them apart on purpose.
+              </p>
+            </div>
             <div className="mt-10 rounded-3xl border border-white/10 bg-black/20 p-6 sm:p-8">
               <p className="text-xs uppercase tracking-[0.18em] text-orange-200/80">Several outlets</p>
               <h3 className="mt-2 text-xl font-semibold text-white">ABC Group</h3>
