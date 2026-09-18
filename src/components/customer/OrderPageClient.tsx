@@ -11,7 +11,7 @@ import { FeedbackButton } from "@/components/customer/FeedbackButton";
 import { Input, Button, Spinner } from "@/components/ui";
 import { useCartStore } from "@/store/cart";
 import { useCartDraftSync } from "@/hooks/useCartDraftSync";
-import { shouldShowCustomerOrder, shouldShowCustomerPaymentOrder, customerOrderBillTotal } from "@/lib/utils";
+import { customerOrdersToDisplay, customerOrderBillTotal, shouldShowCustomerPaymentOrder } from "@/lib/utils";
 import { useTableSession } from "@/hooks/useTableSession";
 import { UtensilsCrossed, Sparkles, Users, Heart, QrCode, ShieldAlert } from "lucide-react";
 import Link from "next/link";
@@ -22,8 +22,10 @@ import { PromoCodeInput } from "@/components/customer/PromoCodeInput";
 import { ComboMealsSection } from "@/components/customer/ComboMealsSection";
 import { CustomerPageBackground } from "@/components/customer/CustomerPageBackground";
 import { isClientOffline, isNetworkFetchError } from "@/lib/client-fetch";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useSelfPickupAlerts } from "@/hooks/useSelfPickupAlerts";
 import { useCustomerPush } from "@/hooks/useCustomerPush";
+import { CustomerPickupAlertsBanner } from "@/components/customer/CustomerPickupAlertsBanner";
 import type { OrderFulfillmentMode, RestaurantServiceMode } from "@/lib/fulfillment/constants";
 
 interface Props {
@@ -93,16 +95,22 @@ export function OrderPageClient({ slug, token }: Props) {
   const [fulfillmentChoice, setFulfillmentChoice] = useState<OrderFulfillmentMode | "">("");
   const [tabPaymentPending, setTabPaymentPending] = useState(false);
   const [tabRemaining, setTabRemaining] = useState<number | null>(null);
+  const [tabItemSubtotal, setTabItemSubtotal] = useState<number | null>(null);
+  const [tabGstAmount, setTabGstAmount] = useState<number | null>(null);
+  const [tabGstInclusive, setTabGstInclusive] = useState(true);
   const [showThankYou, setShowThankYou] = useState(false);
+  const [dismissPushBanner, setDismissPushBanner] = useState(false);
   const trackedUnpaidOrderIds = useRef<Set<string>>(new Set());
   const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuAbortRef = useRef<AbortController | null>(null);
-  const ordersAbortRef = useRef<AbortController | null>(null);
   const { customerName, setCustomerName, items, promoCode, setPromoCode, clearCart } = useCartStore();
   const tableSession = useTableSession(token, slug);
   useSelfPickupAlerts(orders);
-  useCustomerPush({
-    enabled: Boolean(data?.restaurant.serviceMode && data.restaurant.serviceMode !== "FULL_SERVICE"),
+  const wantsPickupAlerts =
+    Boolean(data?.restaurant.serviceMode && data.restaurant.serviceMode !== "FULL_SERVICE") ||
+    orders.some((order) => (order as { fulfillmentMode?: string }).fulfillmentMode === "SELF_PICKUP");
+  const customerPush = useCustomerPush({
+    enabled: wantsPickupAlerts && tableSession.diningVerified,
     tableId: data?.table.id,
     tableToken: token,
     sessionKey: tableSession.sessionKey,
@@ -156,14 +164,10 @@ export function OrderPageClient({ slug, token }: Props) {
     if (!tableSession.sessionKey) return;
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
 
-    ordersAbortRef.current?.abort();
-    const controller = new AbortController();
-    ordersAbortRef.current = controller;
-
     try {
       const res = await fetch(
         `/api/orders?tableToken=${encodeURIComponent(token)}&sessionKey=${encodeURIComponent(tableSession.sessionKey)}`,
-        { credentials: "include", signal: controller.signal, cache: "no-store" },
+        { credentials: "include", cache: "no-store" },
       );
       if (res.ok) {
         const json = await res.json();
@@ -173,8 +177,16 @@ export function OrderPageClient({ slug, token }: Props) {
         }
         if (typeof json.tabSummary?.remaining === "number" && Number.isFinite(json.tabSummary.remaining)) {
           setTabRemaining(json.tabSummary.remaining);
+          setTabItemSubtotal(
+            typeof json.tabSummary.itemSubtotal === "number" ? json.tabSummary.itemSubtotal : null,
+          );
+          setTabGstAmount(typeof json.tabSummary.gstAmount === "number" ? json.tabSummary.gstAmount : null);
+          setTabGstInclusive(json.tabSummary.gstInclusive !== false);
         } else {
           setTabRemaining(null);
+          setTabItemSubtotal(null);
+          setTabGstAmount(null);
+          setTabGstInclusive(true);
         }
       } else if (res.status === 403) {
         setOrders([]);
@@ -192,11 +204,14 @@ export function OrderPageClient({ slug, token }: Props) {
     }
   }, [fetchMenu, fetchOrders, tableSession.loading, tableSession.diningVerified]);
 
-  useEffect(() => {
-    if (!tabPaymentPending) return;
-    const interval = setInterval(fetchOrders, 3000);
-    return () => clearInterval(interval);
-  }, [tabPaymentPending, fetchOrders]);
+  useLiveRefresh(fetchOrders, {
+    enabled: tableSession.diningVerified && Boolean(tableSession.sessionKey),
+    intervalMs: 2000,
+    streamUrl:
+      tableSession.diningVerified && tableSession.sessionKey
+        ? `/api/live/stream?tableToken=${encodeURIComponent(token)}&sessionKey=${encodeURIComponent(tableSession.sessionKey)}`
+        : null,
+  });
 
   useEffect(() => {
     let paymentConfirmed = false;
@@ -241,7 +256,6 @@ export function OrderPageClient({ slug, token }: Props) {
     return () => {
       if (thankYouTimerRef.current) clearTimeout(thankYouTimerRef.current);
       menuAbortRef.current?.abort();
-      ordersAbortRef.current?.abort();
     };
   }, []);
 
@@ -334,10 +348,11 @@ export function OrderPageClient({ slug, token }: Props) {
     );
   }
 
-  const hasActiveOrders = orders.some((o) => shouldShowCustomerOrder(o.items));
-  const hasPaymentOrders = orders.some((o) => shouldShowCustomerPaymentOrder(o));
-  const hasVisibleOrders = hasActiveOrders || hasPaymentOrders;
-  const latestOrderId = orders[0]?.id;
+  const displayedOrders = customerOrdersToDisplay(orders);
+  const hasVisibleOrders = displayedOrders.length > 0;
+  const latestOrderId = displayedOrders[0]?.id ?? orders[0]?.id;
+  const showTabPaymentBanner =
+    tabPaymentPending && displayedOrders.some((order) => shouldShowCustomerPaymentOrder(order));
   const canOrder = tableSession.canOrder && !data?.kitchenPaused;
   const showOrderingGate =
     !canOrder &&
@@ -440,7 +455,20 @@ export function OrderPageClient({ slug, token }: Props) {
       </div>
 
       <div className="max-w-lg mx-auto px-4 space-y-6 pb-36">
-        {tabPaymentPending && (
+        <CustomerPickupAlertsBanner
+          visible={
+            wantsPickupAlerts &&
+            tableSession.diningVerified &&
+            !dismissPushBanner &&
+            customerPush.permission !== "granted" &&
+            customerPush.permission !== "unsupported"
+          }
+          enabling={customerPush.enabling}
+          denied={customerPush.permission === "denied"}
+          onEnable={() => void customerPush.enablePush()}
+          onDismiss={() => setDismissPushBanner(true)}
+        />
+        {showTabPaymentBanner && (
           <div className="p-4 rounded-2xl bg-yellow-500/15 border border-yellow-500/30 text-center space-y-2">
             <p className="font-semibold text-yellow-300">Payment pending</p>
             <p className="text-sm text-muted">
@@ -527,7 +555,7 @@ export function OrderPageClient({ slug, token }: Props) {
 
         {!showThankYou && (
           <OutOfStockNotice
-            orders={orders}
+            orders={displayedOrders}
             tableToken={token}
             onDismissed={fetchOrders}
           />
@@ -549,13 +577,16 @@ export function OrderPageClient({ slug, token }: Props) {
 
         {hasVisibleOrders && !showThankYou && (
           <OrderTracker
-            orders={orders}
+            orders={displayedOrders}
             tableToken={token}
             paymentQrUrl={data.restaurant.paymentQrUrl}
             upiVpa={data.restaurant.upiVpa}
             upiMerchantName={data.restaurant.upiMerchantName}
             automaticUpiEnabled={data.restaurant.automaticUpiEnabled}
             tabRemaining={tabRemaining}
+            tabItemSubtotal={tabItemSubtotal}
+            tabGstAmount={tabGstAmount}
+            tabGstInclusive={tabGstInclusive}
             onRefresh={fetchOrders}
             onPaymentRequested={() => setTabPaymentPending(true)}
             serviceMode={data.restaurant.serviceMode}

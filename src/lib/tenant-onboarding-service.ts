@@ -609,6 +609,7 @@ export async function getTenantOverview(tenantId: string) {
     receiptGstin: restaurant.receiptGstin,
     receiptGstEnabled: restaurant.receiptGstEnabled,
     receiptGstRate: restaurant.receiptGstRate,
+    receiptGstInclusive: restaurant.receiptGstInclusive,
     receiptFooter: restaurant.receiptFooter,
     upiVpa: restaurant.upiVpa,
     upiMerchantName: restaurant.upiMerchantName,

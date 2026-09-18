@@ -196,6 +196,7 @@ model Restaurant {
   receiptGstin          String?
   receiptGstEnabled     Boolean        @default(false)
   receiptGstRate        Float          @default(5)
+  receiptGstInclusive   Boolean        @default(true)
   receiptFooter         String?
   featureFlags          String         @default("{}")
   aggregatorWebhookSecret String?

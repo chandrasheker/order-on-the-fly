@@ -13,7 +13,7 @@ import { recordFullOrderPayment, recordOrderPayment, recordTableTabFullPayment, 
 import { buildReceiptForPaidOrder } from "@/lib/payment-receipt";
 import { isOrderItemOpen } from "@/lib/utils";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
-import { canPerformOrderAction } from "@/lib/staff-permissions";
+import { canPerformOrderAction, canPerformOrderActionOnOrder } from "@/lib/staff-permissions";
 import { featureDisabledResponse } from "@/lib/feature-guard";
 import { applyOrderTip } from "@/lib/tip-pool-service";
 import { recordGuestPayment } from "@/lib/guest-crm-service";
@@ -169,6 +169,7 @@ async function handlePATCH(
     "reject-item",
     "prepare-item",
     "ready-item",
+    "ready-all",
     "serve-all",
     "collect-order",
     "mark-paid",
@@ -176,8 +177,26 @@ async function handlePATCH(
   ] as const;
 
   if (staffActions.includes(action as (typeof staffActions)[number])) {
-    if (!canPerformOrderAction(session.role, action)) {
+    if (!canPerformOrderActionOnOrder(session.role, action, order)) {
       return NextResponse.json({ error: "Action not allowed for your role" }, { status: 403 });
+    }
+  }
+
+  if (
+    order.fulfillmentMode === "SELF_PICKUP" &&
+    (action === "prepare-item" || action === "ready-item" || action === "ready-all")
+  ) {
+    try {
+      const { throwIfSelfPickupKitchenHeld } = await import("@/lib/fulfillment/kitchen-release");
+      await throwIfSelfPickupKitchenHeld(session.restaurantId, id);
+    } catch (err) {
+      const { SelfPickupCollectionError, collectionErrorToJson } = await import(
+        "@/lib/fulfillment/collection"
+      );
+      if (err instanceof SelfPickupCollectionError) {
+        return NextResponse.json(collectionErrorToJson(err), { status: err.status });
+      }
+      throw err;
     }
   }
 
@@ -506,6 +525,46 @@ async function handlePATCH(
       throw err;
     }
     return NextResponse.json({ success: true });
+  }
+
+  if (action === "ready-all") {
+    let updated = 0;
+    let lastTransitionError: InvalidOrderTransitionError | null = null;
+    for (const item of order.items) {
+      if (item.status !== "PENDING" && item.status !== "PREPARING") continue;
+      try {
+        await transitionOrderItemDirect({
+          orderId: id,
+          itemId: item.id,
+          toStatus: "READY",
+          actorUserId: session.id,
+          actorName: session.name,
+          restaurantId: session.restaurantId,
+        });
+        updated += 1;
+      } catch (err) {
+        if (err instanceof InvalidOrderTransitionError) {
+          lastTransitionError = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+    const remaining = await prisma.orderItem.findMany({
+      where: { orderId: id, status: { in: ["PENDING", "PREPARING"] } },
+      select: { id: true },
+    });
+    if (remaining.length > 0 && updated === 0) {
+      return NextResponse.json(
+        {
+          error: lastTransitionError?.message ?? "Could not mark items ready to collect",
+          code: "INVALID_TRANSITION",
+        },
+        { status: 409 },
+      );
+    }
+    await syncOrderStatus(id);
+    return NextResponse.json({ success: true, updated });
   }
 
   if (action === "serve-all") {

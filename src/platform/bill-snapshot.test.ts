@@ -53,6 +53,7 @@ describe("immutable bill snapshot", () => {
     assert.equal(receipt.restaurant.name, "ABC South");
     assert.equal(receipt.restaurant.gstin, "29ABCDE1234F1Z5");
     assert.equal(receipt.restaurant.gstRate, 5);
+    assert.equal(receipt.restaurant.gstInclusive, true);
     assert.equal(receipt.items[0]?.unitPrice, 40);
     assert.equal(receipt.discountAmount, 10);
     assert.equal(receipt.total, financials.grandTotal);

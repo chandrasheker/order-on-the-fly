@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { recordAuditLog } from "@/lib/audit-service";
 import { buildBillSnapshot, parseBillSnapshot, receiptFromBillSnapshot } from "@/lib/bill-snapshot";
-import { financialsForOrder, projectItemsForFinancials } from "@/lib/order-financials";
+import { financialsForOrder, gstInputFromRestaurant, projectItemsForFinancials } from "@/lib/order-financials";
 import { logInfo, logWarn } from "@/lib/logger";
 import { enqueueCustomerBillPrintInTx, enqueueIdempotentPrintJob } from "@/domains/printing/print-job-service";
 import { customerBillIdempotencyKey, PRINT_KIND, targetFromKind } from "@/lib/print-constants";
@@ -19,6 +19,7 @@ const BILL_RESTAURANT_SELECT = {
   receiptGstin: true,
   receiptGstEnabled: true,
   receiptGstRate: true,
+  receiptGstInclusive: true,
   receiptFooter: true,
   tenantId: true,
 } as const;
@@ -124,8 +125,7 @@ export async function finalizeOrderBillInTx(
     items: projectItemsForFinancials(order.fulfillmentMode, order.items),
     discountAmount: order.discountAmount,
     payments: [],
-    gstEnabled: order.restaurant.receiptGstEnabled,
-    gstRate: order.restaurant.receiptGstRate,
+    ...gstInputFromRestaurant(order.restaurant),
   });
 
   const dateStamp = billDateStamp(order.branch?.timezone ?? "Asia/Kolkata");

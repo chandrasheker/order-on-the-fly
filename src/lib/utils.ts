@@ -12,9 +12,18 @@ export function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function formatCurrency(amount: number) {
-  const rounded = Math.round(Number(amount) || 0);
-  return `₹${rounded.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+export function formatCurrency(amount: number, fractionDigits?: number) {
+  const n = Number(amount) || 0;
+  const paise = Math.round(n * 100);
+  const digits =
+    fractionDigits !== undefined ? fractionDigits : paise % 100 === 0 ? 0 : 2;
+  if (digits > 0) {
+    return `₹${(paise / 100).toLocaleString("en-IN", {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    })}`;
+  }
+  return `₹${Math.round(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
 export function todayDateString() {
@@ -179,6 +188,39 @@ export function shouldShowCustomerPaymentOrder(order: {
       }))
     ) > 0
   );
+}
+
+type CustomerVisibleOrder = {
+  fulfillmentMode?: string | null;
+  paidAt?: Date | string | null;
+  items: Array<{ status: string; unitPrice?: number; quantity: number }>;
+  pickup?: { pickupState?: string | null } | null;
+};
+
+function isLivePickupOrder(order: CustomerVisibleOrder) {
+  const state = order.pickup?.pickupState;
+  if (order.fulfillmentMode !== "SELF_PICKUP" && !state) return false;
+  return Boolean(state && state !== "COLLECTED" && state !== "CANCELLED");
+}
+
+/** In-kitchen, ready-to-collect, or unpaid-and-ready-to-pay — not collected/paid history. */
+export function isLiveCustomerOrder(order: CustomerVisibleOrder) {
+  if (isLivePickupOrder(order)) return true;
+  if (order.fulfillmentMode === "SELF_PICKUP") return false;
+  return shouldShowCustomerOrder(order.items) || shouldShowCustomerPaymentOrder(order);
+}
+
+/**
+ * Customer screen should only show work that still needs them.
+ * A new order hides earlier served/collected/paid rounds on the same table.
+ */
+export function customerOrdersToDisplay<T extends CustomerVisibleOrder>(orders: T[]): T[] {
+  const live = orders.filter(isLiveCustomerOrder);
+  const inProgress = live.filter(
+    (order) => isLivePickupOrder(order) || shouldShowCustomerOrder(order.items),
+  );
+  if (inProgress.length > 0) return inProgress;
+  return live.filter((order) => shouldShowCustomerPaymentOrder(order));
 }
 
 export function customerOrderBillTotal(

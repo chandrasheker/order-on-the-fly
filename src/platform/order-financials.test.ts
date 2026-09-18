@@ -6,6 +6,15 @@ import {
   capturedPaymentsTotal,
   refundedPaymentsTotal,
 } from "@/lib/order-financials";
+import { buildReceiptPayload } from "@/lib/receipt-service";
+import { centerPad, formatReceiptMoney, wrapText } from "@/lib/escpos/encoder";
+import { buildEscPosReceipt, RECEIPT_CUT_FEED_LINES } from "@/lib/escpos/build-receipt";
+import { formatCurrency } from "@/lib/utils";
+import {
+  gstBreakdownHintText,
+  staffCompletedOrderRevenuePayload,
+  sumFinalizedGst,
+} from "@/lib/revenue-audit";
 
 describe("canonical order financials", () => {
   it("uses served items only for the subtotal", () => {
@@ -43,12 +52,26 @@ describe("canonical order financials", () => {
     assert.equal(result.fullyPaid, true);
   });
 
-  it("adds GST to amount due when receipt tax is enabled", () => {
+  it("keeps GST inside MRP by default so menu prices are the billed total", () => {
+    const result = computeOrderFinancials({
+      items: [{ unitPrice: 30, quantity: 1, status: "SERVED" }],
+      gstEnabled: true,
+      gstRate: 5,
+    });
+    assert.equal(result.grandTotal, 30);
+    assert.equal(result.amountDue, 30);
+    assert.equal(result.taxableSubtotal, 28.57);
+    assert.equal(result.gstAmount, 1.43);
+    assert.equal(result.cgstAmount + result.sgstAmount, 1.43);
+  });
+
+  it("adds GST on top of menu prices when configured exclusive", () => {
     const result = computeOrderFinancials({
       items: [{ unitPrice: 200, quantity: 1, status: "SERVED" }],
       discountAmount: 0,
       gstEnabled: true,
       gstRate: 5,
+      gstInclusive: false,
     });
     assert.equal(result.gstAmount, 10);
     assert.equal(result.cgstAmount + result.sgstAmount, 10);
@@ -56,12 +79,41 @@ describe("canonical order financials", () => {
     assert.equal(result.amountDue, 210);
   });
 
-  it("applies GST after the order discount", () => {
+  it("charges ₹90 items as ₹94.50 when 5% GST is excluded from MRP", () => {
+    const result = computeOrderFinancials({
+      items: [{ unitPrice: 90, quantity: 1, status: "SERVED" }],
+      gstEnabled: true,
+      gstRate: 5,
+      gstInclusive: false,
+    });
+    assert.equal(result.itemSubtotal, 90);
+    assert.equal(result.gstAmount, 4.5);
+    assert.equal(result.grandTotal, 94.5);
+    assert.equal(result.amountDue, 94.5);
+    assert.equal(formatCurrency(result.grandTotal), "₹94.50");
+    assert.notEqual(formatCurrency(result.grandTotal), "₹95");
+    assert.notEqual(formatCurrency(result.grandTotal), "₹94");
+  });
+
+  it("extracts inclusive GST from the discounted MRP, without inflating the bill", () => {
     const result = computeOrderFinancials({
       items: [{ unitPrice: 200, quantity: 1, status: "SERVED" }],
       discountAmount: 50,
       gstEnabled: true,
       gstRate: 5,
+    });
+    assert.equal(result.grandTotal, 150);
+    assert.equal(result.taxableSubtotal, 142.86);
+    assert.equal(result.gstAmount, 7.14);
+  });
+
+  it("applies exclusive GST after the order discount", () => {
+    const result = computeOrderFinancials({
+      items: [{ unitPrice: 200, quantity: 1, status: "SERVED" }],
+      discountAmount: 50,
+      gstEnabled: true,
+      gstRate: 5,
+      gstInclusive: false,
     });
     assert.equal(result.taxableSubtotal, 150);
     assert.equal(result.gstAmount, 7.5);
@@ -145,4 +197,261 @@ describe("canonical order financials", () => {
     assert.equal(checkout.itemSubtotalPaise, 84550);
     assert.equal(checkout.orderDiscountPaise, 4550);
   });
+
+  it("prints GST as included without increasing the receipt total", () => {
+    const payload = buildReceiptPayload(
+      {
+        name: "Cafe",
+        logoUrl: null,
+        receiptAddress: null,
+        receiptPhone: null,
+        receiptGstin: "29ABCDE1234F1Z5",
+        receiptGstEnabled: true,
+        receiptGstRate: 5,
+        receiptGstInclusive: true,
+        receiptFooter: null,
+      },
+      {
+        id: "o1",
+        orderNumber: 1,
+        customerName: null,
+        paidAt: new Date("2026-09-16T10:00:00.000Z"),
+        table: { number: 1 },
+        items: [{ itemName: "Water", quantity: 1, unitPrice: 30, status: "SERVED" }],
+      },
+    );
+    assert.equal(payload.total, 30);
+    assert.equal(payload.gstAmount, 1.43);
+    assert.equal(payload.restaurant.gstInclusive, true);
+  });
 });
+
+describe("receipt money decimals", () => {
+  it("prints paise instead of rounding CGST/SGST to whole rupees", () => {
+    assert.equal(formatReceiptMoney(1.5), "Rs.1.50");
+    assert.equal(formatReceiptMoney(1.43), "Rs.1.43");
+    assert.equal(formatReceiptMoney(3), "Rs.3.00");
+    assert.equal(formatReceiptMoney(60), "Rs.60.00");
+    assert.equal(formatCurrency(1.5, 2), "₹1.50");
+    assert.equal(formatCurrency(3, 2), "₹3.00");
+    assert.equal(formatCurrency(94.5), "₹94.50");
+    assert.equal(formatCurrency(90), "₹90");
+    assert.equal(formatCurrency(95), "₹95");
+  });
+
+  it("prints 2.5% CGST/SGST of ₹60 as 1.50 not 1", async () => {
+    const financials = computeOrderFinancials({
+      items: [{ unitPrice: 30, quantity: 2, status: "SERVED" }],
+      gstEnabled: true,
+      gstRate: 5,
+      gstInclusive: false,
+    });
+    assert.equal(financials.itemSubtotal, 60);
+    assert.equal(financials.cgstAmount, 1.5);
+    assert.equal(financials.sgstAmount, 1.5);
+    assert.equal(financials.gstAmount, 3);
+
+    const bytes = await buildEscPosReceipt({
+      restaurant: {
+        name: "Cafe",
+        logoUrl: null,
+        address: null,
+        phone: null,
+        gstin: null,
+        gstEnabled: true,
+        gstRate: 5,
+        gstInclusive: false,
+        footer: null,
+      },
+      order: {
+        id: "o1",
+        orderNumber: 1,
+        tableNumber: 4,
+        customerName: null,
+        paidAt: "2026-09-16T10:00:00.000Z",
+      },
+      items: [{ name: "Water", quantity: 2, unitPrice: 30, lineTotal: 60, status: "SERVED" }],
+      subtotal: financials.itemSubtotal,
+      gstAmount: financials.gstAmount,
+      cgstAmount: financials.cgstAmount,
+      sgstAmount: financials.sgstAmount,
+      total: financials.grandTotal,
+    });
+    const text = Buffer.from(bytes).toString("latin1");
+    assert.match(text, /Rs\.1\.50/);
+    assert.match(text, /Rs\.3\.00/);
+    assert.equal((text.match(/Rs\.1\.50/g) ?? []).length, 2);
+    assert.doesNotMatch(text, /Rs\.1[^0-9.]/);
+  });
+});
+
+describe("POS receipt footer", () => {
+  it("wraps a long footer without dropping words", () => {
+    const lines = wrapText(
+      "Thank you for dining with us. Please visit again soon and share your feedback.",
+      32,
+    );
+    const joined = lines.join(" ");
+    assert.match(joined, /Thank you for dining with us/);
+    assert.match(joined, /share your feedback/);
+    assert.equal(lines.every((line) => line.length <= 32), true);
+  });
+
+  it("keeps explicit footer line breaks and long tokens", () => {
+    const lines = wrapText("GSTIN: 29ABCDE1234F1Z5\nPleaseComeAgainSoonAndBringFriends", 32);
+    assert.equal(lines[0], "GSTIN: 29ABCDE1234F1Z5");
+    assert.equal(lines.join("").includes("PleaseComeAgainSoonAndBringFriends"), true);
+    assert.equal(lines.every((line) => line.length <= 32), true);
+  });
+
+  it("prints the full footer and feeds past the cutter", async () => {
+    const footer = "Thank you for dining with us. Please visit again soon!";
+    const bytes = await buildEscPosReceipt({
+      restaurant: {
+        name: "Cafe",
+        logoUrl: null,
+        address: null,
+        phone: null,
+        gstin: null,
+        gstEnabled: false,
+        gstRate: 0,
+        footer,
+      },
+      order: {
+        id: "o1",
+        orderNumber: 1,
+        tableNumber: 4,
+        customerName: null,
+        paidAt: "2026-09-16T10:00:00.000Z",
+      },
+      items: [{ name: "Water", quantity: 2, unitPrice: 30, lineTotal: 60, status: "SERVED" }],
+      subtotal: 60,
+      gstAmount: 0,
+      cgstAmount: 0,
+      sgstAmount: 0,
+      total: 60,
+    });
+    const text = Buffer.from(bytes).toString("latin1");
+    assert.match(text, /Thank you for dining with us/);
+    assert.match(text, /visit again soon/);
+    const feed = Buffer.from([0x1b, 0x64, RECEIPT_CUT_FEED_LINES]);
+    assert.ok(Buffer.from(bytes).includes(feed), "expected extra line feed before cut");
+  });
+
+  it("space-pads GSTIN, bill, order, and table so cheap printers still center them", async () => {
+    assert.equal(centerPad("Table 4", 32), `${" ".repeat(12)}Table 4`);
+    assert.equal(centerPad("GSTIN: dskjhfkjshfjsdf", 32), `${" ".repeat(5)}GSTIN: dskjhfkjshfjsdf`);
+
+    const bytes = await buildEscPosReceipt({
+      restaurant: {
+        name: "Cafe",
+        logoUrl: null,
+        address: null,
+        phone: null,
+        gstin: "dskjhfkjshfjsdf",
+        gstEnabled: false,
+        gstRate: 0,
+        footer: null,
+      },
+      order: {
+        id: "o1",
+        orderNumber: 12,
+        tableNumber: 4,
+        customerName: null,
+        paidAt: "2026-09-16T10:00:00.000Z",
+        billNumber: "20260916-0001",
+      },
+      items: [{ name: "Water", quantity: 2, unitPrice: 30, lineTotal: 60, status: "SERVED" }],
+      subtotal: 60,
+      gstAmount: 0,
+      cgstAmount: 0,
+      sgstAmount: 0,
+      total: 60,
+    });
+    const text = Buffer.from(bytes).toString("latin1");
+    assert.match(text, / {5}GSTIN: dskjhfkjshfjsdf\n/);
+    assert.match(text, /\n {7}Bill 20260916-0001\n/);
+    assert.match(text, /\n {11}Order #12\n/);
+    assert.match(text, /\n {12}Table 4\n/);
+    assert.match(text, /\n {14}PAID\n/);
+    assert.match(text, /\nITEM            QTY    AMT\n/);
+    const gstinAt = indexOfAscii(bytes, "GSTIN: dskjhfkjshfjsdf");
+    const itemsAt = indexOfAscii(bytes, "ITEM            QTY    AMT");
+    assert.equal(lastAlignBefore(bytes, gstinAt), "left");
+    assert.equal(lastAlignBefore(bytes, itemsAt), "left");
+  });
+});
+
+describe("collected revenue vs GST audit display", () => {
+  it("keeps exclusive GST revenue at the collected grand total, not the item subtotal", () => {
+    const payload = staffCompletedOrderRevenuePayload({
+      paidAt: "2026-09-16",
+      items: [{ unitPrice: 90, quantity: 1, status: "SERVED" }],
+      bills: [
+        {
+          status: "FINALIZED",
+          grandTotal: 94.5,
+          itemSubtotal: 90,
+          gstAmount: 4.5,
+        },
+      ],
+    });
+    assert.equal(payload.total, 94.5);
+    assert.equal(payload.itemSubtotal, 90);
+    assert.equal(payload.gstAmount, 4.5);
+    assert.equal(payload.gstInclusive, false);
+    assert.equal(
+      gstBreakdownHintText(payload),
+      "₹90 + GST ₹4.50",
+    );
+  });
+
+  it("tracks inclusive GST for audit without changing the collected MRP", () => {
+    const payload = staffCompletedOrderRevenuePayload({
+      paidAt: "2026-09-16",
+      items: [{ unitPrice: 90, quantity: 1, status: "SERVED" }],
+      bills: [
+        {
+          status: "FINALIZED",
+          grandTotal: 90,
+          itemSubtotal: 90,
+          gstAmount: 4.29,
+        },
+      ],
+    });
+    assert.equal(payload.total, 90);
+    assert.equal(payload.gstAmount, 4.29);
+    assert.equal(payload.gstInclusive, true);
+    assert.equal(gstBreakdownHintText(payload), "incl. GST ₹4.29");
+  });
+
+  it("sums GST from finalized bills only", () => {
+    assert.equal(
+      sumFinalizedGst([
+        { status: "FINALIZED", gstAmount: 4.5 },
+        { status: "FINALIZED", gstAmount: 1.43 },
+        { status: "VOIDED", gstAmount: 10 },
+      ]),
+      5.93,
+    );
+  });
+});
+
+function indexOfAscii(bytes: Uint8Array, value: string) {
+  const needle = Buffer.from(value, "ascii");
+  const haystack = Buffer.from(bytes);
+  return haystack.indexOf(needle);
+}
+
+function lastAlignBefore(bytes: Uint8Array, offset: number) {
+  let align: "left" | "center" | "right" | null = null;
+  for (let i = 0; i < offset - 2; i += 1) {
+    if (bytes[i] === 0x1b && bytes[i + 1] === 0x61) {
+      const mode = bytes[i + 2];
+      if (mode === 0) align = "left";
+      else if (mode === 1) align = "center";
+      else if (mode === 2) align = "right";
+    }
+  }
+  return align;
+}

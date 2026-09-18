@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { todayDateString } from "@/lib/utils";
 import { fromPaise, toPaise } from "@/lib/money";
-import { financialsForOrder, isCapturedPayment, isRefundPayment } from "@/lib/order-financials";
+import { financialsForOrder, gstInputFromRestaurant, isCapturedPayment, isRefundPayment } from "@/lib/order-financials";
 import type { ReconciliationStatus } from "@/generated/prisma/client";
 import { AUDIT_ACTION, AUDIT_CATEGORY } from "@/platform/forensics/constants";
 import { appendPlatformAuditEventInTx } from "@/platform/forensics/platform-audit-service";
@@ -10,7 +10,7 @@ export async function runDailyReconciliation(restaurantId: string, date?: string
   const periodDate = date ?? todayDateString();
   const restaurant = await prisma.restaurant.findUnique({
     where: { id: restaurantId },
-    select: { tenantId: true, receiptGstEnabled: true, receiptGstRate: true },
+    select: { tenantId: true, receiptGstEnabled: true, receiptGstRate: true, receiptGstInclusive: true },
   });
   const tenantId = restaurant?.tenantId ?? null;
 
@@ -26,8 +26,7 @@ export async function runDailyReconciliation(restaurantId: string, date?: string
       items: order.items,
       discountAmount: order.discountAmount,
       payments: order.payments,
-      gstEnabled: restaurant?.receiptGstEnabled,
-      gstRate: restaurant?.receiptGstRate,
+      ...gstInputFromRestaurant(restaurant),
     });
     const bill = order.bills.find((row) => row.status === "FINALIZED");
     const grandTotalPaise = bill ? toPaise(bill.grandTotal) : financials.grandTotalPaise;

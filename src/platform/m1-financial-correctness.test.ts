@@ -153,6 +153,8 @@ describe("M1 financial correctness", () => {
       gstRate: 5,
     });
     const summary = await getOrderPaymentSummary(order.id);
+    assert.equal(financials.grandTotal, 150);
+    assert.equal(summary?.remaining, 150);
     assert.equal(summary?.remaining, financials.amountDue);
     assert.notEqual(summary?.remaining, 200);
     const initiated = await initiateManualUpiPayment({ orderId: order.id, tableId: table.id });

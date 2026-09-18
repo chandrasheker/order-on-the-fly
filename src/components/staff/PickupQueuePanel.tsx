@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Badge, Button, Card, Spinner } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import { fromPaise } from "@/lib/money";
 import { Lock, RefreshCw } from "lucide-react";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 
 type QueueRow = {
   id: string;
@@ -22,8 +23,10 @@ type QueueRow = {
 type QueuePayload = {
   pickupLocationLabel: string;
   readyToHandover: QueueRow[];
+  awaitingPayment?: QueueRow[];
   paymentRequired: QueueRow[];
   recentlyCollected: QueueRow[];
+  preparing?: QueueRow[];
 };
 
 function ageLabel(readyAt: string | null) {
@@ -40,10 +43,18 @@ function agingBadge(aging: QueueRow["aging"]) {
 
 export function PickupQueuePanel({
   canCollect,
+  canReady,
+  canPay,
+  payingKey,
   onCollected,
+  onPay,
 }: {
   canCollect: boolean;
+  canReady?: boolean;
+  canPay?: boolean;
+  payingKey?: string | null;
   onCollected?: () => void;
+  onPay?: (orderId: string, method: "CASH" | "UPI") => void;
 }) {
   const [queue, setQueue] = useState<QueuePayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,11 +72,10 @@ export function PickupQueuePanel({
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    const interval = setInterval(() => void load(), 8000);
-    return () => clearInterval(interval);
-  }, [load]);
+  useLiveRefresh(load, {
+    intervalMs: 2000,
+    streamUrl: "/api/live/stream",
+  });
 
   const collect = async (orderId: string) => {
     setCollectingId(orderId);
@@ -78,11 +88,40 @@ export function PickupQueuePanel({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(
+        const message =
           json.code === "PAYMENT_REQUIRED"
-            ? `Handover blocked · ${formatCurrency(fromPaise(json.outstandingAmountPaise ?? 0))} due`
-            : json.error || "Could not collect",
-        );
+            ? json.error || `Handover blocked · ${formatCurrency(fromPaise(json.outstandingAmountPaise ?? 0))} due`
+            : json.code === "NOT_READY"
+              ? "Mark items Ready to collect first"
+              : json.error || "Could not collect";
+        setError(message);
+        alert(message);
+        return;
+      }
+      await load();
+      onCollected?.();
+    } finally {
+      setCollectingId(null);
+    }
+  };
+
+  const markReady = async (orderId: string) => {
+    setCollectingId(orderId);
+    setError("");
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ready-all" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message =
+          json.code === "PAYMENT_REQUIRED"
+            ? json.error || `Pay first · ${formatCurrency(fromPaise(json.outstandingAmountPaise ?? 0))} due`
+            : json.error || "Could not mark ready to collect";
+        setError(message);
+        alert(message);
         return;
       }
       await load();
@@ -101,8 +140,13 @@ export function PickupQueuePanel({
   }
   if (!queue) return null;
 
+  const awaitingPayment = queue.awaitingPayment ?? queue.paymentRequired;
   const empty =
-    queue.readyToHandover.length + queue.paymentRequired.length + queue.recentlyCollected.length === 0;
+    queue.readyToHandover.length +
+      awaitingPayment.length +
+      queue.recentlyCollected.length +
+      (queue.preparing?.length ?? 0) ===
+    0;
   if (empty) return null;
 
   const renderRow = (row: QueueRow, locked: boolean) => (
@@ -143,24 +187,89 @@ export function PickupQueuePanel({
     <Card className="p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold">Ready for collection</h2>
-          <p className="text-sm text-zinc-400">Collect from {queue.pickupLocationLabel}</p>
+          <h2 className="text-lg font-bold">I&apos;ll collect</h2>
+          <p className="text-sm text-zinc-400">Pay first, then kitchen, then collect from {queue.pickupLocationLabel}</p>
         </div>
         <Button size="sm" variant="secondary" onClick={() => void load()}>
           <RefreshCw className="w-3.5 h-3.5" />
         </Button>
       </div>
       {error && <p className="text-sm text-red-400">{error}</p>}
+      {awaitingPayment.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-wide text-amber-300">Awaiting payment</p>
+          {awaitingPayment.map((row) => (
+            <div
+              key={row.id}
+              className="flex items-center justify-between gap-3 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5"
+            >
+              <div>
+                <p className="font-semibold">#{row.pickupNumber}</p>
+                <p className="text-xs text-zinc-400">
+                  Table {row.tableNumber} · {formatCurrency(fromPaise(row.outstandingAmountPaise))} due · kitchen waits
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {canPay && onPay ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="success"
+                      className="bg-emerald-600 hover:bg-emerald-500"
+                      disabled={Boolean(payingKey)}
+                      onClick={() => onPay(row.id, "CASH")}
+                    >
+                      Take cash
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={Boolean(payingKey)}
+                      onClick={() => onPay(row.id, "UPI")}
+                    >
+                      Mark UPI paid
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-amber-300 text-sm flex items-center gap-1">
+                    <Lock className="w-3.5 h-3.5" /> Pay first
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {(queue.preparing?.length ?? 0) > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-wide text-sky-300">In the kitchen</p>
+          {queue.preparing!.map((row) => (
+            <div
+              key={row.id}
+              className="flex items-center justify-between gap-3 p-3 rounded-xl border border-white/10 bg-white/5"
+            >
+              <div>
+                <p className="font-semibold">#{row.pickupNumber}</p>
+                <p className="text-xs text-zinc-400">Table {row.tableNumber} · paid · still cooking</p>
+              </div>
+              {canReady ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={collectingId === row.id}
+                  onClick={() => void markReady(row.id)}
+                >
+                  {collectingId === row.id ? "Updating…" : "Ready to collect"}
+                </Button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
       {queue.readyToHandover.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-wide text-emerald-300">Ready to hand over</p>
           {queue.readyToHandover.map((row) => renderRow(row, false))}
-        </div>
-      )}
-      {queue.paymentRequired.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-wide text-amber-300">Payment required</p>
-          {queue.paymentRequired.map((row) => renderRow(row, true))}
         </div>
       )}
       {queue.recentlyCollected.length > 0 && (

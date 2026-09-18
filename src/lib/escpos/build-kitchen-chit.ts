@@ -63,7 +63,7 @@ export function buildEscPosKitchenChit(chit: KitchenChitPayload) {
     encoder.line(item.categoryName.slice(0, LINE_WIDTH));
   }
 
-  encoder.line("--------------------------------").feed(3).cut(true);
+  encoder.line("--------------------------------").feed(8).cut(true);
   return encoder.build();
 }
 

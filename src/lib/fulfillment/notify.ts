@@ -20,7 +20,8 @@ import { appendPlatformAuditEvent } from "@/platform/forensics/platform-audit-se
 export type SelfPickupNotificationType =
   | "FOOD_READY_PAYMENT_REQUIRED"
   | "READY_FOR_COLLECTION"
-  | "COLLECTION_REMINDER";
+  | "COLLECTION_REMINDER"
+  | "COLLECTED";
 
 function notificationBody(
   type: SelfPickupNotificationType,
@@ -32,6 +33,9 @@ function notificationBody(
   }
   if (type === "COLLECTION_REMINDER") {
     return `Pickup #${pickupNumber} is still waiting at the counter.`;
+  }
+  if (type === "COLLECTED") {
+    return `Pickup #${pickupNumber} has been collected. Thank you!`;
   }
   return `Pickup #${pickupNumber} is ready for collection.`;
 }
@@ -76,6 +80,7 @@ export async function evaluateSelfPickupNotifications(orderId: string): Promise<
           name: true,
           receiptGstEnabled: true,
           receiptGstRate: true,
+          receiptGstInclusive: true,
         },
       },
       bills: {
@@ -112,6 +117,7 @@ export async function evaluateSelfPickupNotifications(orderId: string): Promise<
               name: true,
               receiptGstEnabled: true,
               receiptGstRate: true,
+              receiptGstInclusive: true,
             },
           },
           bills: {
@@ -201,11 +207,55 @@ export async function evaluateSelfPickupNotifications(orderId: string): Promise<
 
   const { sendCustomerTablePush } = await import("@/lib/push-notification-service");
   await sendCustomerTablePush(refreshed.restaurantId, refreshed.tableId, {
-    title: "TableTap",
+    title: type === "READY_FOR_COLLECTION" || type === "FOOD_READY_PAYMENT_REQUIRED" ? "Your order is ready" : "TableTap",
     body: notificationBody(type, refreshed.orderNumber, outstanding),
     tag: `pickup-${refreshed.id}-${type}`,
     url: "/",
+    urgent: type === "READY_FOR_COLLECTION" || type === "FOOD_READY_PAYMENT_REQUIRED",
   });
 
   return { state, emitted: type };
+}
+
+export async function notifySelfPickupCollected(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      restaurantId: true,
+      tableId: true,
+      orderNumber: true,
+      fulfillmentMode: true,
+      collectedAt: true,
+      status: true,
+    },
+  });
+  if (!order || !isSelfPickupOrder(order) || !order.collectedAt) return;
+
+  await appendPlatformAuditEvent({
+    category: AUDIT_CATEGORY.ORDER,
+    action: AUDIT_ACTION.CUSTOMER_READY_NOTIFICATION_SENT,
+    outcome: AUDIT_OUTCOME.SUCCESS,
+    restaurantId: order.restaurantId,
+    actorType: "SYSTEM",
+    resourceType: "Order",
+    resourceId: order.id,
+    correlationId: order.id,
+    metadata: {
+      orderId: order.id,
+      restaurantId: order.restaurantId,
+      fulfillmentMode: order.fulfillmentMode,
+      pickupNumber: order.orderNumber,
+      notificationType: "COLLECTED",
+    },
+  });
+
+  const { sendCustomerTablePush } = await import("@/lib/push-notification-service");
+  await sendCustomerTablePush(order.restaurantId, order.tableId, {
+    title: "Order collected",
+    body: notificationBody("COLLECTED", order.orderNumber, 0),
+    tag: `pickup-${order.id}-COLLECTED`,
+    url: "/",
+    urgent: false,
+  });
 }

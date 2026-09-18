@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import {
   getActiveOrders,
@@ -8,6 +8,7 @@ import {
   checkOverdueItems,
 } from "@/lib/order-service";
 import { todayDateString, sumOrderRevenue, sumPaidOrderRevenue } from "@/lib/utils";
+import { staffCompletedOrderRevenuePayload } from "@/lib/revenue-audit";
 import { getTabsForRole } from "@/lib/staff-permissions";
 import { prisma } from "@/lib/prisma";
 import { logApiRequest, logInfo } from "@/lib/logger";
@@ -15,13 +16,17 @@ import { getOrderPaymentSummaries, finalizeOrderIfSettled } from "@/lib/payment-
 import { getRestaurantFeatureFlags } from "@/lib/feature-flags";
 import { ensureServiceTables } from "@/lib/service-tables";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
+import { areRequiredItemsReady } from "@/lib/fulfillment/collection";
+import { pickupHandoverPhase } from "@/lib/fulfillment/constants";
+import { toPaise } from "@/lib/money";
 
-async function handleGET() {
+async function handleGET(req: NextRequest) {
   logApiRequest("staff/dashboard", "GET");
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const live = req.nextUrl.searchParams.get("live") === "1";
 
   try {
     const restaurant = await prisma.restaurant.findUnique({
@@ -63,12 +68,15 @@ async function handleGET() {
           overdueCount: 0,
           missedTimelineCount: 0,
           unreadAlerts: 0,
+          gstCollected: 0,
+          gstCgstCollected: 0,
+          gstSgstCollected: 0,
         },
       });
     }
 
     try {
-      await ensureServiceTables(session.restaurantId, session.restaurantSlug);
+      if (!live) await ensureServiceTables(session.restaurantId, session.restaurantSlug);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Setup failed";
       if (message.includes("Restaurant not found")) {
@@ -79,20 +87,32 @@ async function handleGET() {
       }
       throw error;
     }
-  if (features.aggregator_inbox) {
+  if (!live && features.aggregator_inbox) {
     const { ensureAggregatorConnectionRows } = await import("@/lib/aggregator-connection-service");
     await ensureAggregatorConnectionRows(session.restaurantId);
   }
 
-  await checkOverdueItems(session.restaurantId);
+  if (!live) await checkOverdueItems(session.restaurantId);
 
   const skipOverdue = { skipOverdueCheck: true as const };
 
-  const [orders, pendingOrders, completedOrders, alerts, orderCount, missedData, tableSwitchRequests, todayPaymentSum] =
+  const [
+    orders,
+    pendingOrders,
+    completedOrders,
+    alerts,
+    orderCount,
+    missedData,
+    tableSwitchRequests,
+    todayPaymentSum,
+    todayGstSum,
+  ] =
     await Promise.all([
       getActiveOrders(session.restaurantId, skipOverdue),
       getPendingPaymentOrders(session.restaurantId),
-      getCompletedOrders(session.restaurantId),
+      live
+        ? Promise.resolve([] as Awaited<ReturnType<typeof getCompletedOrders>>)
+        : getCompletedOrders(session.restaurantId),
       prisma.alert.findMany({
         where: {
           restaurantId: session.restaurantId,
@@ -106,7 +126,9 @@ async function handleGET() {
       prisma.order.count({
         where: { restaurantId: session.restaurantId, date: today },
       }),
-      getMissedTimelineItems(session.restaurantId, skipOverdue),
+      live
+        ? Promise.resolve({ items: [], summary: [] })
+        : getMissedTimelineItems(session.restaurantId, skipOverdue),
       prisma.tableSwitchRequest.findMany({
         where: { restaurantId: session.restaurantId, status: "PENDING" },
         orderBy: { requestedAt: "asc" },
@@ -121,9 +143,20 @@ async function handleGET() {
         },
         _sum: { amount: true },
       }),
+      prisma.bill.aggregate({
+        where: {
+          restaurantId: session.restaurantId,
+          status: "FINALIZED",
+          createdAt: { gte: new Date(`${today}T00:00:00.000`) },
+        },
+        _sum: { gstAmount: true, cgstAmount: true, sgstAmount: true },
+      }),
     ]);
 
   const todayRevenue = todayPaymentSum._sum.amount ?? 0;
+  const todayGstCollected = todayGstSum._sum.gstAmount ?? 0;
+  const todayCgstCollected = todayGstSum._sum.cgstAmount ?? 0;
+  const todaySgstCollected = todayGstSum._sum.sgstAmount ?? 0;
 
   const overdueCount = orders.reduce(
     (sum, o) =>
@@ -134,7 +167,7 @@ async function handleGET() {
     0
   );
 
-  const withTotal = <T extends { id: string; items: Array<{ unitPrice: number; quantity: number; status: string }>; paidAt?: Date | null }>(
+  const withTotal = <T extends { id: string; items: Array<{ unitPrice: number; quantity: number; status: string }>; paidAt?: Date | string | null }>(
     list: T[]
   ) =>
     list.map((o) => ({
@@ -142,6 +175,32 @@ async function handleGET() {
       total: sumOrderRevenue(o.items),
       paidTotal: sumPaidOrderRevenue(o, o.items),
     }));
+
+  const activeWithTotals = withTotal(orders);
+  const pickupIds = activeWithTotals
+    .filter((order) => (order as { fulfillmentMode?: string }).fulfillmentMode === "SELF_PICKUP")
+    .map((order) => order.id);
+  const pickupSummaries =
+    pickupIds.length > 0 ? await getOrderPaymentSummaries(pickupIds) : new Map();
+  const activeOut = activeWithTotals.map((order) => {
+    if ((order as { fulfillmentMode?: string }).fulfillmentMode !== "SELF_PICKUP") return order;
+    const paymentSummary = pickupSummaries.get(order.id) ?? null;
+    const remaining = paymentSummary?.remaining ?? 0;
+    const paid = remaining <= 0.01;
+    const foodReady = areRequiredItemsReady(order.items);
+    const collected = Boolean((order as { collectedAt?: Date | string | null }).collectedAt);
+    return {
+      ...order,
+      paymentSummary,
+      pickup: {
+        outstandingAmountPaise: toPaise(remaining),
+        paid,
+        foodReady,
+        collectable: foodReady && paid,
+        phase: pickupHandoverPhase({ foodReady, paid, collected }),
+      },
+    };
+  });
 
   const pendingWithTotals = withTotal(pendingOrders);
   type PendingWithPayment = (typeof pendingWithTotals)[number] & {
@@ -165,8 +224,9 @@ async function handleGET() {
       }
       pendingWithPayments.push({
         ...order,
+        total: paymentSummary?.total ?? order.total,
         paymentSummary,
-      });
+      } as PendingWithPayment);
     }
   }
 
@@ -193,9 +253,20 @@ async function handleGET() {
   }
 
   return NextResponse.json({
-    orders,
+    live,
+    orders: activeOut,
     pendingOrders: pendingWithPayments,
-    completedOrders: withTotal(completedOrders),
+    completedOrders: completedOrders.map((order) => {
+      const { bills, ...rest } = order;
+      return {
+        ...rest,
+        ...staffCompletedOrderRevenuePayload({
+          items: order.items,
+          paidAt: order.paidAt,
+          bills,
+        }),
+      };
+    }),
     alerts,
     permissions: {
       tabs: roleTabs,
@@ -226,6 +297,9 @@ async function handleGET() {
       completedOrders: completedOrders.length,
       todayOrders: orderCount,
       revenue: todayRevenue,
+      gstCollected: todayGstCollected,
+      gstCgstCollected: todayCgstCollected,
+      gstSgstCollected: todaySgstCollected,
       overdueCount,
       missedTimelineCount: missedData.items.length,
       unreadAlerts: alerts.length,
@@ -240,4 +314,4 @@ async function handleGET() {
   }
 }
 
-export const GET = withForensicApiRoute(handleGET);
+export const GET = withForensicApiRoute(handleGET, { suppressRequestEvent: true });

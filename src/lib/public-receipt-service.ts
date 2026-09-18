@@ -39,6 +39,7 @@ export async function getPublicReceiptByToken(params: {
       phone: receipt.restaurant.phone,
       gstin: receipt.restaurant.gstin,
       footer: receipt.restaurant.footer,
+      gstInclusive: receipt.restaurant.gstInclusive === true,
     },
     branch: snapshot?.branch ?? null,
     order: {
@@ -59,6 +60,7 @@ export async function getPublicReceiptByToken(params: {
     cgstAmount: receipt.cgstAmount,
     sgstAmount: receipt.sgstAmount,
     total: receipt.total,
+    gstInclusive: receipt.restaurant.gstInclusive === true,
     footer: receipt.restaurant.footer,
   };
 }

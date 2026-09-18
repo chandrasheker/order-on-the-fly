@@ -26,10 +26,12 @@ import {
 } from "lucide-react";
 import { Button, Badge, Card, Spinner } from "@/components/ui";
 import { formatCurrency, formatCountdown, getStatusColor, cn, isOrderItemOpen, orderItemLineTotal, sumOrderRevenue } from "@/lib/utils";
-import { canAccessTab, canPerformOrderAction, type StaffTab } from "@/lib/staff-permissions";
+import { gstBreakdownHintText } from "@/lib/revenue-audit";
+import { fromPaise } from "@/lib/money";
+import { canAccessTab, canMarkPickupReady, canPerformOrderAction, type StaffTab } from "@/lib/staff-permissions";
 import type { Role } from "@/generated/prisma/client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useStaffNotifications } from "@/hooks/useStaffNotifications";
 import { useStaffReadyAlerts } from "@/hooks/useStaffReadyAlerts";
 import { TableOrderingPanel } from "@/components/staff/TableOrderingPanel";
@@ -47,6 +49,7 @@ import { ServiceModeToggle } from "@/components/staff/ServiceModeToggle";
 import { useStaffPush } from "@/hooks/useStaffPush";
 import type { ReceiptPayload } from "@/lib/receipt-service";
 import { isClientOffline, isNetworkFetchError, swallowPollingFetchError } from "@/lib/client-fetch";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { CookKitchenDashboard } from "@/components/staff/CookKitchenDashboard";
 import { PickupQueuePanel } from "@/components/staff/PickupQueuePanel";
 import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
@@ -77,16 +80,30 @@ interface Order {
   status: string;
   alarmTriggered: boolean;
   paidAt?: string | null;
+  collectedAt?: string | null;
   table: { number: number; assignedServerId?: string | null };
   items: OrderItem[];
   createdAt: string;
   total?: number;
   paidTotal?: number;
+  itemSubtotal?: number;
+  gstAmount?: number;
+  gstInclusive?: boolean;
+  pickup?: {
+    outstandingAmountPaise?: number;
+    paid?: boolean;
+    foodReady?: boolean;
+    collectable?: boolean;
+    phase?: "AWAIT_PAYMENT" | "COOKING" | "HANDOVER" | "DONE";
+  } | null;
   paymentSummary?: {
     total: number;
     paid: number;
     remaining: number;
     fullyPaid: boolean;
+    itemSubtotal?: number;
+    gstAmount?: number;
+    gstInclusive?: boolean;
     items: Array<{
       id: string;
       itemName: string;
@@ -114,6 +131,7 @@ interface Alert {
   type: string;
   message: string;
   tableNumber: number;
+  orderId?: string | null;
   isRead: boolean;
   createdAt: string;
   targetUserId?: string | null;
@@ -127,6 +145,9 @@ interface Stats {
   completedOrders: number;
   todayOrders: number;
   revenue: number;
+  gstCollected?: number;
+  gstCgstCollected?: number;
+  gstSgstCollected?: number;
   overdueCount: number;
   missedTimelineCount: number;
   unreadAlerts: number;
@@ -166,6 +187,10 @@ interface TableSwitchRequest {
 type ViewMode = StaffTab;
 type OfflineIntent = "walkin" | "takeaway" | "delivery" | "aggregators";
 type ItemFilter = "all" | "overdue" | "alarm";
+
+function paymentMethodFromAlert(message: string): "CASH" | "UPI" {
+  return /paid by UPI/i.test(message) ? "UPI" : "CASH";
+}
 
 type RestaurantFeatures = {
   kds?: boolean;
@@ -212,7 +237,10 @@ export function StaffDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
-  const [viewMode, setViewMode] = useState<ViewMode>("active");
+  const searchParams = useSearchParams();
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    searchParams.get("view") === "alerts" ? "alerts" : "active",
+  );
   const [offlineIntent, setOfflineIntent] = useState<OfflineIntent>("walkin");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
   const [features, setFeatures] = useState<RestaurantFeatures>({});
@@ -226,7 +254,6 @@ export function StaffDashboard() {
   const [printMessage, setPrintMessage] = useState<string | null>(null);
   const [tableOrdersRefreshKey, setTableOrdersRefreshKey] = useState(0);
   const [payingKey, setPayingKey] = useState<string | null>(null);
-  const dashAbortRef = useRef<AbortController | null>(null);
   const dashFailCountRef = useRef(0);
 
   useEffect(() => {
@@ -234,16 +261,32 @@ export function StaffDashboard() {
     return () => clearInterval(t);
   }, []);
 
-  const fetchDashboard = useCallback(async () => {
+  useEffect(() => {
+    if (searchParams.get("view") === "alerts") {
+      setViewMode("alerts");
+      return;
+    }
+    setViewMode((current) => (current === "alerts" ? "active" : current));
+  }, [searchParams]);
+
+  const goToView = useCallback(
+    (mode: ViewMode) => {
+      setViewMode(mode);
+      const alertsQuery = searchParams.get("view") === "alerts";
+      if (mode === "alerts" && !alertsQuery) {
+        router.replace("/staff/dashboard?view=alerts", { scroll: false });
+      } else if (mode !== "alerts" && alertsQuery) {
+        router.replace("/staff/dashboard", { scroll: false });
+      }
+    },
+    [router, searchParams],
+  );
+
+  const fetchDashboard = useCallback(async (live = false) => {
     if (isClientOffline()) return;
 
-    dashAbortRef.current?.abort();
-    const controller = new AbortController();
-    dashAbortRef.current = controller;
-
     try {
-      const dashRes = await fetch("/api/staff/dashboard", {
-        signal: controller.signal,
+      const dashRes = await fetch(live ? "/api/staff/dashboard?live=1" : "/api/staff/dashboard", {
         cache: "no-store",
       });
       if (dashRes.status === 401) {
@@ -254,13 +297,24 @@ export function StaffDashboard() {
       const data = await dashRes.json();
       setOrders(data.orders);
       setPendingOrders(data.pendingOrders ?? []);
-      setCompletedOrders(data.completedOrders ?? []);
+      if (!data.live) {
+        setCompletedOrders(data.completedOrders ?? []);
+        setMissedTimeline(data.missedTimeline ?? []);
+        setMissedSummary(data.missedSummary ?? []);
+      }
       setAllowedTabs(data.permissions?.tabs ?? ["active"]);
       setAlerts(data.alerts);
-      setMissedTimeline(data.missedTimeline ?? []);
-      setMissedSummary(data.missedSummary ?? []);
       setTableSwitchRequests(data.tableSwitchRequests ?? []);
-      setStats(data.stats);
+      setStats((prev) =>
+        data.live && prev
+          ? {
+              ...prev,
+              ...data.stats,
+              completedOrders: prev.completedOrders,
+              missedTimelineCount: prev.missedTimelineCount,
+            }
+          : data.stats,
+      );
       setFeatures(data.features ?? {});
       setRestaurantLogoUrl(data.restaurant?.logoUrl ?? null);
       dashFailCountRef.current = 0;
@@ -286,7 +340,7 @@ export function StaffDashboard() {
         return;
       }
       setUser(me.user);
-      await fetchDashboard();
+      await fetchDashboard(false);
     } catch (error) {
       console.error("Dashboard fetch failed:", error);
     } finally {
@@ -296,32 +350,35 @@ export function StaffDashboard() {
 
   useEffect(() => {
     void fetchData();
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.hidden) return;
-      if (isClientOffline()) return;
-      void fetchDashboard();
-    }, 8000);
-    const onVisible = () => {
-      if (!document.hidden) void fetchDashboard();
-    };
-    const onOnline = () => void fetchDashboard();
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("online", onOnline);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("online", onOnline);
-      dashAbortRef.current?.abort();
-    };
-  }, [fetchData, fetchDashboard]);
+  }, [fetchData]);
+
+  useLiveRefresh(() => fetchDashboard(true), {
+    enabled: Boolean(user) && user?.role !== "COOK",
+    intervalMs: 2000,
+    streamUrl: "/api/live/stream",
+  });
 
   const updateItem = async (orderId: string, itemId: string, action: string) => {
     try {
-      await fetch(`/api/orders/${orderId}`, {
+      const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, itemId: itemId || undefined }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const due = fromPaise(json.outstandingAmountPaise ?? 0);
+        const message =
+          json.code === "PAYMENT_REQUIRED"
+            ? json.error
+              ? `${json.error}${due > 0 ? ` · ${formatCurrency(due)} due` : ""}`
+              : `Payment required · ${formatCurrency(due)} due`
+            : json.code === "NOT_READY"
+              ? "Mark items Ready to collect first"
+              : json.error || "Could not update order";
+        alert(message);
+        return;
+      }
       await fetchData();
     } catch (error) {
       swallowPollingFetchError(error);
@@ -425,7 +482,31 @@ export function StaffDashboard() {
   };
 
   const openAlertsView = () => {
-    setViewMode("alerts");
+    goToView("alerts");
+  };
+
+  const confirmPaymentFromAlert = async (alert: Alert) => {
+    const orderId =
+      alert.orderId ||
+      pendingOrders.find((order) => order.table.number === alert.tableNumber)?.id;
+    if (!orderId) {
+      goToView("pending");
+      return;
+    }
+    const method = paymentMethodFromAlert(alert.message);
+    await runPayment(`alert-${alert.id}`, async () => {
+      try {
+        const res = await fetch(`/api/orders/${orderId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "mark-paid", method, payTab: true }),
+        });
+        const json = await res.json().catch(() => ({}));
+        await handlePaymentComplete(res, json);
+      } catch (error) {
+        swallowPollingFetchError(error);
+      }
+    });
   };
 
   const dismissAlerts = async () => {
@@ -486,25 +567,34 @@ export function StaffDashboard() {
   const isItemActive = (status: string) => isOrderItemOpen(status);
 
   const goToOverdueFromAlert = () => {
-    setViewMode("overdue");
+    goToView("overdue");
     setItemFilter("overdue");
   };
 
   const role = user?.role;
   const showTab = (tab: StaffTab) => role && canAccessTab(role, tab) && allowedTabs.includes(tab);
+  const paymentAlerts = alerts.filter((alert) => alert.type === "PAYMENT");
+  const otherAlerts = alerts.filter((alert) => alert.type !== "PAYMENT");
+  const canConfirmPayment = Boolean(role && canPerformOrderAction(role, "mark-paid"));
 
   return (
     <RestaurantShell
       wide
-      title={user?.restaurantName ?? "Restaurant"}
-      subtitle={user ? `${user.name} · ${user.role.toLowerCase()}` : undefined}
+      title={viewMode === "alerts" ? "Notifications" : user?.restaurantName ?? "Restaurant"}
+      subtitle={
+        viewMode === "alerts"
+          ? "Payment requests, overdue items, and customer alarms — confirm table payments in one click"
+          : user
+            ? `${user.name} · ${user.role.toLowerCase()}`
+            : undefined
+      }
       user={
         user
           ? { ...user, restaurantLogoUrl: restaurantLogoUrl ?? user.restaurantLogoUrl }
           : user
       }
       features={features}
-      activeItem="dashboard"
+      activeItem={viewMode === "alerts" ? "notifications" : "dashboard"}
       actions={
         <div className="flex flex-wrap items-center justify-end gap-2">
             {!alertsEnabled && (
@@ -586,7 +676,7 @@ export function StaffDashboard() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {alerts.length > 0 && (
+        {otherAlerts.length > 0 && (
           <motion.div
             initial={{ height: 0 }}
             animate={{ height: "auto" }}
@@ -601,10 +691,10 @@ export function StaffDashboard() {
               <div className="flex items-center gap-2 text-red-300 text-sm min-w-0">
                 <Bell className="w-4 h-4 animate-bounce shrink-0" />
                 <span className="font-medium shrink-0">
-                  {alerts.length} alert{alerts.length > 1 ? "s" : ""}
+                  {otherAlerts.length} alert{otherAlerts.length > 1 ? "s" : ""}
                 </span>
                 <span className="text-red-400/70 truncate hidden sm:inline">
-                  — {alerts[0]?.message}
+                  — {otherAlerts[0]?.message}
                 </span>
                 <span className="text-xs text-red-300/80 sm:hidden">Tap to view</span>
               </div>
@@ -618,6 +708,43 @@ export function StaffDashboard() {
         {printMessage && (
           <div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-200">
             {printMessage}
+          </div>
+        )}
+        {paymentAlerts.length > 0 && viewMode !== "alerts" && (
+          <div className="mb-4 space-y-2">
+            {paymentAlerts.map((alert) => {
+              const upi = paymentMethodFromAlert(alert.message) === "UPI";
+              return (
+                <div
+                  key={alert.id}
+                  className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-emerald-200">
+                      Table {alert.tableNumber} · payment to confirm
+                    </p>
+                    <p className="text-sm text-emerald-100/80 truncate">{alert.message}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    {canConfirmPayment ? (
+                      <Button
+                        size="sm"
+                        variant="success"
+                        className="bg-emerald-600 hover:bg-emerald-500"
+                        disabled={Boolean(payingKey)}
+                        onClick={() => void confirmPaymentFromAlert(alert)}
+                      >
+                        <CircleDollarSign className="w-3.5 h-3.5" />
+                        {upi ? "Confirm UPI paid" : "Take cash"}
+                      </Button>
+                    ) : null}
+                    <Button size="sm" variant="secondary" onClick={openAlertsView}>
+                      Notifications
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
         <div className="flex flex-col lg:flex-row lg:items-start gap-4 mb-6">
@@ -682,7 +809,7 @@ export function StaffDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
             {showTab("active") && (
               <button
-                onClick={() => { setViewMode("active"); setItemFilter("all"); }}
+                onClick={() => { goToView("active"); setItemFilter("all"); }}
                 className={cn(
                   "text-left rounded-2xl border p-4 transition-all",
                   viewMode === "active"
@@ -702,7 +829,7 @@ export function StaffDashboard() {
 
             {showTab("pending") && (
               <button
-                onClick={() => setViewMode("pending")}
+                onClick={() => goToView("pending")}
                 className={cn(
                   "text-left rounded-2xl border p-4 transition-all",
                   viewMode === "pending"
@@ -728,7 +855,7 @@ export function StaffDashboard() {
             {showTab("revenue") && (
               <button
                 type="button"
-                onClick={() => setViewMode("revenue")}
+                onClick={() => goToView("revenue")}
                 className={cn(
                   "text-left rounded-2xl border p-4 transition-all",
                   viewMode === "revenue"
@@ -744,6 +871,11 @@ export function StaffDashboard() {
                     <p className="text-xs text-emerald-400/90">
                       {stats.completedOrders} paid order{stats.completedOrders === 1 ? "" : "s"}
                     </p>
+                    {(stats.gstCollected ?? 0) > 0 && (
+                      <p className="text-[11px] text-amber-300/90 mt-0.5">
+                        GST {formatCurrency(stats.gstCollected ?? 0)} collected
+                      </p>
+                    )}
                   </div>
                 </div>
               </button>
@@ -753,7 +885,7 @@ export function StaffDashboard() {
               <button
                 type="button"
                 onClick={() => {
-                  setViewMode("overdue");
+                  goToView("overdue");
                   setItemFilter("overdue");
                 }}
                 className={cn(
@@ -776,7 +908,7 @@ export function StaffDashboard() {
             {showTab("missed") && (
               <button
                 type="button"
-                onClick={() => setViewMode("missed")}
+                onClick={() => goToView("missed")}
                 className={cn(
                   "text-left rounded-2xl border p-4 transition-all",
                   viewMode === "missed"
@@ -797,7 +929,7 @@ export function StaffDashboard() {
             {showTab("tables_today") && (
               <button
                 type="button"
-                onClick={() => setViewMode("tables_today")}
+                onClick={() => goToView("tables_today")}
                 className={cn(
                   "text-left rounded-2xl border p-4 transition-all",
                   viewMode === "tables_today"
@@ -863,7 +995,7 @@ export function StaffDashboard() {
               type="button"
               onClick={() => {
                 setOfflineIntent("aggregators");
-                setViewMode("offline");
+                goToView("offline");
               }}
               className={cn(
                 "text-left rounded-2xl border p-3 transition-all",
@@ -888,7 +1020,25 @@ export function StaffDashboard() {
             <div className="mb-6">
               <PickupQueuePanel
                 canCollect={canPerformOrderAction(role!, "collect-order")}
+                canReady={canMarkPickupReady(role!)}
+                canPay={canPerformOrderAction(role!, "mark-paid") || canPerformOrderAction(role!, "record-payment")}
+                payingKey={payingKey}
                 onCollected={() => void fetchDashboard()}
+                onPay={(orderId, method) => {
+                  void runPayment(`pickup-queue-${orderId}`, async () => {
+                    try {
+                      const res = await fetch(`/api/orders/${orderId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "mark-paid", method }),
+                      });
+                      const json = await res.json().catch(() => ({}));
+                      await handlePaymentComplete(res, json);
+                    } catch (error) {
+                      swallowPollingFetchError(error);
+                    }
+                  });
+                }}
               />
             </div>
             <div className="flex flex-wrap gap-2 mb-4">
@@ -922,7 +1072,7 @@ export function StaffDashboard() {
                 )}
                 {showTab("pending") && (
                 <button
-                  onClick={() => setViewMode("pending")}
+                  onClick={() => goToView("pending")}
                   className="text-sm text-yellow-400 hover:text-yellow-300"
                 >
                   View pending payments →
@@ -937,7 +1087,23 @@ export function StaffDashboard() {
                     order={order}
                     now={now}
                     role={role!}
+                    payingKey={payingKey}
                     onUpdate={updateItem}
+                    onPay={(orderId, method) => {
+                      void runPayment(`pickup-active-${orderId}`, async () => {
+                        try {
+                          const res = await fetch(`/api/orders/${orderId}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "mark-paid", method }),
+                          });
+                          const json = await res.json().catch(() => ({}));
+                          await handlePaymentComplete(res, json);
+                        } catch (error) {
+                          swallowPollingFetchError(error);
+                        }
+                      });
+                    }}
                   />
                 ))}
               </div>
@@ -948,14 +1114,25 @@ export function StaffDashboard() {
         {viewMode === "revenue" && showTab("revenue") && (
           <>
             <p className="text-sm text-zinc-400 mb-4">
-              Today&apos;s revenue from paid orders only (served items, out-of-stock excluded)
+              Today&apos;s collected payments — the amount actually taken, including GST when it is added on top of menu prices
             </p>
             <Card className="p-5 mb-4">
-              <p className="text-sm text-zinc-500">Total revenue</p>
+              <p className="text-sm text-zinc-500">Total collected</p>
               <p className="text-3xl font-bold text-emerald-400">{formatCurrency(stats?.revenue ?? 0)}</p>
               <p className="text-xs text-zinc-500 mt-1">
                 {stats?.completedOrders ?? 0} paid order{(stats?.completedOrders ?? 0) === 1 ? "" : "s"} today
               </p>
+              {(stats?.gstCollected ?? 0) > 0 && (
+                <div className="mt-4 pt-3 border-t border-white/10">
+                  <p className="text-xs text-zinc-500">GST collected today</p>
+                  <p className="text-lg font-semibold text-amber-300">{formatCurrency(stats?.gstCollected ?? 0)}</p>
+                  {(stats?.gstCgstCollected ?? 0) > 0 && (
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      CGST {formatCurrency(stats?.gstCgstCollected ?? 0)} · SGST {formatCurrency(stats?.gstSgstCollected ?? 0)}
+                    </p>
+                  )}
+                </div>
+              )}
             </Card>
             <div className="space-y-3">
               {completedOrders.length === 0 ? (
@@ -1039,7 +1216,23 @@ export function StaffDashboard() {
                       order={order}
                       now={now}
                       role={role!}
+                      payingKey={payingKey}
                       onUpdate={updateItem}
+                      onPay={(orderId, method) => {
+                        void runPayment(`pickup-overdue-${orderId}`, async () => {
+                          try {
+                            const res = await fetch(`/api/orders/${orderId}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action: "mark-paid", method }),
+                            });
+                            const json = await res.json().catch(() => ({}));
+                            await handlePaymentComplete(res, json);
+                          } catch (error) {
+                            swallowPollingFetchError(error);
+                          }
+                        });
+                      }}
                     />
                   ))}
               </div>
@@ -1162,7 +1355,7 @@ export function StaffDashboard() {
           <>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
               <p className="text-sm text-zinc-400">
-                Active alerts — overdue items and customer alarms
+                Notifications — payment requests, overdue items, and customer alarms. Confirm table payments here in one click.
               </p>
               <div className="flex gap-2">
                 <Button size="sm" variant="secondary" onClick={goToOverdueFromAlert}>
@@ -1223,14 +1416,31 @@ export function StaffDashboard() {
                           })}
                         </p>
                       </div>
-                      <div className="flex gap-2 shrink-0">
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        {alert.type === "PAYMENT" &&
+                          showTab("pending") &&
+                          canPerformOrderAction(role!, "mark-paid") &&
+                          alert.orderId && (
+                            <Button
+                              size="sm"
+                              variant="success"
+                              className="bg-emerald-600 hover:bg-emerald-500"
+                              disabled={Boolean(payingKey)}
+                              onClick={() => void confirmPaymentFromAlert(alert)}
+                            >
+                              <CircleDollarSign className="w-3.5 h-3.5" />
+                              {paymentMethodFromAlert(alert.message) === "UPI"
+                                ? "Confirm UPI paid"
+                                : "Take cash"}
+                            </Button>
+                          )}
                         {alert.type === "PAYMENT" && showTab("pending") && (
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => setViewMode("pending")}
+                            onClick={() => goToView("pending")}
                           >
-                            View pending
+                            View bill
                           </Button>
                         )}
                         {alert.type === "OVERDUE" && (
@@ -1267,18 +1477,39 @@ function ActiveOrderCard({
   order,
   now,
   role,
+  payingKey,
   onUpdate,
+  onPay,
 }: {
   order: Order;
   now: number;
   role: Role;
+  payingKey: string | null;
   onUpdate: (orderId: string, itemId: string, action: string) => void;
+  onPay: (orderId: string, method: "CASH" | "UPI") => void;
 }) {
+  const isPickup = order.fulfillmentMode === "SELF_PICKUP";
   const canStart = canPerformOrderAction(role, "prepare-item");
-  const canReady = canPerformOrderAction(role, "ready-item");
+  const canReady = isPickup ? canMarkPickupReady(role) : canPerformOrderAction(role, "ready-item");
   const canServe = canPerformOrderAction(role, "serve-item");
   const canReject = canPerformOrderAction(role, "reject-item");
   const canServeAll = canPerformOrderAction(role, "serve-all");
+  const canCollect = canPerformOrderAction(role, "collect-order");
+  const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
+  const requiredItems = order.items.filter((item) => item.status !== "UNAVAILABLE");
+  const needsReady = requiredItems.some((item) => item.status === "PENDING" || item.status === "PREPARING");
+  const foodReady =
+    order.pickup?.foodReady ??
+    (requiredItems.length > 0 &&
+      requiredItems.every((item) => item.status === "READY" || item.status === "SERVED"));
+  const paid =
+    order.pickup?.paid ??
+    (order.paymentSummary ? order.paymentSummary.remaining <= 0.01 : Boolean(order.paidAt));
+  const due = order.pickup?.outstandingAmountPaise != null
+    ? fromPaise(order.pickup.outstandingAmountPaise)
+    : order.paymentSummary?.remaining ?? 0;
+  const collectable = order.pickup?.collectable ?? (foodReady && paid);
+  const kitchenReleased = !isPickup || paid;
 
   return (
     <motion.div
@@ -1342,7 +1573,7 @@ function ActiveOrderCard({
                   </span>
                 )}
               </div>
-              {isOrderItemOpen(item.status) && (canStart || canReady || canServe || canReject) && (
+              {isOrderItemOpen(item.status) && kitchenReleased && (canStart || canReady || (!isPickup && canServe) || canReject) && (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex gap-1.5">
                     {canStart && item.status === "PENDING" && (
@@ -1352,12 +1583,12 @@ function ActiveOrderCard({
                     )}
                     {canReady && (item.status === "PENDING" || item.status === "PREPARING") && (
                       <Button size="sm" variant="secondary" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "ready-item")}>
-                        Ready
+                        {isPickup ? "Ready to collect" : "Ready"}
                       </Button>
                     )}
-                    {canServe && (
-                      <Button size="sm" variant="success" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, order.fulfillmentMode === "SELF_PICKUP" ? "collect-order" : "serve-item")}>
-                        <CheckCircle2 className="w-3 h-3" /> {order.fulfillmentMode === "SELF_PICKUP" ? "Collect" : "Serve"}
+                    {!isPickup && canServe && item.status === "READY" && (
+                      <Button size="sm" variant="success" className="flex-1 text-xs" onClick={() => onUpdate(order.id, item.id, "serve-item")}>
+                        <CheckCircle2 className="w-3 h-3" /> Serve
                       </Button>
                     )}
                   </div>
@@ -1376,8 +1607,16 @@ function ActiveOrderCard({
               {item.status === "PREPARING" && item.preparedByName && (
                 <span className="text-xs text-sky-400/80">Prep: {item.preparedByName}</span>
               )}
-              {item.status === "READY" && item.readyByName && (
-                <span className="text-xs text-amber-400/80">Ready: {item.readyByName}</span>
+              {item.status === "READY" && (
+                <span className="text-xs text-amber-400/80">
+                  {isPickup
+                    ? item.readyByName
+                      ? `Ready to collect · ${item.readyByName}`
+                      : "Ready to collect"
+                    : item.readyByName
+                      ? `Ready: ${item.readyByName}`
+                      : "Ready"}
+                </span>
               )}
               {item.status === "SERVED" && (
                 <span className="text-xs text-emerald-400 flex items-center gap-1">
@@ -1395,21 +1634,86 @@ function ActiveOrderCard({
         })}
       </div>
 
-      {(canServeAll || (order.fulfillmentMode === "SELF_PICKUP" && canPerformOrderAction(role, "collect-order"))) && (
-        <Button
-          variant="primary"
-          size="sm"
-          className="w-full"
-          onClick={() =>
-            onUpdate(
-              order.id,
-              "",
-              order.fulfillmentMode === "SELF_PICKUP" ? "collect-order" : "serve-all",
-            )
-          }
-        >
-          {order.fulfillmentMode === "SELF_PICKUP" ? "Mark Collected" : "Mark All Served"}
-        </Button>
+      {isPickup ? (
+        <div className="space-y-2">
+          {!paid && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+              <p className="text-sm font-semibold text-amber-200">Pay first — kitchen starts after payment</p>
+              <p className="text-xs text-amber-100/80">
+                Due {formatCurrency(due)}. Owner, manager, or server can take cash or mark online paid.
+              </p>
+              <GstBreakdownNote
+                itemSubtotal={order.paymentSummary?.itemSubtotal ?? order.itemSubtotal}
+                gstAmount={order.paymentSummary?.gstAmount ?? order.gstAmount}
+                gstInclusive={order.paymentSummary?.gstInclusive ?? order.gstInclusive}
+                className="text-amber-100/80"
+              />
+              {canPay ? (
+                <div className="flex gap-2">
+                  <Button
+                    variant="success"
+                    size="sm"
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-500"
+                    disabled={Boolean(payingKey)}
+                    onClick={() => onPay(order.id, "CASH")}
+                  >
+                    Take cash · {formatCurrency(due)}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                    disabled={Boolean(payingKey)}
+                    onClick={() => onPay(order.id, "UPI")}
+                  >
+                    Mark UPI paid
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-400">Ask an owner, manager, or server to take payment.</p>
+              )}
+            </div>
+          )}
+          {canReady && needsReady && kitchenReleased && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full"
+              onClick={() => onUpdate(order.id, "", "ready-all")}
+            >
+              Ready to collect
+            </Button>
+          )}
+          {canCollect && (
+            <Button
+              variant="primary"
+              size="sm"
+              className="w-full"
+              disabled={!collectable}
+              onClick={() => onUpdate(order.id, "", "collect-order")}
+            >
+              Mark Collected
+            </Button>
+          )}
+          {canCollect && !collectable && (
+            <p className="text-xs text-amber-300 text-center">
+              {!paid
+                ? "Take payment first. The kitchen ticket prints after this order is paid."
+                : "Mark items ready to collect first."}
+            </p>
+          )}
+        </div>
+      ) : (
+        canServeAll && (
+          <Button
+            variant="primary"
+            size="sm"
+            className="w-full"
+            onClick={() => onUpdate(order.id, "", "serve-all")}
+          >
+            Mark All Served
+          </Button>
+        )
       )}
     </motion.div>
   );
@@ -1433,16 +1737,27 @@ function TableTabPendingCard({
     (sum, order) => sum + (order.paymentSummary?.remaining ?? order.total ?? 0),
     0,
   );
+  const itemSubtotal = orders.reduce(
+    (sum, order) => sum + (order.paymentSummary?.itemSubtotal ?? order.itemSubtotal ?? 0),
+    0,
+  );
+  const gstAmount = orders.reduce(
+    (sum, order) => sum + (order.paymentSummary?.gstAmount ?? order.gstAmount ?? 0),
+    0,
+  );
+  const gstInclusive = orders.every(
+    (order) => (order.paymentSummary?.gstInclusive ?? order.gstInclusive) !== false,
+  );
   const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
   const tableKey = `tab-${anchor.table.number}`;
 
-  const payOrder = (orderId: string, payTab: boolean) => {
-    void runPayment(`${tableKey}-${orderId}`, async () => {
+  const payOrder = (orderId: string, payTab: boolean, method: "CASH" | "UPI") => {
+    void runPayment(`${tableKey}-${orderId}-${method}`, async () => {
       try {
         const res = await fetch(`/api/orders/${orderId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "mark-paid", method: "UPI", ...(payTab ? { payTab: true } : {}) }),
+          body: JSON.stringify({ action: "mark-paid", method, ...(payTab ? { payTab: true } : {}) }),
         });
         const json = await res.json().catch(() => ({}));
         await onPaymentComplete(res, json);
@@ -1486,7 +1801,7 @@ function TableTabPendingCard({
                   size="sm"
                   className="shrink-0 bg-emerald-600 hover:bg-emerald-500 text-xs px-2 py-1 h-auto"
                   disabled={Boolean(payingKey)}
-                  onClick={() => payOrder(order.id, false)}
+                  onClick={() => payOrder(order.id, false, "UPI")}
                 >
                   Pay {formatCurrency(due)}
                 </Button>
@@ -1511,21 +1826,35 @@ function TableTabPendingCard({
         })}
       </div>
 
-      <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
+      <div className="flex items-center justify-between pt-3 border-t border-white/10">
         <span className="text-sm text-zinc-400">Table total due</span>
         <span className="text-lg font-bold text-yellow-400">{formatCurrency(total)}</span>
       </div>
+      <div className="flex justify-end mb-4">
+        <GstBreakdownNote itemSubtotal={itemSubtotal} gstAmount={gstAmount} gstInclusive={gstInclusive} />
+      </div>
 
       {canPay && (
-        <Button
-          variant="success"
-          size="sm"
-          className="w-full bg-emerald-600 hover:bg-emerald-500"
-          disabled={Boolean(payingKey) || total <= 0.01}
-          onClick={() => payOrder(anchor.id, true)}
-        >
-          Mark entire table paid · {formatCurrency(total)}
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="success"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-500"
+            disabled={Boolean(payingKey) || total <= 0.01}
+            onClick={() => payOrder(anchor.id, true, "CASH")}
+          >
+            Take cash · {formatCurrency(total)}
+          </Button>
+          <Button
+            variant="success"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-500"
+            disabled={Boolean(payingKey) || total <= 0.01}
+            onClick={() => payOrder(anchor.id, true, "UPI")}
+          >
+            Confirm UPI · {formatCurrency(total)}
+          </Button>
+        </div>
       )}
     </motion.div>
   );
@@ -1551,13 +1880,13 @@ function PendingPaymentCard({
   const canPay = canPerformOrderAction(role, "mark-paid") || canPerformOrderAction(role, "record-payment");
   const paymentKey = `order-${order.id}`;
 
-  const payFull = () => {
-    void runPayment(paymentKey, async () => {
+  const payFull = (method: "CASH" | "UPI") => {
+    void runPayment(`${paymentKey}-${method}`, async () => {
       try {
         const res = await fetch(`/api/orders/${order.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "mark-paid", method: "UPI" }),
+          body: JSON.stringify({ action: "mark-paid", method, payTab: true }),
         });
         const json = await res.json().catch(() => ({}));
         await onPaymentComplete(res, json);
@@ -1611,9 +1940,16 @@ function PendingPaymentCard({
         })}
       </div>
 
-      <div className="flex items-center justify-between mb-4 pt-3 border-t border-white/10">
+      <div className="flex items-center justify-between pt-3 border-t border-white/10">
         <span className="text-sm text-zinc-400">Due now</span>
         <span className="text-lg font-bold text-yellow-400">{formatCurrency(total)}</span>
+      </div>
+      <div className="flex justify-end mb-4">
+        <GstBreakdownNote
+          itemSubtotal={summary?.itemSubtotal ?? order.itemSubtotal}
+          gstAmount={summary?.gstAmount ?? order.gstAmount}
+          gstInclusive={summary?.gstInclusive ?? order.gstInclusive}
+        />
       </div>
 
       {canPay && summary && splitBillEnabled && (
@@ -1628,18 +1964,49 @@ function PendingPaymentCard({
         />
       )}
       {canPay && (!splitBillEnabled || !summary) && (
-        <Button
-          variant="success"
-          size="sm"
-          className="w-full bg-emerald-600 hover:bg-emerald-500"
-          disabled={Boolean(payingKey) || total <= 0.01}
-          onClick={payFull}
-        >
-          <CircleDollarSign className="w-4 h-4" /> Pay full {formatCurrency(total)}
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="success"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-500"
+            disabled={Boolean(payingKey) || total <= 0.01}
+            onClick={() => payFull("CASH")}
+          >
+            Take cash
+          </Button>
+          <Button
+            variant="success"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-500"
+            disabled={Boolean(payingKey) || total <= 0.01}
+            onClick={() => payFull("UPI")}
+          >
+            Confirm UPI
+          </Button>
+        </div>
       )}
     </motion.div>
   );
+}
+
+function GstBreakdownNote({
+  itemSubtotal,
+  gstAmount,
+  gstInclusive,
+  className,
+}: {
+  itemSubtotal?: number;
+  gstAmount?: number;
+  gstInclusive?: boolean;
+  className?: string;
+}) {
+  const text = gstBreakdownHintText({
+    itemSubtotal: itemSubtotal ?? 0,
+    gstAmount: gstAmount ?? 0,
+    gstInclusive,
+  });
+  if (!text) return null;
+  return <p className={cn("text-[11px] leading-tight text-zinc-500", className)}>{text}</p>;
 }
 
 function CompletedOrderRow({
@@ -1653,6 +2020,15 @@ function CompletedOrderRow({
 }) {
   const total =
     order.total ??
+    sumOrderRevenue(
+      order.items.map((i) => ({
+        unitPrice: i.unitPrice ?? 0,
+        quantity: i.quantity,
+        status: i.status,
+      })),
+    );
+  const itemSubtotal =
+    order.itemSubtotal ??
     sumOrderRevenue(
       order.items.map((i) => ({
         unitPrice: i.unitPrice ?? 0,
@@ -1727,8 +2103,14 @@ function CompletedOrderRow({
           </div>
         </div>
         <div className="text-right sm:pl-4 sm:border-l sm:border-white/10 space-y-2">
-          <p className="text-xs text-zinc-500">Bill total</p>
+          <p className="text-xs text-zinc-500">Collected</p>
           <p className="text-xl font-bold text-emerald-400">{formatCurrency(total)}</p>
+          <GstBreakdownNote
+            itemSubtotal={itemSubtotal}
+            gstAmount={order.gstAmount}
+            gstInclusive={order.gstInclusive}
+            className="sm:text-right"
+          />
           {canReprint && order.paidAt && onReprint && (
             <Button
               size="sm"

@@ -11,6 +11,7 @@ export type BillRestaurantSnapshot = {
   gstin: string | null;
   gstEnabled: boolean;
   gstRate: number;
+  gstInclusive?: boolean;
   footer: string | null;
 };
 
@@ -56,6 +57,7 @@ export function buildBillSnapshot(params: {
     receiptGstin: string | null;
     receiptGstEnabled: boolean;
     receiptGstRate: number;
+    receiptGstInclusive?: boolean;
     receiptFooter: string | null;
   };
   branch?: { name: string; address: string | null } | null;
@@ -82,6 +84,9 @@ export function buildBillSnapshot(params: {
       gstin: params.restaurant.receiptGstin,
       gstEnabled: params.restaurant.receiptGstEnabled,
       gstRate: params.restaurant.receiptGstEnabled ? Math.max(0, params.restaurant.receiptGstRate) : 0,
+      gstInclusive: Boolean(
+        params.restaurant.receiptGstEnabled && params.restaurant.receiptGstInclusive !== false,
+      ),
       footer: params.restaurant.receiptFooter,
     },
     branch: params.branch ?? null,
@@ -150,11 +155,13 @@ export function liveFinancialsForSnapshotInput(params: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
+  gstInclusive?: boolean;
 }) {
   return computeOrderFinancials({
     items: params.items,
     discountAmount: params.discountAmount,
     gstEnabled: params.gstEnabled,
     gstRate: params.gstRate,
+    gstInclusive: params.gstInclusive,
   });
 }

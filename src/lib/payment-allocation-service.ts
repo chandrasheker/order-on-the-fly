@@ -12,7 +12,9 @@ import {
   FINANCIAL_PAID_EPSILON,
   MANUAL_UPI_VERIFICATION,
   PAYMENT_STATUS,
+  RESTAURANT_GST_SELECT,
   canonicalFinancialsForOrder,
+  gstInputFromRestaurant,
   isCapturedPayment,
   type OrderFinancialSummary,
 } from "@/lib/order-financials";
@@ -55,7 +57,11 @@ function computeSummaryFromOrder(
     fulfillmentMode?: string | null;
     items: OrderItemRow[];
     discountAmount?: number | null;
-    restaurant?: { receiptGstEnabled: boolean; receiptGstRate: number };
+    restaurant?: {
+      receiptGstEnabled: boolean;
+      receiptGstRate: number;
+      receiptGstInclusive: boolean;
+    };
     bills?: Array<{
       status: string;
       itemSubtotal: number;
@@ -96,13 +102,13 @@ function computeSummaryFromOrder(
     };
   });
 
+  const gst = gstInputFromRestaurant(order.restaurant);
   const financials: OrderFinancialSummary = canonicalFinancialsForOrder({
     fulfillmentMode: order.fulfillmentMode,
     items: order.items,
     payments: order.payments,
     discountAmount: order.discountAmount,
-    gstEnabled: order.restaurant?.receiptGstEnabled,
-    gstRate: order.restaurant?.receiptGstRate,
+    ...gst,
     finalizedBill: order.bills?.find((bill) => bill.status === "FINALIZED"),
   });
 
@@ -116,7 +122,10 @@ function computeSummaryFromOrder(
     paid: financials.netPaid,
     remaining: financials.amountDue,
     discountAmount: financials.orderDiscount,
+    itemSubtotal: financials.itemSubtotal,
     gstAmount: financials.gstAmount,
+    gstInclusive: gst.gstInclusive,
+    gstEnabled: gst.gstEnabled,
     financials,
     fullyPaid:
       financials.amountDue <= FINANCIAL_PAID_EPSILON &&
@@ -147,7 +156,7 @@ export async function getOrderPaymentSummaries(orderIds: string[]) {
     include: {
       items: true,
       payments: { include: { allocations: true } },
-      restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+      restaurant: { select: RESTAURANT_GST_SELECT },
       bills: true,
     },
   });
@@ -165,7 +174,7 @@ export async function getOrderPaymentSummary(orderId: string) {
     include: {
       items: true,
       payments: { include: { allocations: true } },
-      restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+      restaurant: { select: RESTAURANT_GST_SELECT },
       bills: true,
     },
   });
@@ -339,8 +348,8 @@ export async function finalizeOrderIfSettled(
       const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
       await maybeAutoCloseTableAfterPayment(orderRow.tableId);
     } else {
-      const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
-      await evaluateSelfPickupNotifications(orderId);
+      const { onSelfPickupSettled } = await import("@/lib/fulfillment/kitchen-release");
+      await onSelfPickupSettled(orderId);
     }
   }
   return true;
@@ -370,7 +379,7 @@ export async function recordOrderPayment(params: {
         include: {
           items: true,
           payments: { include: { allocations: true } },
-          restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+          restaurant: { select: RESTAURANT_GST_SELECT },
           bills: true,
         },
       });
@@ -422,6 +431,7 @@ export async function recordOrderPayment(params: {
             fullyPaid: summary.fullyPaid,
             tableId: order.tableId,
             orderId: order.id,
+            restaurantId: order.restaurantId,
             idempotent: true as const,
           };
         }
@@ -468,6 +478,7 @@ export async function recordOrderPayment(params: {
           fullyPaid: true,
           tableId: order.tableId,
           orderId: order.id,
+          restaurantId: order.restaurantId,
           idempotent: true as const,
         };
       }
@@ -556,7 +567,7 @@ export async function recordOrderPayment(params: {
         include: {
           items: true,
           payments: { include: { allocations: true } },
-          restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+          restaurant: { select: RESTAURANT_GST_SELECT },
           bills: true,
         },
       });
@@ -626,6 +637,7 @@ export async function recordOrderPayment(params: {
         fullyPaid: updated.fullyPaid,
         tableId: order.tableId,
         orderId: order.id,
+        restaurantId: order.restaurantId,
         billCreated: billResult.created,
       };
     }),
@@ -679,13 +691,21 @@ export async function recordOrderPayment(params: {
         select: { fulfillmentMode: true },
       });
       if (paidOrder?.fulfillmentMode === "SELF_PICKUP") {
-        const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
-        await evaluateSelfPickupNotifications(result.orderId);
+        const { onSelfPickupSettled } = await import("@/lib/fulfillment/kitchen-release");
+        await onSelfPickupSettled(result.orderId);
       } else {
         const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
         await maybeAutoCloseTableAfterPayment(result.tableId);
       }
     }
+
+    const { pingLive } = await import("@/lib/live-hub");
+    pingLive({
+      restaurantId: result.payment?.restaurantId || result.restaurantId,
+      type: "ORDER_PAID",
+      entityId: result.orderId,
+      tableId: result.tableId,
+    });
 
     return {
       ok: true as const,
@@ -934,7 +954,7 @@ export async function confirmManualUpiPayment(params: {
         include: {
           items: true,
           payments: { include: { allocations: true } },
-          restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+          restaurant: { select: RESTAURANT_GST_SELECT },
           bills: true,
         },
       });
@@ -993,7 +1013,7 @@ export async function confirmManualUpiPayment(params: {
         include: {
           items: true,
           payments: { include: { allocations: true } },
-          restaurant: { select: { receiptGstEnabled: true, receiptGstRate: true } },
+          restaurant: { select: RESTAURANT_GST_SELECT },
           bills: true,
         },
       });
@@ -1084,8 +1104,8 @@ export async function confirmManualUpiPayment(params: {
         select: { fulfillmentMode: true },
       });
       if (paidOrder?.fulfillmentMode === "SELF_PICKUP") {
-        const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
-        await evaluateSelfPickupNotifications(result.orderId);
+        const { onSelfPickupSettled } = await import("@/lib/fulfillment/kitchen-release");
+        await onSelfPickupSettled(result.orderId);
       } else {
         const { maybeAutoCloseTableAfterPayment } = await import("@/lib/table-ordering-service");
         await maybeAutoCloseTableAfterPayment(result.tableId);

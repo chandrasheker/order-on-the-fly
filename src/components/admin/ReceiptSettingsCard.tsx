@@ -11,6 +11,7 @@ export function ReceiptSettingsCard() {
   const [receiptGstin, setReceiptGstin] = useState("");
   const [receiptGstEnabled, setReceiptGstEnabled] = useState(false);
   const [receiptGstRate, setReceiptGstRate] = useState(5);
+  const [receiptGstInclusive, setReceiptGstInclusive] = useState(true);
   const [receiptFooter, setReceiptFooter] = useState("");
   const [savingReceipt, setSavingReceipt] = useState(false);
   const [receiptMessage, setReceiptMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -26,6 +27,7 @@ export function ReceiptSettingsCard() {
         setReceiptGstin(receiptData.settings.gstin ?? "");
         setReceiptGstEnabled(Boolean(receiptData.settings.gstEnabled));
         setReceiptGstRate(Number(receiptData.settings.gstRate) || 5);
+        setReceiptGstInclusive(receiptData.settings.gstInclusive !== false);
         setReceiptFooter(receiptData.settings.footer ?? "");
       });
   }, []);
@@ -44,6 +46,7 @@ export function ReceiptSettingsCard() {
           gstin: receiptGstin,
           gstEnabled: receiptGstEnabled,
           gstRate: receiptGstRate,
+          gstInclusive: receiptGstInclusive,
           footer: receiptFooter,
         }),
       });
@@ -116,7 +119,7 @@ export function ReceiptSettingsCard() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 mb-4 p-4 rounded-xl bg-white/5 border border-white/10">
+      <div className="mb-4 p-4 rounded-xl bg-white/5 border border-white/10 space-y-4">
         <label className="flex items-center gap-2 text-sm text-zinc-300">
           <input
             type="checkbox"
@@ -124,21 +127,56 @@ export function ReceiptSettingsCard() {
             onChange={(e) => setReceiptGstEnabled(e.target.checked)}
             className="rounded border-white/20"
           />
-          Add GST on printed bills
+          Show GST on printed bills
         </label>
         {receiptGstEnabled && (
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-zinc-500">GST rate %</label>
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              step={0.5}
-              value={receiptGstRate}
-              onChange={(e) => setReceiptGstRate(parseFloat(e.target.value) || 0)}
-              className="w-24"
-            />
-          </div>
+          <>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-zinc-500">GST rate %</label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={receiptGstRate}
+                onChange={(e) => setReceiptGstRate(parseFloat(e.target.value) || 0)}
+                className="w-24"
+              />
+            </div>
+            <fieldset className="space-y-2">
+              <legend className="text-xs text-zinc-500 mb-1">How is GST applied to menu prices?</legend>
+              <label className="flex items-start gap-2 text-sm text-zinc-300">
+                <input
+                  type="radio"
+                  name="gstMode"
+                  className="mt-1"
+                  checked={receiptGstInclusive}
+                  onChange={() => setReceiptGstInclusive(true)}
+                />
+                <span>
+                  <span className="font-medium text-zinc-200">Included in MRP</span>
+                  <span className="block text-xs text-zinc-500">
+                    A ₹30 water bottle already includes GST. The bill total stays ₹30.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm text-zinc-300">
+                <input
+                  type="radio"
+                  name="gstMode"
+                  className="mt-1"
+                  checked={!receiptGstInclusive}
+                  onChange={() => setReceiptGstInclusive(false)}
+                />
+                <span>
+                  <span className="font-medium text-zinc-200">Added on top</span>
+                  <span className="block text-xs text-zinc-500">
+                    GST is charged extra. A ₹30 water bottle becomes ₹31.50 at 5%.
+                  </span>
+                </span>
+              </label>
+            </fieldset>
+          </>
         )}
       </div>
 

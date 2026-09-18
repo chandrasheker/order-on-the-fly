@@ -168,7 +168,9 @@ export function KitchenTicketBoard({
                     {col.key === "READY" && (
                       <p className={cn("text-emerald-300 mt-3 flex items-center gap-2", isCook ? "text-sm font-medium" : "text-xs")}>
                         <CheckCircle2 className={cn(isCook ? "w-5 h-5" : "w-3 h-3")} />
-                        Waiting for server to bump
+                        {ticket.fulfillmentMode === "SELF_PICKUP"
+                          ? "Ready to collect"
+                          : "Waiting for server to bump"}
                       </p>
                     )}
 

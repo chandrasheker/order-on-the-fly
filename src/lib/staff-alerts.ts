@@ -188,7 +188,7 @@ export async function playReadyBumpChime() {
 export function showStaffBrowserNotification(
   title: string,
   body: string,
-  options?: { tag?: string; urgent?: boolean }
+  options?: { tag?: string; urgent?: boolean; href?: string }
 ) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
@@ -202,6 +202,14 @@ export function showStaffBrowserNotification(
 
     notification.onclick = () => {
       window.focus();
+      if (options?.href) {
+        const next = new URL(options.href, window.location.origin);
+        const current = `${window.location.pathname}${window.location.search}`;
+        const target = `${next.pathname}${next.search}`;
+        if (current !== target) {
+          window.location.assign(target);
+        }
+      }
       notification.close();
     };
 

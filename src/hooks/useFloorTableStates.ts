@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FLOOR_CHANGED_EVENT } from "@/lib/floor-state-styles";
 import { swallowPollingFetchError } from "@/lib/client-fetch";
+import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 
 type FloorStateRow = {
   state: string;
@@ -26,20 +27,17 @@ export function useFloorTableStates() {
     }
   }, []);
 
+  useLiveRefresh(load, {
+    intervalMs: 2000,
+    streamUrl: "/api/live/stream",
+  });
+
   useEffect(() => {
-    void load();
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.hidden) return;
-      void load();
-    }, 8000);
     const onChanged = () => {
       void load();
     };
     window.addEventListener(FLOOR_CHANGED_EVENT, onChanged);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener(FLOOR_CHANGED_EVENT, onChanged);
-    };
+    return () => window.removeEventListener(FLOOR_CHANGED_EVENT, onChanged);
   }, [load]);
 
   return { states, reload: load };

@@ -5,7 +5,7 @@ import { logApiError, logApiRequest, logInfo } from "@/lib/logger";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
 import { isTablePaymentBlocked } from "@/lib/payment-service";
 import { getTableTabPaymentSummary } from "@/lib/table-tab-service";
-import { todayDateString } from "@/lib/utils";
+import { todayDateString, customerOrdersToDisplay } from "@/lib/utils";
 import { requireSession } from "@/lib/auth";
 import { loadTableByQrForRequest, opaqueNotFoundJson, trustedRestaurantId, hostRestaurantId } from "@/platform/tenant-scope";
 import { resolveTenantFromHost } from "@/platform/host-tenant";
@@ -96,8 +96,6 @@ async function handlePOST(req: NextRequest) {
   }
 }
 
-export const POST = withForensicApiRoute(handlePOST);
-
 async function handleGET(req: NextRequest) {
   const tableToken = req.nextUrl.searchParams.get("tableToken");
   const restaurantId = req.nextUrl.searchParams.get("restaurantId");
@@ -143,12 +141,13 @@ async function handleGET(req: NextRequest) {
         pickupLocationLabel: true,
         receiptGstEnabled: true,
         receiptGstRate: true,
+        receiptGstInclusive: true,
       },
     });
     for (const order of ordersWithMenu) {
       if (order.fulfillmentMode === "SELF_PICKUP") {
         const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
-        await evaluateSelfPickupNotifications(order.id);
+        void evaluateSelfPickupNotifications(order.id);
       }
     }
     const { publicPickupView } = await import("@/lib/fulfillment/collection");
@@ -182,25 +181,30 @@ async function handleGET(req: NextRequest) {
       list.push(bill);
       billsByOrder.set(bill.orderId, list);
     }
+    const mappedOrders = ordersWithMenu.map((order) => ({
+      ...order,
+      receiptUrl: receiptByOrder.get(order.id) ?? null,
+      pickup: publicPickupView(
+        {
+          ...order,
+          restaurant,
+          bills: billsByOrder.get(order.id) ?? [],
+        },
+        restaurant?.pickupLocationLabel,
+      ),
+    }));
     return NextResponse.json({
-      orders: ordersWithMenu.map((order) => ({
-        ...order,
-        receiptUrl: receiptByOrder.get(order.id) ?? null,
-        pickup: publicPickupView(
-          {
-            ...order,
-            restaurant,
-            bills: billsByOrder.get(order.id) ?? [],
-          },
-          restaurant?.pickupLocationLabel,
-        ),
-      })),
+      orders: customerOrdersToDisplay(mappedOrders),
       paymentBlocked: await isTablePaymentBlocked(table.id),
       tabPaymentPending: tabSummary.paymentRequested,
       tabSummary: {
         billTotal: tabSummary.billTotal,
         paidTotal: tabSummary.paidTotal,
         remaining: tabSummary.remaining,
+        itemSubtotal: tabSummary.itemSubtotal,
+        gstAmount: tabSummary.gstAmount,
+        gstInclusive: tabSummary.gstInclusive,
+        gstEnabled: tabSummary.gstEnabled,
         paymentRequested: tabSummary.paymentRequested,
         orderCount: tabSummary.orderCount,
       },
@@ -237,4 +241,5 @@ async function handleGET(req: NextRequest) {
   return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
 }
 
-export const GET = withForensicApiRoute(handleGET);
+export const GET = withForensicApiRoute(handleGET, { suppressRequestEvent: true });
+export const POST = withForensicApiRoute(handlePOST);

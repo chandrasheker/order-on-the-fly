@@ -90,6 +90,7 @@ type Overview = {
     receiptGstin: string | null;
     receiptGstEnabled: boolean;
     receiptGstRate: number;
+    receiptGstInclusive: boolean;
     receiptFooter: string | null;
     upiVpa: string | null;
     upiMerchantName: string | null;
@@ -553,7 +554,7 @@ export function TenantHubHome() {
                               label="GST"
                               value={
                                 restaurant.receiptGstEnabled
-                                  ? `${restaurant.receiptGstRate}%${restaurant.receiptGstin ? ` · ${restaurant.receiptGstin}` : ""}`
+                                  ? `${restaurant.receiptGstRate}% · ${restaurant.receiptGstInclusive ? "included in MRP" : "added on top"}${restaurant.receiptGstin ? ` · ${restaurant.receiptGstin}` : ""}`
                                   : "Off"
                               }
                             />

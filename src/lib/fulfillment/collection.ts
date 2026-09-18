@@ -3,9 +3,11 @@ import { prisma } from "@/lib/prisma";
 import {
   canonicalFinancialsForOrder,
   projectItemsForFinancials,
+  RESTAURANT_GST_SELECT,
   type FinalizedBillTotals,
   type LedgerPayment,
   type OrderFinancialSummary,
+  type RestaurantGstSettings,
 } from "@/lib/order-financials";
 import { countsTowardBillableTotal } from "@/lib/utils";
 import {
@@ -55,6 +57,7 @@ export type OrderForCollection = {
   restaurant?: {
     receiptGstEnabled: boolean;
     receiptGstRate: number;
+    receiptGstInclusive: boolean;
   } | null;
   bills?: FinalizedBillTotals[];
 };
@@ -90,10 +93,7 @@ const ORDER_COLLECTION_SELECT = {
     },
   },
   restaurant: {
-    select: {
-      receiptGstEnabled: true,
-      receiptGstRate: true,
-    },
+    select: RESTAURANT_GST_SELECT,
   },
   bills: {
     where: { status: "FINALIZED" },
@@ -153,7 +153,8 @@ function collectionFinanceInput(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }) {
@@ -162,8 +163,9 @@ function collectionFinanceInput(order: {
     items: order.items,
     payments: order.payments ?? [],
     discountAmount: order.discountAmount,
-    gstEnabled: order.gstEnabled ?? order.restaurant?.receiptGstEnabled,
-    gstRate: order.gstRate ?? order.restaurant?.receiptGstRate,
+    gstEnabled: order.gstEnabled ?? order.restaurant?.receiptGstEnabled ?? undefined,
+    gstRate: order.gstRate ?? order.restaurant?.receiptGstRate ?? undefined,
+    gstInclusive: order.gstInclusive ?? order.restaurant?.receiptGstInclusive ?? undefined,
     finalizedBill:
       order.finalizedBill ??
       order.bills?.find((bill) => !bill.status || bill.status === "FINALIZED") ??
@@ -178,7 +180,8 @@ export function settlementFinancialsForOrder(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }): OrderFinancialSummary {
@@ -192,7 +195,8 @@ export function outstandingAmountPaiseForCollection(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }): number {
@@ -219,7 +223,8 @@ export function evaluateCollectionEligibility(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }): CollectionEligibility {
@@ -293,6 +298,7 @@ export function evaluateCollectionEligibility(order: {
 }
 
 export type CustomerPickupState =
+  | "AWAITING_PAYMENT"
   | "PREPARING"
   | "FOOD_READY_PAYMENT_REQUIRED"
   | "READY_FOR_COLLECTION"
@@ -308,7 +314,8 @@ export function customerPickupState(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }): CustomerPickupState {
@@ -316,8 +323,8 @@ export function customerPickupState(order: {
   if (isOrderCollected(order)) return "COLLECTED";
   const eligibility = evaluateCollectionEligibility(order);
   if (eligibility.collectable) return "READY_FOR_COLLECTION";
-  if (eligibility.foodReady && !eligibility.financiallySettled) {
-    return "FOOD_READY_PAYMENT_REQUIRED";
+  if (!eligibility.financiallySettled) {
+    return eligibility.foodReady ? "FOOD_READY_PAYMENT_REQUIRED" : "AWAITING_PAYMENT";
   }
   return "PREPARING";
 }
@@ -334,7 +341,8 @@ export function publicPickupView(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }, pickupLocationLabel?: string | null) {
@@ -376,7 +384,8 @@ export function throwIfSelfPickupHandoverBlocked(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
-  restaurant?: { receiptGstEnabled?: boolean; receiptGstRate?: number | null } | null;
+  gstInclusive?: boolean;
+  restaurant?: RestaurantGstSettings | null;
   bills?: FinalizedBillTotals[] | null;
   finalizedBill?: FinalizedBillTotals | null;
 }): void {
@@ -499,7 +508,8 @@ export async function markSelfPickupCollected(input: {
   }
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    let claimedNow = false;
+    const result = await prisma.$transaction(async (tx) => {
       const order = await loadOrderForCollection(tx, input.restaurantId, input.orderId);
       if (!order) {
         throw new SelfPickupCollectionError("NOT_FOUND", "Order not found.", 404);
@@ -544,6 +554,7 @@ export async function markSelfPickupCollected(input: {
         }
         throw new SelfPickupCollectionError("NOT_FOUND", "Order not found.", 404);
       }
+      claimedNow = true;
 
       await tx.orderItem.updateMany({
         where: {
@@ -588,6 +599,18 @@ export async function markSelfPickupCollected(input: {
       }
       return collected;
     });
+    if (claimedNow) {
+      const { notifySelfPickupCollected } = await import("@/lib/fulfillment/notify");
+      await notifySelfPickupCollected(result.id);
+      const { pingLive } = await import("@/lib/live-hub");
+      pingLive({
+        restaurantId: input.restaurantId,
+        type: "ORDER_COLLECTED",
+        entityId: result.id,
+        tableId: result.tableId,
+      });
+    }
+    return result;
   } catch (error) {
     if (error instanceof SelfPickupCollectionError && error.code === "PAYMENT_REQUIRED") {
       const latest = await loadOrderForCollection(prisma, input.restaurantId, input.orderId);

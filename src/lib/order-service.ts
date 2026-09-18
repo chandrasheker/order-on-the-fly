@@ -35,16 +35,15 @@ export async function autoCompleteZeroBillOrder(orderId: string) {
   });
   if (!order || order.status !== "SERVED" || order.paidAt) return;
 
-  const { financialsForOrder } = await import("@/lib/order-financials");
+  const { financialsForOrder, gstInputFromRestaurant } = await import("@/lib/order-financials");
   const restaurant = await prisma.restaurant.findUnique({
     where: { id: order.restaurantId },
-    select: { receiptGstEnabled: true, receiptGstRate: true },
+    select: { receiptGstEnabled: true, receiptGstRate: true, receiptGstInclusive: true },
   });
   const financials = financialsForOrder({
     items: order.items,
     discountAmount: order.discountAmount,
-    gstEnabled: restaurant?.receiptGstEnabled,
-    gstRate: restaurant?.receiptGstRate,
+    ...gstInputFromRestaurant(restaurant),
   });
   if (financials.amountDue <= 0) {
     await prisma.order.update({
@@ -85,8 +84,8 @@ export async function syncOrderStatus(orderId: string) {
     await finalizeOrderIfSettled(orderId);
     scheduleAggregatorStatusPush(orderId);
     if (order.fulfillmentMode === "SELF_PICKUP") {
-      const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
-      await evaluateSelfPickupNotifications(orderId);
+      const { onSelfPickupSettled } = await import("@/lib/fulfillment/kitchen-release");
+      await onSelfPickupSettled(orderId);
     }
     return;
   }
@@ -106,8 +105,8 @@ export async function syncOrderStatus(orderId: string) {
     scheduleAggregatorStatusPush(orderId);
   }
   if (order.fulfillmentMode === "SELF_PICKUP") {
-    const { evaluateSelfPickupNotifications } = await import("@/lib/fulfillment/notify");
-    await evaluateSelfPickupNotifications(orderId);
+    const { onSelfPickupSettled } = await import("@/lib/fulfillment/kitchen-release");
+    await onSelfPickupSettled(orderId);
   }
 }
 
@@ -402,6 +401,20 @@ export async function createOrderForTable(params: {
     requested: requestedFulfillmentMode,
   });
 
+  const { canonicalFinancialsForOrder, gstInputFromRestaurant } = await import("@/lib/order-financials");
+  const createFinancials = canonicalFinancialsForOrder({
+    fulfillmentMode: fulfillment.fulfillmentMode,
+    items: pricedLines.map((line) => ({
+      unitPrice: line.unitPrice,
+      quantity: line.quantity,
+      status: "PENDING",
+    })),
+    discountAmount: promoDiscount,
+    ...gstInputFromRestaurant(table.restaurant),
+  });
+  const holdKitchen =
+    fulfillment.fulfillmentMode === "SELF_PICKUP" && createFinancials.amountDuePaise > 0;
+
   const { enqueueKitchenChitForOrderInTx } = await import("@/domains/printing/print-job-service");
   const order = await prisma.$transaction(async (tx) => {
     const created = await tx.order.create({
@@ -483,21 +496,23 @@ export async function createOrderForTable(params: {
         after: { promoCode: promo.code, discountAmount: promoDiscount },
       });
     }
-    await enqueueKitchenChitForOrderInTx(tx, {
-      restaurantId: table.restaurantId,
-      tenantId: hierarchy.tenantId,
-      branchId: hierarchy.branchId,
-      orderId: created.id,
-      orderNumber: created.orderNumber,
-      tableNumber: table.number,
-      fulfillmentMode: created.fulfillmentMode,
-      items: created.items.map((item) => ({
-        name: item.itemName,
-        quantity: item.quantity,
-        notes: item.notes ?? null,
-      })),
-      createdAt: created.createdAt,
-    });
+    if (!holdKitchen) {
+      await enqueueKitchenChitForOrderInTx(tx, {
+        restaurantId: table.restaurantId,
+        tenantId: hierarchy.tenantId,
+        branchId: hierarchy.branchId,
+        orderId: created.id,
+        orderNumber: created.orderNumber,
+        tableNumber: table.number,
+        fulfillmentMode: created.fulfillmentMode,
+        items: created.items.map((item) => ({
+          name: item.itemName,
+          quantity: item.quantity,
+          notes: item.notes ?? null,
+        })),
+        createdAt: created.createdAt,
+      });
+    }
     return created;
   });
 
@@ -506,19 +521,21 @@ export async function createOrderForTable(params: {
     order.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0) - promoDiscount,
   );
 
-  void decrementInventoryForOrder(
-    table.restaurantId,
-    allItems.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity }))
-  );
+  if (!holdKitchen) {
+    void decrementInventoryForOrder(
+      table.restaurantId,
+      allItems.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity }))
+    );
 
-  void enqueueJob({
-    type: "recipe_deduct",
-    restaurantId: table.restaurantId,
-    payload: {
+    void enqueueJob({
+      type: "recipe_deduct",
       restaurantId: table.restaurantId,
-      items: allItems.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
-    },
-  });
+      payload: {
+        restaurantId: table.restaurantId,
+        items: allItems.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
+      },
+    });
+  }
 
   void touchGuestProfile({
     restaurantId: table.restaurantId,
@@ -536,13 +553,21 @@ export async function createOrderForTable(params: {
     orderNumber: order.orderNumber,
     total,
     tableNumber: table.number,
+    tableId: table.id,
   });
 
   const { clearTableCartDraft } = await import("@/lib/table-cart-draft-service");
   await clearTableCartDraft({ tableId: table.id });
 
-  const { createNewKitchenItemAlertsForOrder } = await import("@/lib/kitchen-alert-service");
-  void createNewKitchenItemAlertsForOrder(order.id);
+  if (!holdKitchen) {
+    const { createNewKitchenItemAlertsForOrder } = await import("@/lib/kitchen-alert-service");
+    void createNewKitchenItemAlertsForOrder(order.id);
+  }
+
+  if (order.fulfillmentMode === "SELF_PICKUP") {
+    const { keepDineInTableAvailableForPickup } = await import("@/lib/table-ordering-service");
+    await keepDineInTableAvailableForPickup(table.id);
+  }
 
   return { order, total };
 }
@@ -573,11 +598,17 @@ export async function checkOverdueItems(restaurantId: string, force = false) {
     },
   });
 
-  if (overdueItems.length > 0) {
+  const { selfPickupKitchenHeldOrderIds } = await import("@/lib/fulfillment/kitchen-release");
+  const heldOrderIds = await selfPickupKitchenHeldOrderIds(
+    overdueItems.map((item) => item.order),
+  );
+  const actionableOverdue = overdueItems.filter((item) => !heldOrderIds.has(item.orderId));
+
+  if (actionableOverdue.length > 0) {
     void maybeAutoPauseKitchen(restaurantId);
   }
 
-  for (const item of overdueItems) {
+  for (const item of actionableOverdue) {
     const minutesLate = minutesLateFromExpected(item.expectedReadyAt, now);
     await prisma.orderItem.update({
       where: { id: item.id },
@@ -610,7 +641,7 @@ export async function checkOverdueItems(restaurantId: string, force = false) {
     }
   }
 
-  return overdueItems.length;
+  return actionableOverdue.length;
 }
 
 export async function getActiveOrders(restaurantId: string, options?: { skipOverdueCheck?: boolean }) {
@@ -741,6 +772,16 @@ export async function getCompletedOrders(restaurantId: string, limit = 50) {
     include: {
       table: true,
       items: true,
+      bills: {
+        where: { status: "FINALIZED" },
+        select: {
+          status: true,
+          grandTotal: true,
+          itemSubtotal: true,
+          gstAmount: true,
+          snapshot: true,
+        },
+      },
     },
     orderBy: { paidAt: "desc" },
     take: limit,

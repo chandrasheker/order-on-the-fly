@@ -19,4 +19,4 @@ async function handleGET(req: NextRequest) {
   return NextResponse.json(data);
 }
 
-export const GET = withForensicApiRoute(handleGET);
+export const GET = withForensicApiRoute(handleGET, { suppressRequestEvent: true });

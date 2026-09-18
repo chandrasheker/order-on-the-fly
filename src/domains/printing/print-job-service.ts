@@ -203,6 +203,7 @@ export async function enqueueKitchenChitForOrder(params: {
   orderId: string;
   orderNumber: number;
   tableNumber: number;
+  fulfillmentMode?: string;
   items?: Array<{ name: string; quantity: number; notes?: string | null }>;
   createdAt?: Date | string;
 }) {

@@ -142,16 +142,16 @@ export async function getKitchenTickets(restaurantId: string, stationSlug?: stri
     orderBy: { createdAt: "asc" },
   });
 
-  const tickets = orders
-    .map((order) => {
-      const items = order.items.filter((item) => {
-        if (item.status === "SERVED" || item.status === "UNAVAILABLE") return false;
-        if (!allowedSlugs) return true;
-        const slug = item.menuItem.category.slug;
-        return allowedSlugs.includes(slug);
-      });
-      if (items.length === 0) return null;
-      return {
+  const tickets = orders.flatMap((order) => {
+    const items = order.items.filter((item) => {
+      if (item.status === "SERVED" || item.status === "UNAVAILABLE") return false;
+      if (!allowedSlugs) return true;
+      const slug = item.menuItem.category.slug;
+      return allowedSlugs.includes(slug);
+    });
+    if (items.length === 0) return [];
+    return [
+      {
         id: order.id,
         orderNumber: order.orderNumber,
         tableNumber: order.table.number,
@@ -182,9 +182,13 @@ export async function getKitchenTickets(restaurantId: string, stationSlug?: stri
           categoryName: item.menuItem.category.name,
           categorySlug: item.menuItem.category.slug,
         })),
-      };
-    })
-    .filter(Boolean);
+      },
+    ];
+  });
 
-  return { stations, tickets, activeStation: station?.slug ?? stationSlug ?? "all" };
+  const { selfPickupKitchenHeldOrderIds } = await import("@/lib/fulfillment/kitchen-release");
+  const heldOrderIds = await selfPickupKitchenHeldOrderIds(orders);
+  const visibleTickets = tickets.filter((ticket) => !heldOrderIds.has(ticket.id));
+
+  return { stations, tickets: visibleTickets, activeStation: station?.slug ?? stationSlug ?? "all" };
 }

@@ -18,7 +18,7 @@ async function handleGET() {
   return NextResponse.json({ alerts });
 }
 
-export const GET = withForensicApiRoute(handleGET);
+export const GET = withForensicApiRoute(handleGET, { suppressRequestEvent: true });
 
 async function handlePATCH(req: NextRequest) {
   const session = await requireSession();

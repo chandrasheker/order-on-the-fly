@@ -98,6 +98,7 @@ export function auditPaymentSnapshot(payment: {
 export function auditRestaurantConfigSnapshot(row: {
   receiptGstEnabled?: boolean | null;
   receiptGstRate?: number | null;
+  receiptGstInclusive?: boolean | null;
   receiptAddress?: string | null;
   receiptPhone?: string | null;
   receiptGstin?: string | null;
@@ -107,6 +108,7 @@ export function auditRestaurantConfigSnapshot(row: {
   return {
     gstEnabled: row.receiptGstEnabled ?? null,
     gstRate: row.receiptGstRate ?? null,
+    gstInclusive: row.receiptGstInclusive ?? null,
     receiptAddress: row.receiptAddress ?? null,
     receiptPhone: row.receiptPhone ?? null,
     receiptGstin: row.receiptGstin ?? null,

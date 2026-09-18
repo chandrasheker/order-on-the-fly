@@ -18,6 +18,35 @@ export type FinancialLineItem = {
   status: string;
 };
 
+export type RestaurantGstSettings = {
+  receiptGstEnabled?: boolean | null;
+  receiptGstRate?: number | null;
+  receiptGstInclusive?: boolean | null;
+};
+
+export const RESTAURANT_GST_SELECT = {
+  receiptGstEnabled: true,
+  receiptGstRate: true,
+  receiptGstInclusive: true,
+} as const;
+
+/** Missing flag is treated as included-in-MRP so bills are not inflated. */
+export function isGstInclusive(value: boolean | null | undefined): boolean {
+  return value !== false;
+}
+
+export function gstInputFromRestaurant(restaurant?: RestaurantGstSettings | null): {
+  gstEnabled: boolean;
+  gstRate: number | null | undefined;
+  gstInclusive: boolean;
+} {
+  return {
+    gstEnabled: Boolean(restaurant?.receiptGstEnabled),
+    gstRate: restaurant?.receiptGstRate,
+    gstInclusive: isGstInclusive(restaurant?.receiptGstInclusive),
+  };
+}
+
 export type OrderFinancialInput = {
   items: FinancialLineItem[];
   discountAmount?: number | null;
@@ -25,6 +54,7 @@ export type OrderFinancialInput = {
   refundedTotal?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
+  gstInclusive?: boolean;
 };
 
 export type OrderFinancialSummary = {
@@ -57,10 +87,33 @@ function rupeeView(paise: number): number {
   return fromPaise(paise);
 }
 
+function gstBreakdownFromNetPaise(
+  netPaise: number,
+  gstEnabled: boolean,
+  gstRate: number,
+  gstInclusive: boolean,
+): { taxableSubtotalPaise: number; gstPaise: number; grandTotalPaise: number } {
+  if (!gstEnabled || gstRate <= 0 || netPaise <= 0) {
+    return { taxableSubtotalPaise: netPaise, gstPaise: 0, grandTotalPaise: netPaise };
+  }
+  if (gstInclusive) {
+    const taxableSubtotalPaise = Math.round((netPaise * 100) / (100 + gstRate));
+    const gstPaise = subtractPaise(netPaise, taxableSubtotalPaise);
+    return { taxableSubtotalPaise, gstPaise, grandTotalPaise: netPaise };
+  }
+  const gstPaise = Math.round((netPaise * gstRate) / 100);
+  return {
+    taxableSubtotalPaise: netPaise,
+    gstPaise,
+    grandTotalPaise: addPaise(netPaise, gstPaise),
+  };
+}
+
 /**
  * Canonical server-side totals.
  * Served items only. Order-level discount is applied once. GST is optional
- * restaurant receipt tax (CGST/SGST split). No service charge yet.
+ * restaurant receipt tax (CGST/SGST split). Menu prices are treated as
+ * GST-inclusive MRP unless `gstInclusive` is false. No service charge yet.
  */
 export function computeOrderFinancials(input: OrderFinancialInput): OrderFinancialSummary {
   const itemSubtotalPaise = input.items.reduce((sum, item) => {
@@ -69,15 +122,19 @@ export function computeOrderFinancials(input: OrderFinancialInput): OrderFinanci
   }, 0);
 
   const orderDiscountPaise = minPaise(toPaise(input.discountAmount ?? 0), itemSubtotalPaise);
-  const taxableSubtotalPaise = subtractPaise(itemSubtotalPaise, orderDiscountPaise);
+  const netPaise = subtractPaise(itemSubtotalPaise, orderDiscountPaise);
 
   const gstEnabled = Boolean(input.gstEnabled);
   const gstRate = Math.max(0, Number(input.gstRate) || 0);
-  const gstPaise = gstEnabled ? Math.round((taxableSubtotalPaise * gstRate) / 100) : 0;
+  const gstInclusive = isGstInclusive(input.gstInclusive);
+  const { taxableSubtotalPaise, gstPaise, grandTotalPaise } = gstBreakdownFromNetPaise(
+    netPaise,
+    gstEnabled,
+    gstRate,
+    gstInclusive,
+  );
   const cgstPaise = Math.round(gstPaise / 2);
   const sgstPaise = subtractPaise(gstPaise, cgstPaise);
-
-  const grandTotalPaise = addPaise(taxableSubtotalPaise, gstPaise);
   const capturedPaymentPaise = clampPaise(toPaise(input.capturedPaymentTotal ?? 0));
   const refundedPaise = clampPaise(toPaise(input.refundedTotal ?? 0));
   const netPaidPaise = maxPaise(0, subtractPaise(capturedPaymentPaise, refundedPaise));
@@ -167,6 +224,7 @@ export function financialsForOrder(params: {
   payments?: LedgerPayment[];
   gstEnabled?: boolean;
   gstRate?: number | null;
+  gstInclusive?: boolean;
 }): OrderFinancialSummary {
   return computeOrderFinancials({
     items: params.items,
@@ -175,6 +233,7 @@ export function financialsForOrder(params: {
     refundedTotal: refundedPaymentsTotal(params.payments ?? []),
     gstEnabled: params.gstEnabled,
     gstRate: params.gstRate,
+    gstInclusive: params.gstInclusive,
   });
 }
 
@@ -243,6 +302,7 @@ export function canonicalFinancialsForOrder(order: {
   discountAmount?: number | null;
   gstEnabled?: boolean;
   gstRate?: number | null;
+  gstInclusive?: boolean;
   finalizedBill?: FinalizedBillTotals | null;
 }): OrderFinancialSummary {
   const financials = financialsForOrder({
@@ -251,6 +311,7 @@ export function canonicalFinancialsForOrder(order: {
     discountAmount: order.discountAmount,
     gstEnabled: order.gstEnabled,
     gstRate: order.gstRate,
+    gstInclusive: order.gstInclusive,
   });
   return applyFinalizedBillToFinancials(financials, order.finalizedBill);
 }

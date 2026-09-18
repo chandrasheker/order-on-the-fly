@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { PlatformEventType } from "@/generated/prisma/client";
 import { enqueueJob } from "@/lib/job-queue";
+import { pingLive } from "@/lib/live-hub";
 
 export type PlatformEventPayload = {
   restaurantId: string;
@@ -52,6 +53,13 @@ async function dispatchToSubscribers(event: PlatformEventPayload) {
 
 /** Publish event: persist + notify subscribers (async via job queue by default). */
 export async function publishPlatformEvent(params: PlatformEventPayload) {
+  pingLive({
+    restaurantId: params.restaurantId,
+    type: params.type,
+    entityId: params.entityId,
+    tableId: typeof params.payload?.tableId === "string" ? params.payload.tableId : null,
+  });
+
   if (process.env.EVENT_BUS_INLINE === "1") {
     await recordPlatformEvent(params);
     await dispatchToSubscribers(params);
@@ -79,6 +87,7 @@ export async function emitOrderCreated(params: {
   orderNumber: number;
   total: number;
   tableNumber: number;
+  tableId?: string;
 }) {
   await publishPlatformEvent({
     restaurantId: params.restaurantId,
@@ -91,6 +100,7 @@ export async function emitOrderCreated(params: {
       orderNumber: params.orderNumber,
       total: params.total,
       tableNumber: params.tableNumber,
+      tableId: params.tableId,
     },
   });
 }
