@@ -89,14 +89,14 @@ function PlatformHomePageInner() {
   const selectDirectory = (view: DirectoryView) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", view);
-    router.replace(`/platform?${params.toString()}`);
+    router.replace(`/oof/platform?${params.toString()}`);
   };
 
   const load = useCallback(async () => {
     try {
       const meRes = await fetch("/api/platform/auth/me", { credentials: "same-origin" });
       if (!meRes.ok) {
-        router.push("/platform/login");
+        router.push("/oof/platform/login");
         return;
       }
       const me = await meRes.json();
@@ -167,7 +167,7 @@ function PlatformHomePageInner() {
             />
           </div>
           <Link
-            href="/platform/tenants/new"
+            href="/oof/platform/tenants/new"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/25"
           >
             <Plus className="w-4 h-4" /> New Tenant
@@ -325,10 +325,10 @@ function PlatformHomePageInner() {
                         <tr
                           key={tenant.id}
                           className="border-t border-white/5 hover:bg-white/[0.03] cursor-pointer"
-                          onClick={() => router.push(`/platform/tenants/${tenant.id}`)}
+                          onClick={() => router.push(`/oof/platform/tenants/${tenant.id}`)}
                         >
                           <td className="px-4 py-3">
-                            <Link href={`/platform/tenants/${tenant.id}`} className="block min-w-0" onClick={(event) => event.stopPropagation()}>
+                            <Link href={`/oof/platform/tenants/${tenant.id}`} className="block min-w-0" onClick={(event) => event.stopPropagation()}>
                               <p className="font-medium text-zinc-100">{tenant.name}</p>
                               <p className="text-xs text-zinc-500 truncate">
                                 {tenant.slug}
@@ -361,7 +361,7 @@ function PlatformHomePageInner() {
                 {tenantList.visible.map((tenant) => {
                   const status = tenantStatus(tenant, command);
                   return (
-                    <Link key={tenant.id} href={`/platform/tenants/${tenant.id}`} className="block">
+                    <Link key={tenant.id} href={`/oof/platform/tenants/${tenant.id}`} className="block">
                       <Card className="p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">

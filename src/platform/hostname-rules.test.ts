@@ -29,8 +29,8 @@ describe("name uniqueness rules", () => {
   });
 
   it("allows the same restaurant name across different tenants via preview isolation", () => {
-    const abc = previewHostnames({ tenantName: "ABC", restaurantNames: ["South"], baseDomain: "dvadtech.in" });
-    const xyz = previewHostnames({ tenantName: "XYZ", restaurantNames: ["South"], baseDomain: "dvadtech.in" });
+    const abc = previewHostnames({ tenantName: "ABC", restaurantNames: ["South"], baseDomain: "oof.dvadtech.in" });
+    const xyz = previewHostnames({ tenantName: "XYZ", restaurantNames: ["South"], baseDomain: "oof.dvadtech.in" });
     assert.equal(abc.restaurants[0].slug, "abc-south");
     assert.equal(xyz.restaurants[0].slug, "xyz-south");
   });
@@ -39,10 +39,10 @@ describe("name uniqueness rules", () => {
     const preview = previewHostnames({
       tenantName: "ABC",
       restaurantNames: ["ABC", "North"],
-      baseDomain: "dvadtech.in",
+      baseDomain: "oof.dvadtech.in",
     });
     assert.equal(preview.tenantHubActive, true);
-    assert.equal(preview.tenantUrl, "https://abc.dvadtech.in");
+    assert.equal(preview.tenantUrl, "https://abc.oof.dvadtech.in");
     assert.deepEqual(
       preview.restaurants.map((restaurant) => restaurant.slug),
       ["abc-abc", "abc-north"],
@@ -64,22 +64,22 @@ describe("hostname generation", () => {
     const preview = previewHostnames({
       tenantName: "ABC",
       restaurantNames: ["ABC"],
-      baseDomain: "dvadtech.in",
+      baseDomain: "oof.dvadtech.in",
     });
     assert.equal(preview.tenantSlug, "abc");
     assert.equal(preview.tenantHubActive, false);
     assert.equal(preview.tenantUrl, null);
-    assert.equal(preview.restaurants[0].url, "https://abc.dvadtech.in");
+    assert.equal(preview.restaurants[0].url, "https://abc.oof.dvadtech.in");
   });
 
   it("single different-name restaurant uses tenant-restaurant slug and no hub", () => {
     const preview = previewHostnames({
       tenantName: "ABC",
       restaurantNames: ["South"],
-      baseDomain: "dvadtech.in",
+      baseDomain: "oof.dvadtech.in",
     });
     assert.equal(preview.restaurants[0].slug, "abc-south");
-    assert.equal(preview.restaurants[0].url, "https://abc-south.dvadtech.in");
+    assert.equal(preview.restaurants[0].url, "https://abc-south.oof.dvadtech.in");
     assert.equal(preview.tenantHubActive, false);
     assert.equal(preview.tenantUrl, null);
   });
@@ -88,7 +88,7 @@ describe("hostname generation", () => {
     const preview = previewHostnames({
       tenantName: "ABC",
       restaurantNames: ["South", "North"],
-      baseDomain: "dvadtech.in",
+      baseDomain: "oof.dvadtech.in",
     });
     assert.equal(preview.tenantSlug, "abc");
     assert.equal(preview.tenantHubActive, true);
@@ -96,6 +96,9 @@ describe("hostname generation", () => {
       preview.restaurants.map((restaurant) => restaurant.slug),
       ["abc-south", "abc-north"],
     );
+    assert.equal(preview.tenantUrl, "https://abc.oof.dvadtech.in");
+    assert.equal(preview.restaurants[0].url, "https://abc-south.oof.dvadtech.in");
+    assert.equal(preview.restaurants[1].url, "https://abc-north.oof.dvadtech.in");
   });
 
   it("slugifies spaced names", () => {
@@ -114,12 +117,13 @@ describe("hostname generation", () => {
   it("reserved tenant names are rejected", () => {
     assert.throws(() => tenantSlugFromName("www"), /reserved/i);
     assert.throws(() => tenantSlugFromName("platform"), /reserved/i);
+    assert.throws(() => tenantSlugFromName("oof"), /reserved/i);
   });
 
   it("formats hostname-in-use errors", () => {
     assert.equal(
-      hostnameInUseError("abc-south", "dvadtech.in"),
-      "The hostname abc-south.dvadtech.in is already in use.",
+      hostnameInUseError("abc-south", "oof.dvadtech.in"),
+      "The hostname abc-south.oof.dvadtech.in is already in use.",
     );
   });
 
@@ -140,8 +144,8 @@ describe("hostname generation", () => {
       false,
     );
     assert.equal(
-      restaurantHostnameChangedNotice("abc-abc.dvadtech.in"),
-      "Restaurant hostname changed to abc-abc.dvadtech.in. Reprint/reissue QR codes that contain the old hostname.",
+      restaurantHostnameChangedNotice("abc-abc.oof.dvadtech.in"),
+      "Restaurant hostname changed to abc-abc.oof.dvadtech.in. Reprint/reissue QR codes that contain the old hostname.",
     );
   });
 });

@@ -6,11 +6,22 @@ import {
   sessionMatchesHostSlug,
   blocksRestaurantOperationsOnHost,
   allowsApexPublicLanding,
+  denyMarketingOnOperationalHost,
   decidePlatformRouting,
+  isWwwCompanyHost,
+  isOofProductMarketingHost,
+  getTenantBaseDomain,
+  getCompanyPublicOrigin,
+  isProductionEnv,
   HOST_KIND_HEADER,
   HOST_NAME_HEADER,
   HOST_SLUG_HEADER,
 } from "@/platform/host";
+import {
+  isCanonicalPlatformUiPath,
+  rewritePlatformUiToInternal,
+  PLATFORM_UI_ROOT,
+} from "@/platform/platform-paths";
 import { getJwtSecretBytes } from "@/lib/jwt-secret";
 
 function jwtSecret() {
@@ -129,7 +140,7 @@ function isInfrastructurePrivilegedPath(pathname: string) {
   );
 }
 
-function nextWithHost(request: NextRequest) {
+function hostRequestHeaders(request: NextRequest) {
   const host = classifyRequestHost(request.headers);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(HOST_KIND_HEADER, host.kind);
@@ -137,7 +148,27 @@ function nextWithHost(request: NextRequest) {
   if (host.kind === "restaurant") {
     requestHeaders.set(HOST_SLUG_HEADER, host.slug);
   }
-  return withSecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }));
+  return requestHeaders;
+}
+
+function nextWithHost(request: NextRequest) {
+  return withSecurityHeaders(NextResponse.next({ request: { headers: hostRequestHeaders(request) } }));
+}
+
+function absoluteOnCompanyApex(pathname: string, request: NextRequest) {
+  const origin = getCompanyPublicOrigin();
+  if (origin) return new URL(pathname, `${origin}/`);
+  const url = request.nextUrl.clone();
+  const apex = getTenantBaseDomain();
+  if (apex) url.hostname = apex;
+  url.pathname = pathname;
+  url.search = "";
+  url.hash = "";
+  if (isProductionEnv()) {
+    url.protocol = "https:";
+    url.port = "";
+  }
+  return url;
 }
 
 export async function middleware(request: NextRequest) {
@@ -146,12 +177,27 @@ export async function middleware(request: NextRequest) {
   const privileged = isInfrastructurePrivilegedPath(pathname);
   const hostKey = classified.kind === "restaurant" ? classified.slug : classified.hostname || "unknown";
 
+  if (isWwwCompanyHost(classified) && (request.method === "GET" || request.method === "HEAD")) {
+    const dest = absoluteOnCompanyApex(`${pathname}${request.nextUrl.search}`, request);
+    return withSecurityHeaders(NextResponse.redirect(dest, 308));
+  }
+
+  if (isOofProductMarketingHost(classified) && (request.method === "GET" || request.method === "HEAD")) {
+    return withSecurityHeaders(NextResponse.redirect(absoluteOnCompanyApex("/oof", request), 308));
+  }
+
   const platformDecision = decidePlatformRouting(pathname, classified, { method: request.method });
   if (platformDecision.kind === "deny") {
     return opaqueNotFound(pathname);
   }
   if (platformDecision.kind === "redirect") {
-    return withSecurityHeaders(NextResponse.redirect(new URL(platformDecision.location, request.url)));
+    return withSecurityHeaders(
+      NextResponse.redirect(new URL(`${platformDecision.location}${request.nextUrl.search}`, request.url), 308),
+    );
+  }
+
+  if (denyMarketingOnOperationalHost(pathname, classified)) {
+    return opaqueNotFound(pathname);
   }
 
   if (
@@ -199,18 +245,21 @@ export async function middleware(request: NextRequest) {
 
   const platformAdmin = await getPlatformAdminSession(request);
 
-  if (pathname.startsWith("/platform")) {
-    if (pathname === "/platform/login") {
+  if (isCanonicalPlatformUiPath(pathname)) {
+    const internal = rewritePlatformUiToInternal(pathname);
+    if (internal === "/platform/login") {
       if (platformAdmin) {
-        return NextResponse.redirect(new URL("/platform", request.url));
+        return withSecurityHeaders(NextResponse.redirect(new URL(PLATFORM_UI_ROOT, request.url)));
       }
+      // next.config maps /oof/platform → /platform; do not middleware-rewrite
+      // (production would retarget localhost and fail closed).
       return nextWithHost(request);
     }
-    if (pathname === "/platform/tenants") {
-      return NextResponse.redirect(new URL("/platform", request.url));
+    if (internal === "/platform/tenants") {
+      return withSecurityHeaders(NextResponse.redirect(new URL(PLATFORM_UI_ROOT, request.url)));
     }
     if (!platformAdmin) {
-      return NextResponse.redirect(new URL("/platform/login", request.url));
+      return withSecurityHeaders(NextResponse.redirect(new URL(`${PLATFORM_UI_ROOT}/login`, request.url)));
     }
     return nextWithHost(request);
   }
@@ -315,6 +364,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.svg$|api/branding/background/upload|api/branding/logo/upload|api/payment/settings/upload|api/menu/manage/.+/image|api/menu/imports).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp|gif|ico)$|api/branding/background/upload|api/branding/logo/upload|api/payment/settings/upload|api/menu/manage/.+/image|api/menu/imports).*)",
   ],
 };

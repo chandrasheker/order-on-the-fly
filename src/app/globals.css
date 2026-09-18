@@ -199,6 +199,11 @@ select option {
 }
 
 /* Cook kiosk — one fixed screen; site footer is embedded in the cook UI */
+body.marketing-site > .site-footer-global,
+body.marketing-site footer.site-footer-global {
+  display: none !important;
+}
+
 body.cook-kiosk {
   overflow: hidden;
 }

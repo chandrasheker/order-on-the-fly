@@ -27,7 +27,7 @@ export function PlatformLoginForm() {
       });
 
       if (res.ok) {
-        router.push("/platform");
+        router.push("/oof/platform");
       } else {
         const data = await res.json();
         setError(data.error || "Invalid email or password");

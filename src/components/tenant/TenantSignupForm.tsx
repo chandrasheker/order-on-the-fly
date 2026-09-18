@@ -99,7 +99,7 @@ export function TenantSignupForm({ baseDomain }: { baseDomain: string }) {
                 </a>
               </>
             ) : null}
-            <Link href="/platform" className="flex-1">
+            <Link href="/oof/platform" className="flex-1">
               <Button variant="secondary" className="w-full">
                 Platform admin
               </Button>
@@ -169,7 +169,7 @@ export function TenantSignupForm({ baseDomain }: { baseDomain: string }) {
               <p className="text-xs text-zinc-500">
                 Hostname will be{" "}
                 <code>
-                  {`{slug}${baseDomain ? `.${baseDomain}` : ".{TENANT_BASE_DOMAIN}"}`}
+                  {`{slug}${baseDomain ? `.${baseDomain}` : ".{OOF_BASE_DOMAIN}"}`}
                 </code>
               </p>
             )}

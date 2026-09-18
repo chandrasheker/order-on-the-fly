@@ -16,14 +16,14 @@ export default function NewTenantPage() {
     void (async () => {
       const me = await fetch("/api/platform/auth/me");
       if (!me.ok) {
-        router.push("/platform/login");
+        router.push("/oof/platform/login");
         return;
       }
       setAdmin((await me.json()).admin);
       const tenants = await fetch("/api/platform/tenants");
       if (tenants.ok) {
         const json = await tenants.json();
-        setBaseDomain(String(json.tenantBaseDomain ?? ""));
+        setBaseDomain(String(json.oofBaseDomain || json.tenantBaseDomain || ""));
       }
       setLoading(false);
     })();
@@ -42,11 +42,11 @@ export default function NewTenantPage() {
       admin={admin}
       title="New tenant"
       subtitle="Create a tenant and one or more restaurants."
-      backHref="/platform"
+      backHref="/oof/platform"
       backLabel="All tenants"
       activeItem="tenants"
       breadcrumb={[
-        { label: "Overview", href: "/platform" },
+        { label: "Overview", href: "/oof/platform" },
         { label: "New tenant" },
       ]}
     >

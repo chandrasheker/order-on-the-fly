@@ -42,6 +42,8 @@ const RESERVED_SUBDOMAINS = new Set([
   "tenant",
   "signup",
   "localhost",
+  "oof",
+  "arep",
 ]);
 const DNS_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
@@ -58,10 +60,17 @@ function assertRestaurantSubdomainSlug(slug) {
 }
 
 function restaurantPublicBaseUrl(appUrl, slug) {
-  const baseDomain = String(process.env.TENANT_BASE_DOMAIN || "")
+  const tenantBase = String(process.env.TENANT_BASE_DOMAIN || "")
     .trim()
     .toLowerCase()
     .replace(/^\.+|\.+$/g, "");
+  const explicitOof = String(process.env.OOF_BASE_DOMAIN || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, "");
+  const baseDomain =
+    explicitOof ||
+    (tenantBase && tenantBase !== "localhost" && tenantBase.includes(".") ? `oof.${tenantBase}` : tenantBase);
   if (!baseDomain) return String(appUrl || "").replace(/\/+$/, "");
   let proto = process.env.TENANT_PUBLIC_PROTOCOL;
   let port = process.env.TENANT_PUBLIC_PORT || "";

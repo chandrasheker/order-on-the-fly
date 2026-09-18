@@ -16,7 +16,7 @@ export function isSameEntityName(a: string, b: string): boolean {
 }
 
 export function hostnameInUseError(slug: string, baseDomain = ""): string {
-  const host = baseDomain ? `${slug}.${baseDomain}` : `${slug}.dvadtech.in`;
+  const host = baseDomain ? `${slug}.${baseDomain}` : `${slug}.oof.dvadtech.in`;
   return `The hostname ${host} is already in use.`;
 }
 

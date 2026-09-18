@@ -17,7 +17,7 @@ export default function PlatformLogsPage() {
     void fetch("/api/platform/auth/me")
       .then(async (res) => {
         if (!res.ok) {
-          router.push("/platform/login");
+          router.push("/oof/platform/login");
           return;
         }
         const json = await res.json();
@@ -43,10 +43,10 @@ export default function PlatformLogsPage() {
       admin={admin}
       title="Platform Logs"
       subtitle="Append-only forensic evidence with no tenant or restaurant scope"
-      backHref="/platform"
+      backHref="/oof/platform"
       backLabel="Command center"
       activeItem="logs"
-      breadcrumb={[{ label: "Overview", href: "/platform" }, { label: "Logs" }]}
+      breadcrumb={[{ label: "Overview", href: "/oof/platform" }, { label: "Logs" }]}
     >
       <PlatformScopedLogsConsole
         endpoint="/api/platform/logs"

@@ -115,7 +115,7 @@ export default function PlatformBillingPage() {
       try {
         const me = await fetch("/api/platform/auth/me");
         if (!me.ok) {
-          router.push("/platform/login");
+          router.push("/oof/platform/login");
           return;
         }
         const meJson = await me.json();
@@ -231,15 +231,15 @@ export default function PlatformBillingPage() {
       admin={admin}
       title="Billing"
       subtitle={tenant ? tenant.name : "Plans and demo packs per tenant"}
-      backHref={backTenantId ? `/platform/tenants/${backTenantId}` : "/platform"}
+      backHref={backTenantId ? `/oof/platform/tenants/${backTenantId}` : "/oof/platform"}
       backLabel={backTenantId ? "Tenant overview" : "All tenants"}
       activeItem="billing"
       breadcrumb={[
-        { label: "Overview", href: "/platform" },
+        { label: "Overview", href: "/oof/platform" },
         ...(tenant
-          ? [{ label: tenant.name, href: `/platform/tenants/${tenant.id}` }]
+          ? [{ label: tenant.name, href: `/oof/platform/tenants/${tenant.id}` }]
           : backTenantId
-            ? [{ label: "Tenant", href: `/platform/tenants/${backTenantId}` }]
+            ? [{ label: "Tenant", href: `/oof/platform/tenants/${backTenantId}` }]
             : []),
         { label: "Billing" },
       ]}

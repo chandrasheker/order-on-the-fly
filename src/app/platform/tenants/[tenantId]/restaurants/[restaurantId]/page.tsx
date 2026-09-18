@@ -43,14 +43,14 @@ function PlatformRestaurantCommand() {
       if (value) next.set(key, value);
       else next.delete(key);
     }
-    router.replace(`/platform/tenants/${tenantId}/restaurants/${restaurantId}?${next.toString()}`);
+    router.replace(`/oof/platform/tenants/${tenantId}/restaurants/${restaurantId}?${next.toString()}`);
   };
 
   const load = useCallback(async () => {
     try {
       const meRes = await fetch("/api/platform/auth/me");
       if (!meRes.ok) {
-        router.push("/platform/login");
+        router.push("/oof/platform/login");
         return;
       }
       setAdmin((await meRes.json()).admin);
@@ -61,7 +61,7 @@ function PlatformRestaurantCommand() {
       }
       const res = await fetch(`/api/platform/tenants/${tenantId}/restaurants/${restaurantId}/command?${query.toString()}`);
       if (!res.ok) {
-        router.push(`/platform/tenants/${tenantId}`);
+        router.push(`/oof/platform/tenants/${tenantId}`);
         return;
       }
       setCommand((await res.json()) as CommandCenterPayload);
@@ -94,12 +94,12 @@ function PlatformRestaurantCommand() {
       admin={admin}
       title={row.restaurantName}
       subtitle={`${tenantName} · fleet visibility, not the restaurant /admin app`}
-      backHref={`/platform/tenants/${tenantId}`}
+      backHref={`/oof/platform/tenants/${tenantId}`}
       backLabel={tenantName}
       activeItem="restaurants"
       breadcrumb={[
-        { label: "Overview", href: "/platform" },
-        { label: tenantName, href: `/platform/tenants/${tenantId}` },
+        { label: "Overview", href: "/oof/platform" },
+        { label: tenantName, href: `/oof/platform/tenants/${tenantId}` },
         { label: row.restaurantName },
       ]}
     >

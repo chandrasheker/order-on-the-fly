@@ -51,8 +51,8 @@ function hrefs(
       security: `${tenant}?tab=logs&preset=security`,
     };
   }
-  const base = `/platform/tenants/${tenantId}/restaurants/${restaurantId}`;
-  const tenantLogs = `/platform/tenants/${tenantId}`;
+  const base = `/oof/platform/tenants/${tenantId}/restaurants/${restaurantId}`;
+  const tenantLogs = `/oof/platform/tenants/${tenantId}`;
   return {
     overview: base,
     operations: `${base}?tab=operations`,

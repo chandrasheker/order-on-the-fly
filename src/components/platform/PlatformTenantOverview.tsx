@@ -47,6 +47,7 @@ interface PlatformTenantOverviewProps {
   tenantHubActive?: boolean;
   tenantEnabled: boolean;
   tenantBaseDomain?: string;
+  oofBaseDomain?: string;
   tenantPlan?: string;
   tenantSubscriptionStatus?: string;
   tenantBillingEmail?: string | null;
@@ -75,6 +76,7 @@ export function PlatformTenantOverview({
   tenantHubActive = false,
   tenantEnabled,
   tenantBaseDomain = "",
+  oofBaseDomain = "",
   tenantPlan,
   tenantSubscriptionStatus,
   tenantBillingEmail,
@@ -85,6 +87,7 @@ export function PlatformTenantOverview({
   onDeleteTenant,
   deletingTenant,
 }: PlatformTenantOverviewProps) {
+  const hostDomain = oofBaseDomain || tenantBaseDomain;
   const [overview, setOverview] = useState<{
     stats?: Record<string, number>;
     restaurants?: TenantRestaurant[];
@@ -391,7 +394,7 @@ export function PlatformTenantOverview({
                   const preview = previewHostnames({
                     tenantName: tenantNameDraft,
                     restaurantNames: restaurants.map((restaurant) => restaurant.name),
-                    baseDomain: tenantBaseDomain,
+                    baseDomain: hostDomain,
                   });
                   return (
                     <>
@@ -520,7 +523,7 @@ export function PlatformTenantOverview({
                           </div>
                           <p className="text-xs text-zinc-500 break-all">
                             Restaurant URL:{" "}
-                            {r.url || restaurantHostPreview(r.slug, tenantBaseDomain) || `/${r.slug}`}
+                            {r.url || restaurantHostPreview(r.slug, hostDomain) || `/${r.slug}`}
                           </p>
                         </div>
                       </button>
@@ -582,7 +585,7 @@ export function PlatformTenantOverview({
                                       row.id === r.id ? restaurantNameDrafts[r.id] ?? r.name : row.name,
                                     ),
                                     tenantSlug,
-                                    baseDomain: tenantBaseDomain,
+                                    baseDomain: hostDomain,
                                   });
                                   const next = preview.restaurants.find(
                                     (row) => row.name === (restaurantNameDrafts[r.id] ?? r.name).trim(),
@@ -600,7 +603,7 @@ export function PlatformTenantOverview({
                         </p>
                         <p className="text-xs text-emerald-400 break-all">
                           Restaurant host:{" "}
-                          {r.url || restaurantHostPreview(r.slug, tenantBaseDomain) || `/${r.slug}`}
+                          {r.url || restaurantHostPreview(r.slug, hostDomain) || `/${r.slug}`}
                         </p>
 
                         <div className="rounded-lg bg-white/[0.03] border border-white/10 p-3">
@@ -704,7 +707,7 @@ export function PlatformTenantOverview({
                   tenantName,
                   restaurantNames: [...restaurants.map((r) => r.name), addRestaurant.name],
                   tenantSlug,
-                  baseDomain: tenantBaseDomain,
+                  baseDomain: hostDomain,
                 });
                 const created = preview.restaurants[preview.restaurants.length - 1];
                 const existing = restaurants[0];
@@ -716,7 +719,7 @@ export function PlatformTenantOverview({
                   lines.unshift(`Tenant Command Center: ${preview.tenantUrl}`);
                 }
                 if (existing && renamed && renamed.slug !== existing.slug) {
-                  lines.push(restaurantHostnameChangedNotice(`${renamed.slug}.${tenantBaseDomain || "dvadtech.in"}`));
+                  lines.push(restaurantHostnameChangedNotice(`${renamed.slug}.${hostDomain || "oof.dvadtech.in"}`));
                 }
                 return lines.join(" ");
               } catch (err) {
@@ -855,7 +858,7 @@ export function PlatformTenantOverview({
             </p>
           </div>
           <a
-            href={`/platform/billing?tenantId=${tenantId}`}
+            href={`/oof/platform/billing?tenantId=${tenantId}`}
             className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm border bg-white/5 border-white/10 text-zinc-300 hover:text-white"
           >
             Open billing
@@ -875,13 +878,13 @@ export function PlatformTenantOverview({
             <p className="break-all">
               <span className="text-zinc-500">Restaurant & tenant admin</span>{" "}
               <span className="text-zinc-200">
-                {restaurants[0].url || restaurantHostPreview(restaurants[0].slug, tenantBaseDomain)}
+                {restaurants[0].url || restaurantHostPreview(restaurants[0].slug, hostDomain)}
               </span>
             </p>
           )}
           {restaurants.map((restaurant) => (
             <p key={restaurant.id} className="break-all text-zinc-400">
-              {restaurant.name}: {restaurant.url || restaurantHostPreview(restaurant.slug, tenantBaseDomain) || restaurant.slug}
+              {restaurant.name}: {restaurant.url || restaurantHostPreview(restaurant.slug, hostDomain) || restaurant.slug}
             </p>
           ))}
         </Card>

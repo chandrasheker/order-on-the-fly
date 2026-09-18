@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { subscribeLive, type LivePing } from "@/lib/live-hub";
 import { loadTableByQrForRequest, opaqueNotFoundJson } from "@/platform/tenant-scope";
 import { assertCustomerDiningAccess } from "@/lib/customer-dining-guard";
+import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,7 +61,7 @@ function sseResponse(req: NextRequest, restaurantId: string, tableId?: string | 
   });
 }
 
-export async function GET(req: NextRequest) {
+async function handleGET(req: NextRequest) {
   const tableToken = req.nextUrl.searchParams.get("tableToken");
   const sessionKey = req.nextUrl.searchParams.get("sessionKey");
 
@@ -89,3 +90,5 @@ export async function GET(req: NextRequest) {
 
   return sseResponse(req, session.restaurantId);
 }
+
+export const GET = withForensicApiRoute(handleGET);

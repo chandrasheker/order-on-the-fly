@@ -17,9 +17,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TableTap — Smart Restaurant Ordering",
+  title: {
+    default: "DVADTech",
+    template: "%s",
+  },
   description:
-    "QR-powered table ordering SaaS with smart prep timers, staff alerts, wait-time games, and daily reports.",
+    "DVADTech builds practical software and AI-integrated products around real operational problems.",
 };
 
 export const viewport: Viewport = {

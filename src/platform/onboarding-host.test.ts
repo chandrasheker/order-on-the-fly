@@ -48,6 +48,8 @@ afterEach(() => {
   clearHostTenantCache();
   for (const key of Object.keys(restaurants)) delete restaurants[key];
   process.env.TENANT_BASE_DOMAIN = originalEnv.TENANT_BASE_DOMAIN;
+  if (originalEnv.OOF_BASE_DOMAIN === undefined) delete process.env.OOF_BASE_DOMAIN;
+  else process.env.OOF_BASE_DOMAIN = originalEnv.OOF_BASE_DOMAIN;
   process.env.APP_URL = originalEnv.APP_URL;
   process.env.TENANT_PUBLIC_PROTOCOL = originalEnv.TENANT_PUBLIC_PROTOCOL;
   process.env.TENANT_PUBLIC_PORT = originalEnv.TENANT_PUBLIC_PORT;
@@ -219,11 +221,12 @@ describe("onboarding hostname activation", () => {
     );
   });
 
-  it("canonical restaurant URL uses TENANT_BASE_DOMAIN", () => {
+  it("canonical restaurant URL uses OOF_BASE_DOMAIN", () => {
     process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
+    process.env.OOF_BASE_DOMAIN = "oof.dvadtech.in";
     process.env.APP_URL = "https://dvadtech.in";
     delete process.env.TENANT_PUBLIC_PROTOCOL;
     delete process.env.TENANT_PUBLIC_PORT;
-    assert.equal(getRestaurantPublicBaseUrl("fp-south"), "https://fp-south.dvadtech.in");
+    assert.equal(getRestaurantPublicBaseUrl("fp-south"), "https://fp-south.oof.dvadtech.in");
   });
 });
