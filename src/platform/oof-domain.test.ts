@@ -56,7 +56,6 @@ afterEach(() => {
   if (originalEnv.OOF_BASE_DOMAIN === undefined) delete process.env.OOF_BASE_DOMAIN;
   else process.env.OOF_BASE_DOMAIN = originalEnv.OOF_BASE_DOMAIN;
   process.env.APP_URL = originalEnv.APP_URL;
-  process.env.NODE_ENV = originalEnv.NODE_ENV;
 });
 
 describe("OOF domain helpers", () => {

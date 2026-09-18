@@ -55,23 +55,16 @@ const SCENES = [
 
 function Storyboard({ reduce }: { reduce: boolean | null }) {
   const [index, setIndex] = useState(0);
-  const [playing, setPlaying] = useState(!reduce);
+  const [playing, setPlaying] = useState(true);
+  const autoplay = playing && !reduce;
 
   useEffect(() => {
-    if (reduce) {
-      setPlaying(false);
-      return;
-    }
-    setPlaying(true);
-  }, [reduce]);
-
-  useEffect(() => {
-    if (!playing) return undefined;
+    if (!autoplay) return undefined;
     const timer = window.setInterval(() => {
       setIndex((current) => (current + 1) % SCENES.length);
     }, 3200);
     return () => window.clearInterval(timer);
-  }, [playing]);
+  }, [autoplay]);
 
   const scene = SCENES[index] ?? SCENES[0];
 
@@ -99,15 +92,19 @@ function Storyboard({ reduce }: { reduce: boolean | null }) {
         </AnimatePresence>
       </div>
       <div className="flex flex-wrap items-center gap-3 border-t border-white/10 px-4 py-3 sm:px-6">
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-1.5 text-xs text-white"
-          onClick={() => setPlaying((value) => !value)}
-          aria-pressed={playing}
-        >
-          {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
-          {playing ? "Pause" : "Play"}
-        </button>
+        {reduce ? (
+          <p className="text-xs text-orange-50/70">Select a scene</p>
+        ) : (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-1.5 text-xs text-white"
+            onClick={() => setPlaying((value) => !value)}
+            aria-pressed={autoplay}
+          >
+            {autoplay ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+            {autoplay ? "Pause" : "Play"}
+          </button>
+        )}
         <div className="flex min-w-0 flex-1 gap-1" role="tablist" aria-label="Story scenes">
           {SCENES.map((item, sceneIndex) => (
             <button
