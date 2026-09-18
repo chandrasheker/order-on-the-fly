@@ -83,14 +83,14 @@ export function PlatformTenantWorkspace() {
       if (value) params.set(key, value);
       else params.delete(key);
     }
-    router.replace(`/platform/tenants/${tenantId}?${params.toString()}`);
+    router.replace(`/oof/platform/tenants/${tenantId}?${params.toString()}`);
   };
 
   const load = useCallback(async () => {
     try {
       const meRes = await fetch("/api/platform/auth/me");
       if (!meRes.ok) {
-        router.push("/platform/login");
+        router.push("/oof/platform/login");
         return;
       }
       const me = await meRes.json();
@@ -99,10 +99,10 @@ export function PlatformTenantWorkspace() {
       const res = await fetch("/api/platform/tenants");
       if (res.ok) {
         const json = await res.json();
-        setTenantBaseDomain(String(json.tenantBaseDomain ?? ""));
+        setTenantBaseDomain(String(json.oofBaseDomain || json.tenantBaseDomain || ""));
         const found = (json.tenants ?? []).find((t: TenantDetail) => t.id === tenantId);
         if (!found) {
-          router.push("/platform");
+          router.push("/oof/platform");
           return;
         }
         found.restaurants = [...found.restaurants].sort((a, b) => a.name.localeCompare(b.name));
@@ -174,7 +174,7 @@ export function PlatformTenantWorkspace() {
         setDeletingTenant(false);
         return;
       }
-      router.push("/platform");
+      router.push("/oof/platform");
     } catch (error) {
       swallowPollingFetchError(error);
       setActionError("Network error — try again.");
@@ -196,15 +196,15 @@ export function PlatformTenantWorkspace() {
       admin={admin}
       title={tenant.name}
       subtitle={`${tenant.plan} · ${tenant.subscriptionStatus} · ${tenant.restaurants.length} restaurant${tenant.restaurants.length === 1 ? "" : "s"}${!tenant.isEnabled ? " · DISABLED" : ""}`}
-      backHref="/platform"
+      backHref="/oof/platform"
       backLabel="All tenants"
       breadcrumb={[
-        { label: "Overview", href: "/platform" },
+        { label: "Overview", href: "/oof/platform" },
         { label: tenant.name },
       ]}
       actions={
         <Link
-          href={`/platform/billing?tenantId=${tenant.id}`}
+          href={`/oof/platform/billing?tenantId=${tenant.id}`}
           className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border bg-white/5 border-white/10 text-zinc-300 hover:text-white"
         >
           Billing

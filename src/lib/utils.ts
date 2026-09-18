@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { getRestaurantPublicBaseUrl } from "@/lib/server-app-url";
 
 export function cn(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(" ");
@@ -57,21 +58,7 @@ export function getBaseUrl() {
 
 /** @deprecated Server routes should use `@/lib/server-app-url` instead. */
 export function getTableCheckInUrl(slug: string, qrToken: string) {
-  const baseDomain = (process.env.TENANT_BASE_DOMAIN ?? "").trim().toLowerCase();
-  if (baseDomain) {
-    try {
-      const parsed = new URL(getBaseUrl());
-      const proto = process.env.TENANT_PUBLIC_PROTOCOL || parsed.protocol.replace(":", "") || "https";
-      const port =
-        process.env.TENANT_PUBLIC_PORT ||
-        (baseDomain === "localhost" && parsed.port ? parsed.port : "");
-      const suffix = port ? `:${port}` : "";
-      return `${proto}://${slug}.${baseDomain}${suffix}/order/${slug}/${qrToken}/check-in`;
-    } catch {
-      return `${getBaseUrl()}/order/${slug}/${qrToken}/check-in`;
-    }
-  }
-  return `${getBaseUrl()}/order/${slug}/${qrToken}/check-in`;
+  return `${getRestaurantPublicBaseUrl(slug)}/order/${slug}/${qrToken}/check-in`;
 }
 
 /** @deprecated Server routes should use `@/lib/server-app-url` instead. */

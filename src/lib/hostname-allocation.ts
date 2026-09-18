@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import { getTenantBaseDomain } from "@/platform/host";
+import { getPublicOperationalBaseDomain } from "@/platform/host";
 import { restaurantSlugValidationError } from "@/lib/restaurant-slug";
 import {
   canonicalizeName,
@@ -16,7 +16,7 @@ export const HOST_KIND_RESTAURANT = "restaurant";
 export const HOST_KIND_TENANT_HUB = "tenant_hub";
 
 function baseDomain() {
-  return getTenantBaseDomain() || "dvadtech.in";
+  return getPublicOperationalBaseDomain() || "oof.dvadtech.in";
 }
 
 export function assertAssignableHostnameSlug(slug: string) {

@@ -130,7 +130,7 @@ export function PlatformAuditConsole({ admin }: { admin: { name: string; email: 
       admin={admin}
       title="Forensic audit"
       subtitle="Platform-wide activity, security, money, and print evidence"
-      backHref="/platform"
+      backHref="/oof/platform"
       backLabel="Tenants"
       activeItem="audit"
     >

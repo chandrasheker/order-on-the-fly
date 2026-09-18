@@ -23,6 +23,8 @@ const originalEnv = { ...process.env };
 
 afterEach(() => {
   process.env.TENANT_BASE_DOMAIN = originalEnv.TENANT_BASE_DOMAIN;
+  if (originalEnv.OOF_BASE_DOMAIN === undefined) delete process.env.OOF_BASE_DOMAIN;
+  else process.env.OOF_BASE_DOMAIN = originalEnv.OOF_BASE_DOMAIN;
   process.env.TRUST_FORWARDED_HOST = originalEnv.TRUST_FORWARDED_HOST;
   process.env.TENANT_RESERVED_HOSTS = originalEnv.TENANT_RESERVED_HOSTS;
   if (originalEnv.TENANT_APEX_RESTAURANT === undefined) delete process.env.TENANT_APEX_RESTAURANT;
@@ -85,16 +87,35 @@ describe("host classification", () => {
     if (host.kind === "restaurant") assert.equal(host.slug, "abc");
   });
 
-  it("maps xyz.dvadtech.in to xyz", () => {
-    const host = classifyHostname("xyz.dvadtech.in", { baseDomain: "dvadtech.in" });
-    assert.equal(host.kind, "restaurant");
-    if (host.kind === "restaurant") assert.equal(host.slug, "xyz");
+  it("maps canonical OOF restaurant hosts and rejects nested / AREP namespaces", () => {
+    const abc = classifyHostname("abc.oof.dvadtech.in", { baseDomain: "dvadtech.in" });
+    const hyphen = classifyHostname("abc-xyz.oof.dvadtech.in", { baseDomain: "dvadtech.in" });
+    const hub = classifyHostname("x.oof.dvadtech.in", { baseDomain: "dvadtech.in" });
+    const nested = classifyHostname("foo.bar.oof.dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    const arep = classifyHostname("abc.arep.dvadtech.in", {
+      baseDomain: "dvadtech.in",
+      nodeEnv: "production",
+    });
+    assert.equal(abc.kind, "restaurant");
+    if (abc.kind === "restaurant") assert.equal(abc.slug, "abc");
+    assert.equal(hyphen.kind, "restaurant");
+    if (hyphen.kind === "restaurant") assert.equal(hyphen.slug, "abc-xyz");
+    assert.equal(hub.kind, "restaurant");
+    if (hub.kind === "restaurant") assert.equal(hub.slug, "x");
+    assert.equal(nested.kind, "invalid");
+    if (nested.kind === "invalid") assert.equal(nested.reason, "nested_subdomain");
+    assert.equal(arep.kind, "invalid");
+    if (arep.kind === "invalid") assert.equal(arep.reason, "nested_subdomain");
   });
 
-  it("treats apex, www, and platform as reserved", () => {
+  it("treats apex, www, platform, and oof product host as reserved", () => {
     assert.equal(classifyHostname("dvadtech.in", { baseDomain: "dvadtech.in" }).kind, "reserved");
     assert.equal(classifyHostname("www.dvadtech.in", { baseDomain: "dvadtech.in" }).kind, "reserved");
     assert.equal(classifyHostname("platform.dvadtech.in", { baseDomain: "dvadtech.in" }).kind, "reserved");
+    assert.equal(classifyHostname("oof.dvadtech.in", { baseDomain: "dvadtech.in" }).kind, "reserved");
   });
 
   it("supports abc.localhost for local development", () => {
@@ -147,7 +168,10 @@ describe("host classification", () => {
     assert.equal(isConfiguredApexHost(www, { baseDomain: "dvadtech.in" }), true);
     assert.equal(isConfiguredApexHost(platform, { baseDomain: "dvadtech.in" }), false);
     assert.equal(allowsApexPublicLanding("/", apex, { baseDomain: "dvadtech.in" }), true);
+    assert.equal(allowsApexPublicLanding("/oof", apex, { baseDomain: "dvadtech.in" }), true);
+    assert.equal(allowsApexPublicLanding("/marketing/oof/01-customer-checkin.png", apex, { baseDomain: "dvadtech.in" }), true);
     assert.equal(allowsApexPublicLanding("/staff/dashboard", apex, { baseDomain: "dvadtech.in" }), false);
+    assert.equal(allowsApexPublicLanding("/oof/platform", apex, { baseDomain: "dvadtech.in" }), false);
     assert.equal(allowsApexPublicLanding("/", platform, { baseDomain: "dvadtech.in" }), false);
     assert.equal(allowsApexPublicLanding("/", unknown, { baseDomain: "dvadtech.in" }), false);
     assert.equal(blocksRestaurantOperationsOnHost(apex, "production"), true);
@@ -216,28 +240,36 @@ describe("platform host restriction", () => {
   const prod = { baseDomain: "dvadtech.in" as const, nodeEnv: "production" as const };
   const routeOpts = { nodeEnv: "production" as const, baseDomain: "dvadtech.in" };
 
-  it("treats /platform and /api/platform as platform paths", () => {
+  it("treats /platform, /oof/platform, and /api/platform as platform paths", () => {
     assert.equal(isPlatformPath("/platform"), true);
     assert.equal(isPlatformPath("/platform/login"), true);
+    assert.equal(isPlatformPath("/oof/platform"), true);
+    assert.equal(isPlatformPath("/oof/platform/login"), true);
     assert.equal(isPlatformPath("/platform/tenants"), true);
     assert.equal(isPlatformPath("/api/platform/tenants"), true);
     assert.equal(isPlatformPath("/api/platform/auth/login"), true);
     assert.equal(isPlatformPath("/"), false);
+    assert.equal(isPlatformPath("/oof"), false);
     assert.equal(isPlatformPath("/api/health"), false);
     assert.equal(isPlatformPath("/tenant/signup"), false);
     assert.equal(isPlatformPath("/api/jobs/process"), false);
   });
 
-  it("production apex / redirects to /platform and allows platform routes", () => {
+  it("production apex / is the company landing; platform UI is /oof/platform", () => {
     process.env.TENANT_BASE_DOMAIN = "dvadtech.in";
     const apex = classifyHostname("dvadtech.in", prod);
     assert.equal(platformRoutesAllowedOnHost(apex, "production", routeOpts), true);
-    assert.deepEqual(decidePlatformRouting("/", apex, { ...routeOpts, method: "GET" }), {
+    assert.equal(decidePlatformRouting("/", apex, { ...routeOpts, method: "GET" }).kind, "pass");
+    assert.deepEqual(decidePlatformRouting("/platform", apex, routeOpts), {
       kind: "redirect",
-      location: "/platform",
+      location: "/oof/platform",
     });
-    assert.equal(decidePlatformRouting("/platform", apex, routeOpts).kind, "allow");
-    assert.equal(decidePlatformRouting("/platform/login", apex, routeOpts).kind, "allow");
+    assert.deepEqual(decidePlatformRouting("/platform/login", apex, routeOpts), {
+      kind: "redirect",
+      location: "/oof/platform/login",
+    });
+    assert.equal(decidePlatformRouting("/oof/platform", apex, routeOpts).kind, "allow");
+    assert.equal(decidePlatformRouting("/oof/platform/login", apex, routeOpts).kind, "allow");
     assert.equal(decidePlatformRouting("/api/platform/tenants", apex, routeOpts).kind, "allow");
     assert.equal(decidePlatformRouting("/api/platform/auth/login", apex, routeOpts).kind, "allow");
   });
@@ -252,11 +284,15 @@ describe("platform host restriction", () => {
       "/platform",
       "/platform/login",
       "/platform/tenants",
+      "/oof/platform",
+      "/oof/platform/login",
       "/api/platform/tenants",
       "/api/platform/auth/login",
     ]) {
       assert.equal(decidePlatformRouting(path, restaurant, routeOpts).kind, "deny");
     }
+    const oofRestaurant = classifyHostname("fp-north.oof.dvadtech.in", prod);
+    assert.equal(decidePlatformRouting("/oof/platform", oofRestaurant, routeOpts).kind, "deny");
   });
 
   it("does not expose platform on www or platform.*", () => {
@@ -280,7 +316,8 @@ describe("platform host restriction", () => {
     const restaurantLocal = classifyHostname("fp-north.localhost:3000", { nodeEnv: "development" });
     const opts = { nodeEnv: "development" as const };
     assert.equal(platformRoutesAllowedOnHost(local, "development"), true);
-    assert.equal(decidePlatformRouting("/platform", local, opts).kind, "allow");
+    assert.equal(decidePlatformRouting("/platform", local, opts).kind, "redirect");
+    assert.equal(decidePlatformRouting("/oof/platform", local, opts).kind, "allow");
     assert.equal(decidePlatformRouting("/api/platform/tenants", local, opts).kind, "allow");
     assert.equal(decidePlatformRouting("/", local, opts).kind, "pass");
     assert.equal(platformRoutesAllowedOnHost(restaurantLocal, "development"), false);
@@ -300,6 +337,8 @@ describe("slug validation", () => {
   it("rejects reserved and malformed slugs", () => {
     assert.equal(isValidRestaurantSubdomainSlug("www"), false);
     assert.equal(isValidRestaurantSubdomainSlug("Platform"), false);
+    assert.equal(isValidRestaurantSubdomainSlug("oof"), false);
+    assert.equal(isValidRestaurantSubdomainSlug("arep"), false);
     assert.ok(restaurantSlugValidationError("Bad Slug"));
     assert.ok(restaurantSlugValidationError("-abc"));
   });

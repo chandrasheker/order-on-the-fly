@@ -204,7 +204,7 @@ describe("tenant administrator tenant details", () => {
       linkStyle: "tenant",
     });
     const restaurantId = created.restaurants[0].restaurant.id;
-    assert.match(platform.restaurants[0].hrefs.overview, new RegExp(`/platform/tenants/${created.tenant.id}/restaurants/${restaurantId}`));
+    assert.match(platform.restaurants[0].hrefs.overview, new RegExp(`/oof/platform/tenants/${created.tenant.id}/restaurants/${restaurantId}`));
     assert.equal(tenant.restaurants[0].hrefs.overview, `/tenant?tab=restaurants&restaurantId=${restaurantId}`);
     assert.equal(tenant.restaurants[0].hrefs.logs.includes("/platform"), false);
     assert.equal(tenant.restaurants[0].hrefs.security, "/tenant?tab=logs&preset=security");

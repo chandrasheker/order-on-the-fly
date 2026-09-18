@@ -110,7 +110,7 @@ export function PlatformCreateTenantForm({ baseDomain }: { baseDomain: string })
             ))}
           </ul>
         )}
-        <Link href="/platform">
+        <Link href="/oof/platform">
           <Button>Back to tenants</Button>
         </Link>
       </Card>

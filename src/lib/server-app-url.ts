@@ -4,10 +4,10 @@
  * Uses APP_URL (read at runtime). Do NOT use NEXT_PUBLIC_APP_URL here — Next/Turbopack
  * inlines NEXT_PUBLIC_* at compile time, so stale values survive in .next after .env edits.
  *
- * When TENANT_BASE_DOMAIN is set, restaurant guest URLs use
- * `{protocol}://{slug}.{TENANT_BASE_DOMAIN}[:port]`.
+ * When OOF_BASE_DOMAIN / TENANT_BASE_DOMAIN are set, restaurant guest URLs use
+ * `{protocol}://{slug}.{OOF_BASE_DOMAIN}[:port]` (canonical product namespace).
  */
-import { getTenantBaseDomain } from "@/platform/host";
+import { getPublicOperationalBaseDomain } from "@/platform/host";
 
 export function getAppBaseUrl(): string {
   const raw = process.env.APP_URL || "http://localhost:3000";
@@ -23,7 +23,7 @@ export function getTenantHubPublicBaseUrl(slug: string): string {
 }
 
 export function getRestaurantPublicBaseUrl(slug: string): string {
-  const baseDomain = getTenantBaseDomain();
+  const baseDomain = getPublicOperationalBaseDomain();
   if (!baseDomain) return getAppBaseUrl();
 
   let proto = process.env.TENANT_PUBLIC_PROTOCOL;

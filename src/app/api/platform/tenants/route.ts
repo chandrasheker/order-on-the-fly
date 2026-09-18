@@ -22,7 +22,7 @@ import {
   publicTenantAdminUrl,
 } from "@/lib/server-app-url";
 import { resetTenantAdminPassword } from "@/lib/tenant-admin-password";
-import { getTenantBaseDomain } from "@/platform/host";
+import { getOofBaseDomain, getTenantBaseDomain } from "@/platform/host";
 import { withForensicApiRoute } from "@/platform/forensics/with-forensic-api-route";
 
 async function handleGET() {
@@ -32,6 +32,7 @@ async function handleGET() {
   const tenants = await listTenantsWithRestaurants();
   return NextResponse.json({
     tenantBaseDomain: getTenantBaseDomain(),
+    oofBaseDomain: getOofBaseDomain(),
     tenants: tenants.map((tenant) => {
       const hubActive = tenantHubIsActive({
         tenantSlug: tenant.slug,

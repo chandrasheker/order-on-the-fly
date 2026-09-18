@@ -5,7 +5,7 @@ import {
   getTenantHubPublicBaseUrl,
   publicTenantAdminUrl,
 } from "@/lib/server-app-url";
-import { getTenantBaseDomain } from "@/platform/host";
+import { getOofBaseDomain, getTenantBaseDomain } from "@/platform/host";
 import { buildSlotKeys, defaultEmailForSlot, defaultNameForSlot, slotCountsFromRestaurant } from "@/lib/staff-slots";
 import { roleForSlotKey } from "@/lib/staff-permissions";
 
@@ -25,6 +25,7 @@ export function presentTenantAdminOverview(overview: TenantOverview) {
       }),
     },
     tenantBaseDomain: getTenantBaseDomain(),
+    oofBaseDomain: getOofBaseDomain(),
     admins: overview.admins,
     subscriptions: overview.subscriptions,
     hostSlugs: overview.hostSlugs.map((row) => ({

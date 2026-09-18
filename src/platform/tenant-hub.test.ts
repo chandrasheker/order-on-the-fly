@@ -198,7 +198,7 @@ describe("tenant hub onboarding and resolution", () => {
     assert.equal(added.restaurant.slug, `${created.tenant.slug}-south`);
     assert.ok(
       added.notices.some((notice) =>
-        notice.includes(`Restaurant hostname changed to ${created.tenant.slug}-${created.tenant.slug}.dvadtech.in`),
+        notice.includes(`Restaurant hostname changed to ${created.tenant.slug}-${created.tenant.slug}.oof.dvadtech.in`),
       ),
     );
     const original = await prisma.restaurant.findUnique({ where: { id: created.restaurants[0].restaurant.id } });
@@ -254,8 +254,10 @@ describe("tenant hub onboarding and resolution", () => {
       nodeEnv: "production",
     });
     const opts = { nodeEnv: "production", baseDomain: "dvadtech.in" };
-    assert.equal(decidePlatformRouting("/platform", apex, opts).kind, "allow");
+    assert.equal(decidePlatformRouting("/platform", apex, opts).kind, "redirect");
+    assert.equal(decidePlatformRouting("/oof/platform", apex, opts).kind, "allow");
     assert.equal(decidePlatformRouting("/platform", hub, opts).kind, "deny");
+    assert.equal(decidePlatformRouting("/oof/platform", hub, opts).kind, "deny");
     assert.equal(decidePlatformRouting("/api/platform/tenants", restaurant, opts).kind, "deny");
   });
 

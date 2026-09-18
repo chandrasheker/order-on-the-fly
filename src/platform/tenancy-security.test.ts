@@ -429,8 +429,9 @@ describe("platform admin is host-restricted not restaurant-privileged", () => {
     assert.equal(decidePlatformRouting("/", restaurant, opts).kind, "pass");
 
     assert.equal(platformRoutesAllowedOnHost(apex, "production", opts), true);
-    assert.equal(decidePlatformRouting("/", apex, { ...opts, method: "GET" }).kind, "redirect");
-    assert.equal(decidePlatformRouting("/platform", apex, opts).kind, "allow");
+    assert.equal(decidePlatformRouting("/", apex, { ...opts, method: "GET" }).kind, "pass");
+    assert.equal(decidePlatformRouting("/oof/platform", apex, opts).kind, "allow");
+    assert.equal(decidePlatformRouting("/platform", apex, opts).kind, "redirect");
   });
 });
 

@@ -23,12 +23,12 @@ import { cn } from "@/lib/utils";
 export type PlatformNavId = "overview" | "tenants" | "restaurants" | "billing" | "audit" | "logs";
 
 const NAV: { id: PlatformNavId; href: string; label: string; icon: typeof LayoutGrid }[] = [
-  { id: "overview", href: "/platform", label: "Overview", icon: LayoutGrid },
-  { id: "tenants", href: "/platform?view=tenants", label: "Tenants", icon: Building2 },
-  { id: "restaurants", href: "/platform?view=fleet", label: "Restaurants", icon: Store },
-  { id: "billing", href: "/platform/billing", label: "Billing", icon: CreditCard },
-  { id: "audit", href: "/platform/audit", label: "Audit", icon: Shield },
-  { id: "logs", href: "/platform/logs", label: "Logs", icon: ScrollText },
+  { id: "overview", href: "/oof/platform", label: "Overview", icon: LayoutGrid },
+  { id: "tenants", href: "/oof/platform?view=tenants", label: "Tenants", icon: Building2 },
+  { id: "restaurants", href: "/oof/platform?view=fleet", label: "Restaurants", icon: Store },
+  { id: "billing", href: "/oof/platform/billing", label: "Billing", icon: CreditCard },
+  { id: "audit", href: "/oof/platform/audit", label: "Audit", icon: Shield },
+  { id: "logs", href: "/oof/platform/logs", label: "Logs", icon: ScrollText },
 ];
 
 interface PlatformShellProps {
@@ -45,11 +45,11 @@ interface PlatformShellProps {
 }
 
 function navFromPath(pathname: string): PlatformNavId {
-  if (pathname.startsWith("/platform/billing")) return "billing";
-  if (pathname.startsWith("/platform/logs")) return "logs";
-  if (pathname.startsWith("/platform/audit")) return "audit";
+  if (pathname.startsWith("/oof/platform/billing")) return "billing";
+  if (pathname.startsWith("/oof/platform/logs")) return "logs";
+  if (pathname.startsWith("/oof/platform/audit")) return "audit";
   if (pathname.includes("/restaurants/")) return "restaurants";
-  if (pathname.startsWith("/platform/tenants")) return "tenants";
+  if (pathname.startsWith("/oof/platform/tenants")) return "tenants";
   return "overview";
 }
 
@@ -88,7 +88,7 @@ export function PlatformShell({
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  const current = activeItem ?? navFromPath(pathname ?? "/platform");
+  const current = activeItem ?? navFromPath(pathname ?? "/oof/platform");
   const contentWidth = wide ? "max-w-[88rem]" : "max-w-5xl";
 
   const logout = async () => {
@@ -97,7 +97,7 @@ export function PlatformShell({
     } catch (error) {
       swallowPollingFetchError(error);
     }
-    router.push("/platform/login");
+    router.push("/oof/platform/login");
   };
 
   const nav = (

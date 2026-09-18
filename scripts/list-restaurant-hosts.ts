@@ -1,15 +1,20 @@
 /**
- * List restaurant slugs and whether they can resolve as {slug}.{TENANT_BASE_DOMAIN}.
+ * List restaurant slugs with canonical OOF hosts and legacy compatibility hosts.
  *
  *   npm run hosts:list
  */
 import "dotenv/config";
 import { createPrismaClient } from "../src/lib/create-prisma-client";
-import { getTenantBaseDomain, isValidRestaurantSubdomainSlug } from "../src/platform/host";
+import {
+  getOofBaseDomain,
+  getTenantBaseDomain,
+  isValidRestaurantSubdomainSlug,
+} from "../src/platform/host";
 
 async function main() {
   const prisma = createPrismaClient();
-  const base = getTenantBaseDomain();
+  const tenantBase = getTenantBaseDomain();
+  const oofBase = getOofBaseDomain(tenantBase);
   const restaurants = await prisma.restaurant.findMany({
     select: {
       slug: true,
@@ -21,7 +26,8 @@ async function main() {
     orderBy: { slug: "asc" },
   });
 
-  console.log(`TENANT_BASE_DOMAIN=${base || "(unset)"}`);
+  console.log(`TENANT_BASE_DOMAIN=${tenantBase || "(unset)"}`);
+  console.log(`OOF_BASE_DOMAIN=${oofBase || "(unset)"}`);
   console.log(`TENANT_APEX_RESTAURANT=${process.env.TENANT_APEX_RESTAURANT === "1" ? "1" : "0"}`);
   console.log("");
 
@@ -34,7 +40,9 @@ async function main() {
     const dnsOk = isValidRestaurantSubdomainSlug(row.slug);
     const hierarchyOk = Boolean(row.tenantId && row.tenant);
     const enabled = row.isEnabled && (row.tenant?.isEnabled ?? false);
-    const host = base && dnsOk ? `${row.slug}.${base}` : "(invalid slug or missing TENANT_BASE_DOMAIN)";
+    const canonical = oofBase && dnsOk ? `${row.slug}.${oofBase}` : "(invalid slug or missing OOF_BASE_DOMAIN)";
+    const legacy =
+      tenantBase && dnsOk ? `${row.slug}.${tenantBase}` : "(invalid slug or missing TENANT_BASE_DOMAIN)";
     const status = !dnsOk
       ? "INVALID_SLUG"
       : !hierarchyOk
@@ -43,12 +51,21 @@ async function main() {
           ? "DISABLED"
           : "OK";
     console.log(
-      `${status.padEnd(18)} ${row.slug.padEnd(20)} host=${host} tenant=${row.tenant?.slug ?? "none"}`,
+      [
+        status.padEnd(18),
+        row.slug.padEnd(20),
+        `canonical=${canonical}`,
+        `legacy=${legacy}`,
+        `tenant=${row.tenant?.slug ?? "none"}`,
+        `hierarchy=${hierarchyOk ? "valid" : "invalid"}`,
+      ].join(" "),
     );
   }
 
   console.log("");
-  console.log("Unknown example hosts such as abc.dvadtech.in 404 unless that slug exists above.");
+  console.log("Canonical OOF host example: abc.oof.dvadtech.in");
+  console.log("Legacy compatibility host example: abc.dvadtech.in");
+  console.log("Both forms resolve the same HostSlug during migration. Unknown hosts 404.");
   await prisma.$disconnect();
 }
 

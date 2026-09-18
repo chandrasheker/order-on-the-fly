@@ -5,9 +5,9 @@
  * unknown slug, disabled restaurant/tenant, or missing hierarchy never
  * fall back to another restaurant.
  *
- * Reserved hosts (apex, www, platform, localhost, IPs) do not imply a
+ * Reserved hosts (apex, www, oof product host, localhost, IPs) do not imply a
  * restaurant. Staff still bind via session; guests use path/QR scoped to
- * a slug. That reserved path is for local/dev and platform admin only.
+ * a slug. That reserved path is for local/dev, company marketing, and platform admin.
  */
 import type { TenantContext } from "@/platform/tenant-context";
 import {

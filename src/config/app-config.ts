@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { assertJwtSecretForEnv, isNextJsProductionBuild } from "@/lib/jwt-secret";
-import { isValidTenantBaseDomain } from "@/platform/host";
+import { isValidOofBaseDomain, isValidTenantBaseDomain } from "@/platform/host";
 import { publicMenuMediaConfig, resolveMenuMediaConfig, type PublicMenuMediaConfig } from "@/lib/menu-media/config";
 import { publicMenuImportConfig } from "@/lib/menu-import/config";
 
@@ -25,6 +25,7 @@ const envSchema = z.object({
   PRISMA_MIGRATIONS: z.string().optional(),
   RESTAURANT_CONFIG: z.string().optional(),
   TENANT_BASE_DOMAIN: z.string().optional(),
+  OOF_BASE_DOMAIN: z.string().optional(),
   TENANT_APEX_RESTAURANT: z.enum(["0", "1"]).optional(),
   TENANT_RESERVED_HOSTS: z.string().optional(),
   TENANT_PUBLIC_PROTOCOL: z.enum(["http", "https"]).optional(),
@@ -69,6 +70,7 @@ export function loadAppConfig(options?: { strict?: boolean }): AppConfig {
       NODE_ENV: parsed.data.NODE_ENV,
       JWT_SECRET: parsed.data.JWT_SECRET ?? process.env.JWT_SECRET,
       TENANT_BASE_DOMAIN: parsed.data.TENANT_BASE_DOMAIN ?? process.env.TENANT_BASE_DOMAIN,
+      OOF_BASE_DOMAIN: parsed.data.OOF_BASE_DOMAIN ?? process.env.OOF_BASE_DOMAIN,
     });
     if (!process.env.DATABASE_URL && !process.env.PRISMA_SCHEMA?.includes("sqlite")) {
       // allow sqlite file default in dev only
@@ -96,6 +98,7 @@ export function assertProductionSecurityConfig(env: {
   NODE_ENV?: string;
   JWT_SECRET?: string;
   TENANT_BASE_DOMAIN?: string;
+  OOF_BASE_DOMAIN?: string;
 }) {
   if (env.NODE_ENV !== "production") return;
 
@@ -104,6 +107,15 @@ export function assertProductionSecurityConfig(env: {
   const domain = String(env.TENANT_BASE_DOMAIN ?? "").trim();
   if (!isValidTenantBaseDomain(domain)) {
     throw new Error("Production requires TENANT_BASE_DOMAIN (e.g. dvadtech.in)");
+  }
+
+  const oofExplicit = String(env.OOF_BASE_DOMAIN ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, "");
+  const oof = oofExplicit || `oof.${domain.toLowerCase().replace(/^\.+|\.+$/g, "")}`;
+  if (!isValidOofBaseDomain(oof, domain)) {
+    throw new Error("Production requires OOF_BASE_DOMAIN (e.g. oof.dvadtech.in) under TENANT_BASE_DOMAIN");
   }
 }
 
