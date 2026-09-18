@@ -28,6 +28,18 @@ const nextConfig: NextConfig = {
         },
       }
     : {}),
+  // Canonical browser path `/oof/platform` keeps the existing App Router tree
+  // at `src/app/platform`. Middleware must NOT rewrite this itself in
+  // production: Next serializes middleware rewrites as http://localhost, which
+  // then fail-closes PlatformAdmin (apex-only). Config rewrites keep Host.
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: "/oof/platform", destination: "/platform" },
+        { source: "/oof/platform/:path*", destination: "/platform/:path*" },
+      ],
+    };
+  },
   serverExternalPackages: [
     "better-sqlite3",
     "@prisma/adapter-better-sqlite3",

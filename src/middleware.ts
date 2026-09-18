@@ -155,14 +155,6 @@ function nextWithHost(request: NextRequest) {
   return withSecurityHeaders(NextResponse.next({ request: { headers: hostRequestHeaders(request) } }));
 }
 
-function rewriteWithHost(request: NextRequest, pathname: string) {
-  const url = request.nextUrl.clone();
-  url.pathname = pathname;
-  return withSecurityHeaders(
-    NextResponse.rewrite(url, { request: { headers: hostRequestHeaders(request) } }),
-  );
-}
-
 function absoluteOnCompanyApex(pathname: string, request: NextRequest) {
   const origin = getCompanyPublicOrigin();
   if (origin) return new URL(pathname, `${origin}/`);
@@ -259,7 +251,9 @@ export async function middleware(request: NextRequest) {
       if (platformAdmin) {
         return withSecurityHeaders(NextResponse.redirect(new URL(PLATFORM_UI_ROOT, request.url)));
       }
-      return rewriteWithHost(request, internal);
+      // next.config maps /oof/platform → /platform; do not middleware-rewrite
+      // (production would retarget localhost and fail closed).
+      return nextWithHost(request);
     }
     if (internal === "/platform/tenants") {
       return withSecurityHeaders(NextResponse.redirect(new URL(PLATFORM_UI_ROOT, request.url)));
@@ -267,7 +261,7 @@ export async function middleware(request: NextRequest) {
     if (!platformAdmin) {
       return withSecurityHeaders(NextResponse.redirect(new URL(`${PLATFORM_UI_ROOT}/login`, request.url)));
     }
-    return rewriteWithHost(request, internal);
+    return nextWithHost(request);
   }
 
   if (pathname === "/tenant/login" || pathname === "/tenant" || pathname.startsWith("/tenant/")) {

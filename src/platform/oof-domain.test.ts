@@ -264,4 +264,10 @@ describe("PlatformAdmin canonical paths", () => {
     });
     assert.equal(decidePlatformRouting("/oof/platform", restaurant, opts).kind, "deny");
   });
+
+  it("canonical UI mapping stays a path alias, not a host change", () => {
+    assert.equal(rewritePlatformUiToInternal("/oof/platform"), "/platform");
+    assert.equal(rewritePlatformUiToInternal("/oof/platform/login"), "/platform/login");
+    assert.equal(canonicalPlatformUiPath("/platform/login"), "/oof/platform/login");
+  });
 });

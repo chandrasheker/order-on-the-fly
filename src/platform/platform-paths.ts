@@ -1,7 +1,7 @@
 /**
  * Canonical PlatformAdmin UI lives under `/oof/platform`.
  * The App Router implementation remains at `src/app/platform` and is reached
- * via middleware rewrite so the browser URL stays canonical.
+ * via next.config beforeFiles rewrites so the browser URL stays canonical.
  *
  * `/api/platform/*` is unchanged.
  */
