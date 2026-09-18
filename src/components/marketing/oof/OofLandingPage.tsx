@@ -306,7 +306,7 @@ export function OofLandingPage() {
                 caption="Staff sign-in stays on the restaurant host — not on the company website."
               />
               <p className="text-sm leading-relaxed text-zinc-400">
-                DVADTech.com is the company. The restaurant host is the floor. Mixing those two would leak
+                dvadtech.in is the company site. The restaurant host is the floor. Mixing those two would leak
                 control-plane UI onto customer links. We keep them apart on purpose.
               </p>
             </div>
