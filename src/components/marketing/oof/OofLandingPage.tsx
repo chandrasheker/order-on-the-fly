@@ -155,8 +155,8 @@ export function OofLandingPage() {
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
             <h2 className="text-2xl font-semibold text-white sm:text-3xl">A short product story</h2>
             <p className="mt-3 max-w-2xl text-sm text-orange-50/70">
-              There is no stock video here. This storyboard is the product narrative — and the slot where a
-              real restaurant film can sit later without redesigning the page.
+              Illustrated scenes of the floor story — not stock footage of a customer we do not have. A real
+              restaurant film can replace this later without redesigning the page.
             </p>
             <div className="mt-8">
               <OofProductStory />

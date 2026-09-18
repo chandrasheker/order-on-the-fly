@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Pause, Play } from "lucide-react";
 
@@ -15,43 +16,59 @@ const SCENES = [
     id: "crowd",
     title: "The room is full",
     copy: "Tables occupied. Energy high. This is the night you wanted — and the night the process usually breaks.",
+    image: "/marketing/oof/story/01-crowd.jpg",
+    alt: "A full dining room at night, every table occupied under warm lights.",
   },
   {
     id: "wait",
     title: "A guest is trying to order",
     copy: "They look around. Raise a hand. Wait. The menu is on the table; the waiter is on the other side of the room.",
+    image: "/marketing/oof/story/02-wait.jpg",
+    alt: "A guest at a table raising a hand while a waiter is busy elsewhere.",
   },
   {
     id: "rush",
     title: "Staff are already carrying the rush",
     copy: "Taking orders, running food, answering ‘where is my bill?’. The bottleneck is attention, not intent.",
+    image: "/marketing/oof/story/03-rush.jpg",
+    alt: "A waiter carrying plates through a busy kitchen pass while another staff member writes an order.",
   },
   {
     id: "scan",
     title: "The guest scans the table QR",
     copy: "No app install theatre. The table is the entry point. The live menu opens on their phone.",
+    image: "/marketing/oof/story/04-scan.jpg",
+    alt: "Hands holding a phone so the camera frames a QR code on a table tent.",
   },
   {
     id: "menu",
     title: "They order from the live menu",
     copy: "What is available is what they see. A second item later does not require catching someone again.",
+    image: "/marketing/oof/story/05-menu.jpg",
+    alt: "A guest ordering from a phone menu at the table.",
   },
   {
     id: "kitchen",
     title: "The ticket is already in the workflow",
     copy: "Kitchen and service see the same order. No rewritten pad. No ‘what table was that?’",
+    image: "/marketing/oof/story/06-kitchen.jpg",
+    alt: "Chefs plating food at the pass while a kitchen screen sits out of focus.",
   },
   {
     id: "ready",
     title: "Ready, paid, collected",
     copy: "When food is ready, payment can be required before handover. Outstanding balance blocks collection.",
+    image: "/marketing/oof/story/07-ready.jpg",
+    alt: "Staff handing over a plated order as the guest shows a payment confirmation on their phone.",
   },
   {
     id: "done",
     title: "The guest is eating. The floor is clearer.",
     copy: "Hospitality is still yours. The waiting-for-permission loop is not.",
+    image: "/marketing/oof/story/08-done.jpg",
+    alt: "Guests eating together while a waiter walks a calmer dining room.",
   },
-];
+] as const;
 
 function Storyboard({ reduce }: { reduce: boolean | null }) {
   const [index, setIndex] = useState(0);
@@ -80,12 +97,23 @@ function Storyboard({ reduce }: { reduce: boolean | null }) {
             transition={{ duration: reduce ? 0 : 0.45 }}
             className="absolute inset-0 flex flex-col justify-end p-6 sm:p-10"
           >
-            <SceneArt id={scene.id} />
+            <Image
+              src={scene.image}
+              alt={scene.alt}
+              fill
+              priority={index === 0}
+              sizes="(max-width: 768px) 100vw, 1152px"
+              className="object-cover"
+            />
+            <div
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/15"
+              aria-hidden
+            />
             <p className="relative text-xs uppercase tracking-[0.2em] text-orange-200/80">
               Scene {String(index + 1).padStart(2, "0")}
             </p>
             <h3 className="relative mt-2 text-2xl font-semibold text-white sm:text-3xl">{scene.title}</h3>
-            <p className="relative mt-2 max-w-2xl text-sm leading-relaxed text-orange-50/75 sm:text-base">
+            <p className="relative mt-2 max-w-2xl text-sm leading-relaxed text-orange-50/90 sm:text-base">
               {scene.copy}
             </p>
           </motion.div>
@@ -123,34 +151,6 @@ function Storyboard({ reduce }: { reduce: boolean | null }) {
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-function SceneArt({ id }: { id: string }) {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(251,146,60,0.18),transparent_45%),radial-gradient(circle_at_80%_80%,rgba(244,63,94,0.12),transparent_40%)]" />
-      {id === "crowd" ? (
-        <div className="absolute inset-x-8 bottom-28 flex justify-between opacity-70">
-          {Array.from({ length: 7 }).map((_, i) => (
-            <span key={i} className="h-16 w-10 rounded-t-full bg-orange-200/15" />
-          ))}
-        </div>
-      ) : null}
-      {id === "wait" ? <div className="absolute left-10 top-12 h-24 w-24 rounded-full border border-dashed border-orange-200/40" /> : null}
-      {id === "rush" ? (
-        <div className="absolute right-10 top-10 grid grid-cols-3 gap-2 opacity-60">
-          {Array.from({ length: 9 }).map((_, i) => (
-            <span key={i} className="h-8 w-12 rounded bg-white/10" />
-          ))}
-        </div>
-      ) : null}
-      {id === "scan" ? <div className="absolute right-16 top-14 h-28 w-28 rounded-xl border-2 border-orange-300/50" /> : null}
-      {id === "menu" ? <div className="absolute left-1/2 top-10 h-40 w-24 -translate-x-1/2 rounded-[1.5rem] border border-white/20 bg-black/30" /> : null}
-      {id === "kitchen" ? <div className="absolute inset-x-16 top-12 h-20 rounded-xl bg-orange-400/10 border border-orange-200/20" /> : null}
-      {id === "ready" ? <div className="absolute right-12 top-12 size-16 rounded-full bg-emerald-400/30" /> : null}
-      {id === "done" ? <div className="absolute inset-x-0 top-8 h-24 bg-gradient-to-b from-orange-200/10 to-transparent" /> : null}
     </div>
   );
 }
